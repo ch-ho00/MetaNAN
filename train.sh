@@ -1,0 +1,1 @@
+python train.py --resume_training

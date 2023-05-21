@@ -1,0 +1,31 @@
+name: nan
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - cudatoolkit=11.1
+  - cudnn=8.0
+  - configargparse
+  - gdown
+  - imageio=2.9
+  - matplotlib=3.4
+  - numpy=1.20
+  - tensorboard
+  - tensorboardx
+  - torchvision=0.10
+  - tqdm
+  - pyyaml
+  - pip
+  - pip:
+    - kornia==0.6.4
+    - lpips==0.1.4
+    - opencv-python==4.5.5.64
+    # this is for the torch version which compatible with RTX 3090
+    - --find-links https://download.pytorch.org/whl/cu113/torch_stable.html
+    - torch==1.11.0+cu113
+
+
+
