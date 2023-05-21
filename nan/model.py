@@ -65,9 +65,21 @@ class NANScheme(nn.Module):
         device = torch.device(f'cuda:{args.local_rank}')
 
         # create feature extraction network
-        self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
-                                   fine_out_ch=args.fine_feat_dim,
-                                   coarse_only=args.coarse_only).to(device)
+        if self.args.auto_encoder:
+            from autoencoder import AutoEncoder, ConvWeightGenerator, NoiseLevelConv
+            self.feature_net = AutoEncoder(32, self.args.meta_module, True, True, False, patch_kernel=self.args.patch_kernel).to(device)
+
+            if self.args.meta_module:
+                self.noise_conv =  NoiseLevelConv().to(device)
+                out_dim = 3 * self.feature_net.encoder.channel_mult // 2 * 5 * 5
+                out_dim += self.feature_net.encoder.channel_mult * self.feature_net.encoder.channel_mult * 2 // 2 * 5 * 5
+                self.weight_generator = ConvWeightGenerator(in_dim=self.noise_conv.out_dim * (1 if self.args.patch_kernel else 64), out_dim=out_dim, patch_kernel=self.args.patch_kernel).to(device)
+
+            
+        else:
+            self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
+                                    fine_out_ch=args.fine_feat_dim,
+                                    coarse_only=args.coarse_only).to(device)
 
         # create coarse NAN mlps
         self.net_coarse = self.nan_factory('coarse', device)

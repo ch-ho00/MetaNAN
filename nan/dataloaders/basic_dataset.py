@@ -9,6 +9,8 @@ import imageio
 import matplotlib.pyplot as plt
 from enum import Enum
 import numpy as np
+from torchvision import transforms as T
+from PIL import Image
 
 
 class Mode(Enum):
@@ -28,6 +30,7 @@ k0 = (1 + a) * (1 / gamma) * t ** ((1 / gamma) - 1.)  # 12.92
 # k0 = 12.92
 inv_t = t * k0
 
+transform = T.ToTensor()
 
 def de_linearize(rgb, wl=1.):
     """
@@ -112,8 +115,14 @@ class BurstDataset(Dataset, ABC):
         return list(folder.glob("*"))
 
     @staticmethod
-    def read_image(filename, **kwargs):
-        return imageio.imread(filename).astype(np.float32) / 255.
+    def read_image(filename, multiple32=True, **kwargs):
+        
+        img = Image.open(filename).convert('RGB')
+
+        if multiple32:
+            img = img.resize([1024, 768], Image.LANCZOS)
+        img = transform(img)
+        return img.permute(1,2,0).numpy()
 
     def apply_transform(self, rgb, camera, src_rgbs, src_cameras):
         if self.mode == Mode.train and self.random_crop:

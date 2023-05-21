@@ -111,6 +111,12 @@ class CustomArgumentParser(configargparse.ArgumentParser):
                                                                     'useful for large datasets like deepvoxels or '
                                                                     'nerf_synthetic')
 
+
+        parser.add_argument('--lambda_reconst_loss', type=float, default=0)
+        parser.add_argument('--auto_encoder', default=False, action="store_true")
+        parser.add_argument('--meta_module', default=False, action="store_true")
+        parser.add_argument('--patch_kernel', default=False, action="store_true")    
+        
         # ########## model options ##########
         # ## ray sampling options
         parser.add_argument('--sample_mode', type=str, default='uniform',

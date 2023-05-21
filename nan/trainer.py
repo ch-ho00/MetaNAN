@@ -144,8 +144,11 @@ class Trainer:
         # Calculate the feature maps of all views.
         # This step is seperated because in evaluation time we want to do it once for each image.
         org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
-        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs)
+        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, sig_ests=train_data['sigma_estimate'].to(self.device), return_reconst=True)
 
+        if self.model.args.auto_encoder:
+            proc_src_rgbs, reconst_signal = proc_src_rgbs
+            reconst_signal = reconst_signal[0]
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
                                                  org_src_rgbs=org_src_rgbs,
@@ -154,9 +157,13 @@ class Trainer:
         # compute loss
         self.model.optimizer.zero_grad()
         loss = self.criterion(batch_out['coarse'], ray_batch, self.scalars_to_log)
-
         if batch_out['fine'] is not None:
             loss += self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
+
+        if self.model.args.auto_encoder:
+            reconst_loss = torch.mean(torch.abs(reconst_signal.permute(0,2,3,1)[None]- proc_src_rgbs))
+            loss += self.model.args.lambda_reconst_loss * reconst_loss
+            self.scalars_to_log['reconst_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()

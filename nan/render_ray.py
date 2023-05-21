@@ -271,18 +271,27 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs):
+    def calc_featmaps(self, src_rgbs, sig_ests=None, return_reconst=False):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)
         :return: src_rgbs after pre_net (if exists) (1, N, H, W, 3),
                  features maps: dict {'coarse': (N, C, H', W'), 'fine': (N, C, H', W')}
         """
-        if self.model.pre_net is not None:
-            src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
-            featmaps = self.model.feature_net(src_rgbs)
-            src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
-        else:
-            featmaps = self.model.feature_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))
+        src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
 
-        return src_rgbs, featmaps
+        if self.model.args.auto_encoder:
+            conv_weights = None
+            if self.model.args.meta_module:
+                noise_vector = self.model.noise_conv(sig_ests[0].permute(0,3,1,2))
+                conv_weights = self.model.weight_generator(noise_vector.reshape(noise_vector.shape[0],-1))
+            featmaps, reconst_signal = self.model.feature_net(src_rgbs, conv_weights, multiscale=False)  # (B*V, 8, H, W), (B*V, 16, H//2, W//2), (B*V, self.feat_dim, H//4, W//4)
+            featmaps = {
+                'coarse' : featmaps,
+                'fine' : featmaps
+            }
+        else:
+            featmaps = self.model.feature_net(src_rgbs)
+        src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
+
+        return [src_rgbs, reconst_signal] if self.model.args.auto_encoder and return_reconst else src_rgbs, featmaps

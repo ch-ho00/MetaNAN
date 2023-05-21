@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : reproduce
+expname                     : nan_auto_encoder_meta #_lambda1e-2
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -21,6 +21,13 @@ workers                     : 0
 
 ### TESTING
 chunk_size                  : 2048 # can be bigger depend on the gpu memory
+
+## AutoEncoder Module
+auto_encoder                : True
+meta_module                 : True
+patch_kernel                : False
+lambda_reconst_loss         : 0.01
+
 
 ### RENDERING
 N_importance                : 64
