@@ -79,10 +79,10 @@ class NanMLP(nn.Module):
 
         self.ray_dir_fc = nn.Sequential(nn.Linear(4, 16),
                                         self.activation_func,
-                                        nn.Linear(16, in_feat_ch + 3),
+                                        nn.Linear(16, in_feat_ch + 3 + (3 if self.args.auto_encoder else 0)),
                                         self.activation_func)
 
-        base_input_channels = (in_feat_ch + 3) * 3
+        base_input_channels = (in_feat_ch + 3 + (3 if self.args.auto_encoder else 0)) * 3
         if self.args.noise_feat:
             base_input_channels += 3
 
@@ -92,7 +92,7 @@ class NanMLP(nn.Module):
                                      self.activation_func)
 
         if args.views_attn:
-            input_channel = 35
+            input_channel = in_feat_ch + 3 + (3 if self.args.auto_encoder else 0)
             self.views_attention = MultiHeadAttention(5, input_channel, 7, 8)
             # self.spatial_views_attention = MultiHeadAttention(5, input_channel, 7, 8)
         self.vis_fc = nn.Sequential(nn.Linear(32, 32),
@@ -270,4 +270,5 @@ class NanMLP(nn.Module):
         w = w.permute((0, 1, 3, 4, 2, 5))
         blending_weights_valid = softmax3d(w, dim=(2, 3, 4))  # color blending
         rgb_out = torch.sum(rgb_in * blending_weights_valid, dim=(2, 3, 4))
+                        
         return rgb_out, blending_weights_valid

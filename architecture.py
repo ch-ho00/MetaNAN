@@ -39,7 +39,7 @@ def unstack_image(stack_image, total_n_patch):
 
 
 class CNN_Encoder(nn.Module):
-    def __init__(self, output_size, meta_module, meta_half, meta_independent, meta_residual, meta_decoder=False, extra_dims=None, patch_kernel=False):
+    def __init__(self, meta_module, meta_half, meta_independent, meta_residual, meta_decoder=False, extra_dims=None, patch_kernel=False):
         super(CNN_Encoder, self).__init__()
 
         
@@ -168,7 +168,6 @@ class CNN_Encoder(nn.Module):
 class CNN_Decoder(nn.Module):
     def __init__(self, embedding_size, meta_decoder=False):
         super(CNN_Decoder, self).__init__()
-        self.input_dim = embedding_size
         # self.channel_mult = 8
         self.channel_mult = 16
         self.output_channels = 3

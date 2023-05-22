@@ -40,11 +40,11 @@ class NoiseLevelConv(nn.Module):
     def __init__(self):
         super(NoiseLevelConv, self).__init__()
 
-        self.out_dim = 512
+        self.out_dim = 128
         self.conv0 = UNetConvBlock(3, 64, True, 0.2)
         self.conv1 = UNetConvBlock(64, 128, True, 0.2)
-        self.conv2 = UNetConvBlock(128, 256, True, 0.2)
-        self.conv3 = UNetConvBlock(256, self.out_dim, True, 0.2)
+        self.conv2 = UNetConvBlock(128, 64, True, 0.2)
+        self.conv3 = UNetConvBlock(64, self.out_dim, True, 0.2)
 
     def forward(self, x):
         x = self.conv0(x) # (B, 32, H//2, W//2)
@@ -63,11 +63,11 @@ class ConvWeightGenerator(nn.Module):
       self.patch_kernel = patch_kernel
 
       self.transform = nn.Sequential(
-        nn.Linear(self.in_dim, 1024),
+        nn.Linear(self.in_dim, 512),
         nn.LeakyReLU(0.2),
-        nn.Linear(1024,1024),
+        nn.Linear(512,512),
         nn.LeakyReLU(0.2),
-        nn.Linear(1024,self.out_dim)
+        nn.Linear(512,self.out_dim)
       )
 
     def forward(self,noise_vec):
@@ -77,12 +77,12 @@ class ConvWeightGenerator(nn.Module):
       return weights 
 
 class AutoEncoder(nn.Module):
-    def __init__(self, output_size, meta_module, meta_half, meta_independent, meta_residual, meta_decoder=False, patch_kernel=False):
+    def __init__(self, meta_module, meta_half, meta_independent, meta_residual, meta_decoder=False, patch_kernel=False):
         super(AutoEncoder, self).__init__()
         
-        self.decoder = CNN_Decoder(output_size, meta_decoder)
+        self.decoder = CNN_Decoder(meta_decoder)
         extra_dims = 0 if not meta_decoder else self.decoder.channel_mult * 16
-        self.encoder = CNN_Encoder(output_size, meta_module, meta_half, meta_independent, meta_residual, meta_decoder, extra_dims, patch_kernel=patch_kernel)
+        self.encoder = CNN_Encoder(meta_module, meta_half, meta_independent, meta_residual, meta_decoder, extra_dims, patch_kernel=patch_kernel)
         
         self.meta_decoder = meta_decoder
         if meta_decoder:

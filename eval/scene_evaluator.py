@@ -357,7 +357,7 @@ class SceneEvaluator:
         self.model.switch_to_eval()
         with torch.no_grad():
             org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
-            proc_src_rgbs, featmaps = ray_render.calc_featmaps(src_rgbs=org_src_rgbs)
+            proc_src_rgbs, featmaps = ray_render.calc_featmaps(src_rgbs=org_src_rgbs, sig_ests=ray_sampler.sigma_estimate.to(self.device))
             ray_batch_in = ray_sampler.sample_ray_batch_from_pixel(save_pixel)
             ray_batch_out = ray_render.render_batch(ray_batch=ray_batch_in, proc_src_rgbs=proc_src_rgbs,
                                                     featmaps=featmaps,

@@ -146,13 +146,15 @@ class Trainer:
         org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
         proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, sig_ests=train_data['sigma_estimate'].to(self.device), return_reconst=True)
 
+        reconst_signal = None
         if self.model.args.auto_encoder:
             proc_src_rgbs, reconst_signal = proc_src_rgbs
-            reconst_signal = reconst_signal[0]
+
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
                                                  org_src_rgbs=org_src_rgbs,
-                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device))
+                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device),
+                                                 reconst_signal=reconst_signal)
 
         # compute loss
         self.model.optimizer.zero_grad()
@@ -161,7 +163,7 @@ class Trainer:
             loss += self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
 
         if self.model.args.auto_encoder:
-            reconst_loss = torch.mean(torch.abs(reconst_signal.permute(0,2,3,1)[None]- proc_src_rgbs))
+            reconst_loss = torch.mean(torch.abs(reconst_signal.permute(0,2,3,1)[None]- org_src_rgbs))
             loss += self.model.args.lambda_reconst_loss * reconst_loss
             self.scalars_to_log['reconst_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
 
@@ -225,12 +227,17 @@ class Trainer:
         if self.args.render_stride != 1:
             gt_img = gt_img[::render_stride, ::render_stride]
             average_im = average_im[::render_stride, ::render_stride]
+            reconst_signal = None
+            if 'reconst_signal' in ret.keys():
+                reconst_signal = ret['reconst_signal'][...,::render_stride, ::render_stride].detach().cpu()
+                reconst_signal = de_linearize(reconst_signal.clamp(min=0.,max=1.), ray_sampler.white_level)
+                
 
         rgb_gt = img_HWC2CHW(gt_img)
         average_im = img_HWC2CHW(average_im)
 
         rgb_pred = img_HWC2CHW(ret['coarse'].rgb.detach().cpu())
-
+        
         h_max = max(rgb_gt.shape[-2], rgb_pred.shape[-2], average_im.shape[-2])
         w_max = max(rgb_gt.shape[-1], rgb_pred.shape[-1], average_im.shape[-1])
         rgb_im = torch.zeros(3, h_max, 3 * w_max)
@@ -260,6 +267,9 @@ class Trainer:
         self.writer.add_image(prefix + 'rgb_gt-coarse-fine' + postfix, rgb_im, global_step)
         self.writer.add_image(prefix + 'depth_gt-coarse-fine'+ postfix, depth_im, global_step)
         self.writer.add_image(prefix + 'acc-coarse-fine'+ postfix, acc_map, global_step)
+        if reconst_signal != None:
+            reconst_signal = reconst_signal.permute(1,2,0,3).reshape(3,reconst_signal.shape[-2], -1)
+            self.writer.add_image(prefix + 'reconst_signal'+ postfix, reconst_signal, global_step)
 
         # write scalar
         pred_rgb = ret['fine'].rgb if ret['fine'] is not None else ret['coarse'].rgb
@@ -275,7 +285,7 @@ class Trainer:
         for val_idx in range(len(self.val_dataset)):
             if val_idx % 10 != 0:
                 continue            
-            elif global_step == 0 and val_idx > 0:
+            elif global_step == 1 and val_idx > 0:
                 break
             val_data = self.val_dataset[val_idx]
             val_data = {k : val_data[k][None] if isinstance(val_data[k], torch.Tensor) else val_data[k] for k in val_data.keys()}
@@ -284,7 +294,7 @@ class Trainer:
             H, W = tmp_ray_sampler.H, tmp_ray_sampler.W
             gt_img = tmp_ray_sampler.rgb_clean.reshape(H, W, 3)
             iter_ = val_idx//10
-            self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"iter{iter_}")
+            self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_iter{iter_}")
             torch.cuda.empty_cache()
         print('Logging current training view...')
         tmp_ray_train_sampler = RaySampler(train_data, self.device,

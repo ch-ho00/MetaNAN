@@ -179,7 +179,7 @@ class RayRender:
         return pts, z_vals
 
     def render_batch(self, ray_batch, proc_src_rgbs, featmaps, org_src_rgbs,
-                     sigma_estimate) -> Dict[str, RaysOutput]:
+                     sigma_estimate, reconst_signal=None) -> Dict[str, RaysOutput]:
         """
         :param sigma_estimate: (1, N, H, W, 3)
         :param org_src_rgbs: (1, N, H, W, 3)
@@ -214,7 +214,7 @@ class RayRender:
         # Process the rays and return the coarse phase output
         coarse_ray_out = self.process_rays_batch(ray_batch=ray_batch, pts=pts_coarse, z_vals=z_vals_coarse, save_idx=save_idx,
                                          level='coarse', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                         org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate)
+                                         org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, reconst_signal=reconst_signal)
         batch_out['coarse'] = coarse_ray_out
 
         if self.fine_processing:
@@ -226,13 +226,13 @@ class RayRender:
             # Process the rays and return the fine phase output
             fine = self.process_rays_batch(ray_batch=ray_batch, pts=pts_fine, z_vals=z_vals_fine, save_idx=save_idx,
                                            level='fine', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate)
+                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, reconst_signal=reconst_signal)
 
             batch_out['fine'] = fine
         return batch_out
 
     def process_rays_batch(self, ray_batch, pts, z_vals, save_idx, level, proc_src_rgbs, featmaps,
-                           org_src_rgbs, sigma_estimate):
+                           org_src_rgbs, sigma_estimate, reconst_signal=None):
         """
         :param sigma_estimate: (1, N, H, W, 3)
         :param org_src_rgbs: (1, N, H, W, 3)
@@ -249,7 +249,7 @@ class RayRender:
         # based on the target camera and src cameras (intrinsics - K, rotation - R, translation - t)
         proj_out = self.projector.compute(pts, ray_batch['camera'], proc_src_rgbs, org_src_rgbs, sigma_estimate,
                                           ray_batch['src_cameras'],
-                                          featmaps=featmaps[level])  # [N_rays, N_samples, N_views, x]
+                                          featmaps=featmaps[level], reconst_signal=reconst_signal)  # [N_rays, N_samples, N_views, x]
         rgb_feat, ray_diff, pts_mask, org_rgb, sigma_est = proj_out
 
         # [N_rays, N_samples, 4]
@@ -278,6 +278,7 @@ class RayRender:
         :return: src_rgbs after pre_net (if exists) (1, N, H, W, 3),
                  features maps: dict {'coarse': (N, C, H', W'), 'fine': (N, C, H', W')}
         """
+        noisy_src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2).clone()
         src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
 
         if self.model.args.auto_encoder:
@@ -285,13 +286,13 @@ class RayRender:
             if self.model.args.meta_module:
                 noise_vector = self.model.noise_conv(sig_ests[0].permute(0,3,1,2))
                 conv_weights = self.model.weight_generator(noise_vector.reshape(noise_vector.shape[0],-1))
-            featmaps, reconst_signal = self.model.feature_net(src_rgbs, conv_weights, multiscale=False)  # (B*V, 8, H, W), (B*V, 16, H//2, W//2), (B*V, self.feat_dim, H//4, W//4)
+            featmaps, reconst_signal = self.model.feature_net(noisy_src_rgbs, conv_weights, multiscale=False)  # (B*V, 8, H, W), (B*V, 16, H//2, W//2), (B*V, self.feat_dim, H//4, W//4)
             featmaps = {
-                'coarse' : featmaps,
-                'fine' : featmaps
+                'coarse' : featmaps[:, :self.model.args.coarse_feat_dim],
+                'fine' : featmaps[:,-self.model.args.fine_feat_dim:]
             }
         else:
             featmaps = self.model.feature_net(src_rgbs)
         src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
 
-        return [src_rgbs, reconst_signal] if self.model.args.auto_encoder and return_reconst else src_rgbs, featmaps
+        return [src_rgbs, reconst_signal[0]] if self.model.args.auto_encoder and return_reconst else src_rgbs, featmaps
