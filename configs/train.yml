@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_auto_encoder_meta #_lambda1e-2
+expname                     : test # nan_auto_encoder_meta #_lambda1e-2
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -10,7 +10,7 @@ eval_scenes                 : [fern, orchids, flower, horns, leaves, room, trex,
 
 ### TRAINING
 n_iters                     : 255000
-N_rand                      : 512
+N_rand                      : 256
 lrate_feature               : 0.001
 lrate_mlp                   : 0.0005
 lrate_decay_factor          : 0.5
@@ -23,8 +23,8 @@ workers                     : 0
 chunk_size                  : 2048 # can be bigger depend on the gpu memory
 
 ## AutoEncoder Module
-auto_encoder                : True
-meta_module                 : True
+auto_encoder                : False # True
+meta_module                 : False # True
 patch_kernel                : False
 lambda_reconst_loss         : 0.01
 

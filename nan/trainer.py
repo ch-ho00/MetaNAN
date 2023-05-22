@@ -215,7 +215,7 @@ class Trainer:
             print(logstr)
             print(f"each iter time {dt:.05f} seconds")
 
-    def log_view_to_tb(self, global_step, ray_sampler, gt_img, render_stride=1, prefix=''):
+    def log_view_to_tb(self, global_step, ray_sampler, gt_img, render_stride=1, prefix='', postfix=''):
         self.model.switch_to_eval()
         with torch.no_grad():
             ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args)
@@ -257,27 +257,35 @@ class Trainer:
             acc_map = img_HWC2CHW(colorize(acc_map, range=(0., 1.), cmap_name='jet', append_cbar=False))
 
         # write the pred/gt rgb images and depths
-        self.writer.add_image(prefix + 'rgb_gt-coarse-fine', rgb_im, global_step)
-        self.writer.add_image(prefix + 'depth_gt-coarse-fine', depth_im, global_step)
-        self.writer.add_image(prefix + 'acc-coarse-fine', acc_map, global_step)
+        self.writer.add_image(prefix + 'rgb_gt-coarse-fine' + postfix, rgb_im, global_step)
+        self.writer.add_image(prefix + 'depth_gt-coarse-fine'+ postfix, depth_im, global_step)
+        self.writer.add_image(prefix + 'acc-coarse-fine'+ postfix, acc_map, global_step)
 
         # write scalar
         pred_rgb = ret['fine'].rgb if ret['fine'] is not None else ret['coarse'].rgb
         psnr_curr_img = img2psnr(de_linearize(pred_rgb.detach().cpu(), ray_sampler.white_level),
                                  de_linearize(gt_img, ray_sampler.white_level))
-        self.writer.add_scalar(prefix + 'psnr_image', psnr_curr_img, global_step)
-
+        self.writer.add_scalar(prefix + 'psnr_image' + postfix, psnr_curr_img, global_step)
         self.model.switch_to_train()
 
     def log_images(self, train_data, global_step):
         print('Logging a random validation view...')
-        val_data = next(self.val_loader_iterator)
-        tmp_ray_sampler = RaySampler(val_data, self.device, render_stride=self.args.render_stride)
-        H, W = tmp_ray_sampler.H, tmp_ray_sampler.W
-        gt_img = tmp_ray_sampler.rgb_clean.reshape(H, W, 3)
-        self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/')
-        torch.cuda.empty_cache()
-
+        # val_data = next(self.val_loader_iterator)
+        count = 0
+        for val_idx in range(len(self.val_dataset)):
+            if val_idx % 10 != 0:
+                continue            
+            elif global_step == 0 and val_idx > 0:
+                break
+            val_data = self.val_dataset[val_idx]
+            val_data = {k : val_data[k][None] if isinstance(val_data[k], torch.Tensor) else val_data[k] for k in val_data.keys()}
+            count += 1
+            tmp_ray_sampler = RaySampler(val_data, self.device, render_stride=self.args.render_stride)
+            H, W = tmp_ray_sampler.H, tmp_ray_sampler.W
+            gt_img = tmp_ray_sampler.rgb_clean.reshape(H, W, 3)
+            iter_ = val_idx//10
+            self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"iter{iter_}")
+            torch.cuda.empty_cache()
         print('Logging current training view...')
         tmp_ray_train_sampler = RaySampler(train_data, self.device,
                                            render_stride=self.args.render_stride)

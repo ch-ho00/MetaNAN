@@ -228,14 +228,14 @@ class NoiseDataset(BurstDataset, ABC):
 
     def create_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs_clean, src_cameras, depth_range,
                                 gt_depth=None):
-        if self.mode in [Mode.train, Mode.validation]:
+        if self.mode in [Mode.train]:
             white_level = 10 ** -torch.rand(1)
         else:
-            white_level = torch.Tensor([1])
+            white_level = torch.Tensor([1])        
 
         if rgb_clean is not None:
             rgb_clean = re_linearize(torch.from_numpy(rgb_clean[..., :3]), white_level)
-            rgb, _ = self.add_noise(rgb_clean)
+            rgb, _ = self.add_noise(rgb_clean)        
         else:
             rgb = None
         src_rgbs_clean = re_linearize(torch.from_numpy(src_rgbs_clean[..., :3]), white_level)
