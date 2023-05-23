@@ -27,6 +27,7 @@ auto_encoder                : True
 meta_module                 : False
 patch_kernel                : False
 multiscale                  : True
+weighted_reconst            : False
 lambda_reconst_loss         : 0.01
 
 

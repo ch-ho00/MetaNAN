@@ -174,10 +174,19 @@ class Trainer:
 
         if self.model.args.auto_encoder:
             reconst_loss = 0 
+            fullres_sig_est = ray_sampler.sigma_estimate.to(self.device)
             for down_factor, signal in enumerate(reconst_signal):
                 hw = signal.shape[-2:]
                 down_target = F.interpolate(org_src_rgbs[0].permute(0,3,1,2), hw, mode='bilinear')
-                reconst_loss += torch.mean(torch.abs(signal- down_target)) * (0.25 ** down_factor)
+
+                if self.model.args.weighted_reconst:
+                    down_sig_ests = F.interpolate(fullres_sig_est[0].permute(0,3,1,2), hw, mode='bilinear')
+                    reconst_err = torch.mean((reconst_sig[:3] - down_imgs[:3, :3])**2 ) * (1 / torch.sqrt(torch.mean(torch.abs(down_sig_ests)))) 
+                    reconst_loss += reconst_err * 0.1 * (0.25 ** down_factor)                   
+                else:
+                    reconst_err = torch.mean(torch.abs(signal- down_target))
+                    reconst_loss +=  reconst_err * (0.25 ** down_factor)
+
                 loss += self.model.args.lambda_reconst_loss * reconst_loss
             self.scalars_to_log['reconst_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
 
