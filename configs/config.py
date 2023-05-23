@@ -116,6 +116,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--auto_encoder', default=False, action="store_true")
         parser.add_argument('--meta_module', default=False, action="store_true")
         parser.add_argument('--patch_kernel', default=False, action="store_true")    
+        parser.add_argument('--multiscale', default=False, action="store_true")    
         
         # ########## model options ##########
         # ## ray sampling options

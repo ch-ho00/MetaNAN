@@ -271,7 +271,7 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs, sig_ests=None, return_reconst=False):
+    def calc_featmaps(self, src_rgbs, sig_ests=None, return_reconst=False, multiscale=False):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)
@@ -286,7 +286,7 @@ class RayRender:
             if self.model.args.meta_module:
                 noise_vector = self.model.noise_conv(sig_ests[0].permute(0,3,1,2))
                 conv_weights = self.model.weight_generator(noise_vector.reshape(noise_vector.shape[0],-1))
-            featmaps, reconst_signal = self.model.feature_net(noisy_src_rgbs, conv_weights, multiscale=False)  # (B*V, 8, H, W), (B*V, 16, H//2, W//2), (B*V, self.feat_dim, H//4, W//4)
+            featmaps, reconst_signal = self.model.feature_net(noisy_src_rgbs, conv_weights, multiscale=multiscale)  # (B*V, 8, H, W), (B*V, 16, H//2, W//2), (B*V, self.feat_dim, H//4, W//4)
             featmaps = {
                 'coarse' : featmaps[:, :self.model.args.coarse_feat_dim],
                 'fine' : featmaps[:,-self.model.args.fine_feat_dim:]
@@ -295,4 +295,4 @@ class RayRender:
             featmaps = self.model.feature_net(src_rgbs)
         src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
 
-        return [src_rgbs, reconst_signal[0]] if self.model.args.auto_encoder and return_reconst else src_rgbs, featmaps
+        return [src_rgbs, reconst_signal] if self.model.args.auto_encoder and return_reconst else src_rgbs, featmaps

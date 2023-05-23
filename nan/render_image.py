@@ -50,13 +50,13 @@ def render_single_image(ray_sampler: RaySampler,
 
 
     ray_render = RayRender(model=model, args=args, device=device, save_pixel=save_pixel)
-    src_rgbs, featmaps = ray_render.calc_featmaps(ray_sampler.src_rgbs.to(device), ray_sampler.sigma_estimate.to(device), return_reconst=True)
+    src_rgbs, featmaps = ray_render.calc_featmaps(ray_sampler.src_rgbs.to(device), ray_sampler.sigma_estimate.to(device), return_reconst=True, multiscale=args.multiscale)
     
 
     reconst_signal = None
     if isinstance(src_rgbs, list):
         src_rgbs, reconst_signal = src_rgbs
-        all_ret['reconst_signal'] = reconst_signal
+        all_ret['reconst_signal'] = reconst_signal[0]
 
     if args.N_importance > 0:
         all_ret['fine'] = RaysOutput.empty_ret()
@@ -70,7 +70,7 @@ def render_single_image(ray_sampler: RaySampler,
                                             featmaps=featmaps,
                                             org_src_rgbs=ray_sampler.src_rgbs.to(device),
                                             sigma_estimate=ray_sampler.sigma_estimate.to(device),
-                                            reconst_signal=reconst_signal)
+                                            reconst_signal=reconst_signal[0])
 
         all_ret['coarse'].append(ret['coarse'])
         if ret['fine'] is not None:

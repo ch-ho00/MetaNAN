@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_auto_encoder_revised #_lambda1e-2
+expname                     : nan_auto_encoder_meta_channel32_multiscale_lambda1e-2
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -24,9 +24,10 @@ chunk_size                  : 2048 # can be bigger depend on the gpu memory
 
 ## AutoEncoder Module
 auto_encoder                : True
-meta_module                 : False
+meta_module                 : True
 patch_kernel                : False
-lambda_reconst_loss         : 0.1
+multiscale                  : True
+lambda_reconst_loss         : 0.01
 
 
 ### RENDERING
@@ -36,9 +37,9 @@ inv_uniform                 : True
 white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 1000
+i_img                       : 2500
 i_print                     : 100
-i_tb                        : 20
+i_tb                        : 50
 i_weights                   : 5000
 
 ### additional

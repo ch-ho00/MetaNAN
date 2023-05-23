@@ -23,6 +23,7 @@ from nan.sample_ray import RaySampler
 from nan.utils.eval_utils import mse2psnr, img2psnr
 from nan.utils.general_utils import img_HWC2CHW
 from nan.utils.io_utils import print_link, colorize
+import torch.nn.functional as F
 
 
 class Trainer:
@@ -144,7 +145,7 @@ class Trainer:
         # Calculate the feature maps of all views.
         # This step is seperated because in evaluation time we want to do it once for each image.
         org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
-        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, sig_ests=train_data['sigma_estimate'].to(self.device), return_reconst=True)
+        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, sig_ests=train_data['sigma_estimate'].to(self.device), return_reconst=True, multiscale=self.model.args.multiscale)
 
         reconst_signal = None
         if self.model.args.auto_encoder:
@@ -154,7 +155,7 @@ class Trainer:
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
                                                  org_src_rgbs=org_src_rgbs,
                                                  sigma_estimate=ray_sampler.sigma_estimate.to(self.device),
-                                                 reconst_signal=reconst_signal)
+                                                 reconst_signal=reconst_signal[0] )
 
         # compute loss
         self.model.optimizer.zero_grad()
@@ -163,8 +164,12 @@ class Trainer:
             loss += self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
 
         if self.model.args.auto_encoder:
-            reconst_loss = torch.mean(torch.abs(reconst_signal.permute(0,2,3,1)[None]- org_src_rgbs))
-            loss += self.model.args.lambda_reconst_loss * reconst_loss
+            reconst_loss = 0 
+            for down_factor, signal in enumerate(reconst_signal):
+                hw = signal.shape[-2:]
+                down_target = F.interpolate(org_src_rgbs[0].permute(0,3,1,2), hw, mode='bilinear')
+                reconst_loss += torch.mean(torch.abs(signal- down_target)) * (0.25 ** down_factor)
+                loss += self.model.args.lambda_reconst_loss * reconst_loss
             self.scalars_to_log['reconst_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
 
         loss.backward()

@@ -48,7 +48,7 @@ class CNN_Encoder(nn.Module):
         self.meta_independent = meta_independent
         self.meta_residual = meta_residual
         self.meta_decoder = meta_decoder
-        self.channel_mult = 16
+        self.channel_mult = 32
         self.patch_kernel = patch_kernel
         self.total_patch_n = 64
         # self.channel_mult = 16
@@ -169,7 +169,7 @@ class CNN_Decoder(nn.Module):
     def __init__(self, embedding_size, meta_decoder=False):
         super(CNN_Decoder, self).__init__()
         # self.channel_mult = 8
-        self.channel_mult = 16
+        self.channel_mult = 32
         self.output_channels = 3
 
         self.meta_decoder = meta_decoder
