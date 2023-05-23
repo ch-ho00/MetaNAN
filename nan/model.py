@@ -68,8 +68,8 @@ class NANScheme(nn.Module):
         if self.args.auto_encoder:
             from autoencoder import AutoEncoder, ConvWeightGenerator, NoiseLevelConv
             self.feature_net = AutoEncoder(self.args.meta_module, True, True, False, patch_kernel=self.args.patch_kernel).to(device)
-            self.args.coarse_feat_dim = self.feature_net.decoder.channel_mult 
-            self.args.fine_feat_dim = self.feature_net.decoder.channel_mult
+            self.args.coarse_feat_dim = self.feature_net.decoder.channel_mult * 2 
+            self.args.fine_feat_dim = self.feature_net.decoder.channel_mult * 2
             if self.args.meta_module:
                 self.noise_conv =  NoiseLevelConv().to(device)
                 out_dim = 3 * self.feature_net.encoder.channel_mult // 2 * 5 * 5

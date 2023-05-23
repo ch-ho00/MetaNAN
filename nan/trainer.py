@@ -26,6 +26,9 @@ from nan.utils.io_utils import print_link, colorize
 import torch.nn.functional as F
 
 
+ALPHA = 0.9999
+# ALPHA = 0.99998
+
 class Trainer:
     def __init__(self, args):
         self.args = args
@@ -108,7 +111,13 @@ class Trainer:
                 # core optimization loop
                 ray_batch_out, ray_batch_in = self.training_loop(train_data)
                 dt = time.time() - time0
-
+                
+                if self.args.auto_encoder:
+                    self.model.net_coarse.reconst_weight = 1 - ALPHA ** global_step 
+                    self.model.net_fine.reconst_weight = 1 - ALPHA ** global_step
+                    if global_step % 1000 == 1: 
+                        print(f"####### Reconst Weight = ", round(1 - ALPHA ** global_step, 5), " ############")
+                
                 # Logging and saving
                 self.logging(train_data, ray_batch_in, ray_batch_out, dt, global_step, epoch)
 

@@ -250,13 +250,13 @@ class RayRender:
         proj_out = self.projector.compute(pts, ray_batch['camera'], proc_src_rgbs, org_src_rgbs, sigma_estimate,
                                           ray_batch['src_cameras'],
                                           featmaps=featmaps[level], reconst_signal=reconst_signal)  # [N_rays, N_samples, N_views, x]
-        rgb_feat, ray_diff, pts_mask, org_rgb, sigma_est = proj_out
+        rgb_feat, ray_diff, pts_mask, org_rgb, sigma_est, reconst_rgb = proj_out
 
         # [N_rays, N_samples, 4]
         # Process the feature vectors of all 3D points along each ray to predict density and rgb value
         rgb_out, rho_out, *debug_info = self.model.mlps[level](rgb_feat, ray_diff,
                                                                pts_mask.unsqueeze(-3).unsqueeze(-3),
-                                                               org_rgb, sigma_est)
+                                                               org_rgb, sigma_est, reconst_rgb)
         ray_outputs = RaysOutput.raw2output(rgb_out, rho_out, z_vals, pts_mask, white_bkgd=self.white_bkgd)
 
         if save_idx is not None:
@@ -288,8 +288,8 @@ class RayRender:
                 conv_weights = self.model.weight_generator(noise_vector.reshape(noise_vector.shape[0],-1))
             featmaps, reconst_signal = self.model.feature_net(noisy_src_rgbs, conv_weights, multiscale=multiscale)  # (B*V, 8, H, W), (B*V, 16, H//2, W//2), (B*V, self.feat_dim, H//4, W//4)
             featmaps = {
-                'coarse' : featmaps[:, :self.model.args.coarse_feat_dim],
-                'fine' : featmaps[:,-self.model.args.fine_feat_dim:]
+                'coarse' : featmaps,#featmaps[:, :self.model.args.coarse_feat_dim],
+                'fine' :   featmaps #featmaps[:,-self.model.args.fine_feat_dim:]
             }
         else:
             featmaps = self.model.feature_net(src_rgbs)
