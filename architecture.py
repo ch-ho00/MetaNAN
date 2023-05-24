@@ -256,10 +256,7 @@ class DoubleConv(nn.Module):
 
     def init_weight(self):
         torch.nn.init.constant_(self.double_conv[0].weight, 0)
-        torch.nn.init.constant_(self.double_conv[0].bias, 0)
-
         torch.nn.init.constant_(self.double_conv[3].weight, 0)
-        torch.nn.init.constant_(self.double_conv[3].bias, 0)
 
     def forward(self, x, conv_weights=None):
         if self.meta_module:

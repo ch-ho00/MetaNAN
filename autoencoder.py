@@ -4,7 +4,7 @@ from torch.nn import functional as F
 from architecture import CNN_Encoder, CNN_Decoder
 from architecture import UNet_Encoder, UNet_Decoder
 from architecture import FeatureNet
-
+from nan.feature_network import ResUNet
 
 def conv_down(in_chn, out_chn, bias=False):
     layer = nn.Conv2d(in_chn, out_chn, kernel_size=4, stride=2, padding=1, bias=bias)
@@ -77,12 +77,14 @@ class ConvWeightGenerator(nn.Module):
       return weights 
 
 class AutoEncoder(nn.Module):
-    def __init__(self, meta_module, patch_kernel=False):
+    def __init__(self, args, meta_module, patch_kernel=False):
         super(AutoEncoder, self).__init__()
         self.decoder = UNet_Decoder(bilinear=False)
         self.encoder = UNet_Encoder(meta_module, bilinear=False, patch_kernel=patch_kernel)        
-        self.feature_net = FeatureNet(self.decoder.up2.conv.out_channels)
-
+        # self.feature_net = FeatureNet(self.decoder.up2.conv.out_channels)
+        self.feature_net = ResUNet(encoder='resnet18', coarse_out_ch=args.coarse_feat_dim,
+                                fine_out_ch=args.fine_feat_dim,
+                                coarse_only=args.coarse_only)
         # self.decoder = CNN_Decoder()
         # self.encoder = CNN_Encoder(meta_module, patch_kernel=patch_kernel)
 

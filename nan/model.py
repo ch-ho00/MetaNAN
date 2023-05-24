@@ -67,7 +67,7 @@ class NANScheme(nn.Module):
         # create feature extraction network
         if self.args.auto_encoder:
             from autoencoder import AutoEncoder, ConvWeightGenerator, NoiseLevelConv
-            self.feature_net = AutoEncoder(self.args.meta_module, patch_kernel=self.args.patch_kernel).to(device)
+            self.feature_net = AutoEncoder(args, self.args.meta_module, patch_kernel=self.args.patch_kernel).to(device)
             self.args.coarse_feat_dim = self.feature_net.decoder.channel_mult * 2 
             self.args.fine_feat_dim = self.feature_net.decoder.channel_mult * 2
             if self.args.meta_module:

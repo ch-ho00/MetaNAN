@@ -263,6 +263,9 @@ class ResUNet(nn.Module):
             x_coarse = x_out
             x_fine = None
         else:
+            # x_coarse = x_out
+            # x_fine =   x_out
+
             x_coarse = x_out[:, :self.coarse_out_ch, :]
             x_fine = x_out[:, -self.fine_out_ch:, :]
         return {'coarse': x_coarse, 'fine': x_fine}
