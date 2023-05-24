@@ -166,7 +166,7 @@ class Trainer:
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
                                                  org_src_rgbs=org_src_rgbs,
                                                  sigma_estimate=ray_sampler.sigma_estimate.to(self.device),
-                                                 reconst_signal=reconst_signal[0] )
+                                                 reconst_signal= reconst_signal)
 
         # compute loss
         self.model.optimizer.zero_grad()
@@ -175,21 +175,7 @@ class Trainer:
             loss += self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
 
         if self.model.args.auto_encoder:
-            reconst_loss = 0 
-            fullres_sig_est = ray_sampler.sigma_estimate.to(self.device)
-            for down_factor, signal in enumerate(reconst_signal):
-                hw = signal.shape[-2:]
-                down_target = F.interpolate(org_src_rgbs[0].permute(0,3,1,2), hw, mode='bilinear')
-
-                if self.model.args.weighted_reconst:
-                    down_sig_ests = F.interpolate(fullres_sig_est[0].permute(0,3,1,2), hw, mode='bilinear')
-                    reconst_err = torch.mean((signal[:3] - down_target[:3, :3])**2 ) * (1 / torch.sqrt(torch.mean(torch.abs(down_sig_ests)))) 
-                    reconst_loss += reconst_err * 0.1 * (0.25 ** down_factor)  * self.reconst_weight                  
-                else:
-                    reconst_err = torch.mean(torch.abs(signal- down_target))
-                    reconst_loss +=  reconst_err * (0.25 ** down_factor) * self.reconst_weight
-
-                loss += self.model.args.lambda_reconst_loss * reconst_loss
+            reconst_loss = torch.mean(torch.abs(reconst_signal[0].permute(1,2,0)- train_data['rgb_clean'][0].to(self.device)))
             self.scalars_to_log['reconst_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
 
         loss.backward()
@@ -247,7 +233,8 @@ class Trainer:
         with torch.no_grad():
             ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args)
 
-        average_im = ray_sampler.src_rgbs.cpu().mean(dim=(0, 1))
+        average_im = ray_sampler.src_rgbs.cpu()[0,0]
+        # average_im = ray_sampler.src_rgbs.cpu().mean(dim=(0, 1))
 
         if self.args.render_stride != 1:
             gt_img = gt_img[::render_stride, ::render_stride]

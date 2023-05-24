@@ -169,7 +169,7 @@ class Projector:
         if reconst_signal != None:
             reconst_sampled = F.grid_sample(reconst_signal, norm_xys, align_corners=True)
             reconst_sampled = reconst_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, 3]
-            # rgb_feat_sampled = torch.cat([rgb_feat_sampled, reconst_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
+            rgb_feat_sampled = torch.cat([rgb_feat_sampled, reconst_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
             reconst_reshaped = self.reshape_features(reconst_sampled)
 
 

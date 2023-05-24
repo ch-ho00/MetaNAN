@@ -455,7 +455,7 @@ class UNet_Decoder(nn.Module):
         reconst_x = self.up4(x_down2, x1) # 2 -> 1
         reconst_x = self.outc(reconst_x) # 1 -> 1
 
-        reconst_down4 = self.reconst_conv(x_down4) if multiscale else None
-        reconst_down2 = self.reconst_conv_2(x_down2) if multiscale else None
+        # reconst_down4 = self.reconst_conv(x_down4) if multiscale else None
+        # reconst_down2 = self.reconst_conv_2(x_down2) if multiscale else None
 
-        return [reconst_x, reconst_down2, reconst_down4], x_down4
+        return reconst_x, x_down4
