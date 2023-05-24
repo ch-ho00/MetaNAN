@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-from architecture import CNN_Encoder, CNN_Decoder
 from torch.nn import functional as F
-
+from architecture import CNN_Encoder, CNN_Decoder
+from architecture import UNet_Encoder, UNet_Decoder
 
 
 def conv_down(in_chn, out_chn, bias=False):
@@ -54,7 +54,6 @@ class NoiseLevelConv(nn.Module):
         x = F.adaptive_avg_pool2d(x, (8, 8))
         return x
 
-
 class ConvWeightGenerator(nn.Module):
     def __init__(self, in_dim, out_dim, patch_kernel=False):
       super(ConvWeightGenerator,self).__init__()
@@ -63,11 +62,11 @@ class ConvWeightGenerator(nn.Module):
       self.patch_kernel = patch_kernel
 
       self.transform = nn.Sequential(
-        nn.Linear(self.in_dim, 512),
+        nn.Linear(self.in_dim, 1024),
         nn.LeakyReLU(0.2),
-        nn.Linear(512,512),
+        nn.Linear(1024,1024),
         nn.LeakyReLU(0.2),
-        nn.Linear(512,self.out_dim)
+        nn.Linear(1024,self.out_dim)
       )
 
     def forward(self,noise_vec):
@@ -77,27 +76,17 @@ class ConvWeightGenerator(nn.Module):
       return weights 
 
 class AutoEncoder(nn.Module):
-    def __init__(self, meta_module, meta_half, meta_independent, meta_residual, meta_decoder=False, patch_kernel=False):
+    def __init__(self, meta_module, patch_kernel=False):
         super(AutoEncoder, self).__init__()
-        
-        self.decoder = CNN_Decoder(meta_decoder)
-        extra_dims = 0 if not meta_decoder else self.decoder.channel_mult * 16
-        self.encoder = CNN_Encoder(meta_module, meta_half, meta_independent, meta_residual, meta_decoder, extra_dims, patch_kernel=patch_kernel)
-        
-        self.meta_decoder = meta_decoder
-        if meta_decoder:
-            out_dim = self.decoder.channel_mult * 4 * 3 * 3
-            _, h, w = input_size
-            in_dim = (h // 32) * (w // 32) * 3
-            self.weight_generator = ConvWeightGenerator(in_dim=in_dim, out_dim=out_dim)
+        self.decoder = UNet_Decoder(bilinear=False)
+        self.encoder = UNet_Encoder(meta_module, bilinear=False, patch_kernel=patch_kernel)        
+
+        # self.decoder = CNN_Decoder()
+        # self.encoder = CNN_Encoder(meta_module, patch_kernel=patch_kernel)
 
     def forward(self, x, conv_weights, multiscale=False):
         z = self.encoder(x, conv_weights)
         conv_weights = None
-        if self.meta_decoder:
-            z, latent_features = torch.split(z, [z.shape[1] - self.encoder.extra_dims, self.encoder.extra_dims], dim=1)            
-            latent_features = latent_features.permute(1,0,2,3).reshape(self.encoder.extra_dims, -1)
-            conv_weights = self.weight_generator(latent_features)
-        reconst_x, feature = self.decoder(z, multiscale=multiscale, conv_weights=conv_weights)
+        reconst_x, feature = self.decoder(z, multiscale=multiscale)
         return feature, reconst_x
 

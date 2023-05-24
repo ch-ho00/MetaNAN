@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_auto_encoder_mixRGB_noSplit_channel32_multiscale_lambda1e-2
+expname                     : test #nan_unet_annealMixRGB_revised
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -24,7 +24,7 @@ chunk_size                  : 2048 # can be bigger depend on the gpu memory
 
 ## AutoEncoder Module
 auto_encoder                : True
-meta_module                 : False
+meta_module                 : True
 patch_kernel                : False
 multiscale                  : True
 weighted_reconst            : False

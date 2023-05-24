@@ -26,8 +26,8 @@ from nan.utils.io_utils import print_link, colorize
 import torch.nn.functional as F
 
 
-ALPHA = 0.9999
-# ALPHA = 0.99998
+# ALPHA = 0.9999
+ALPHA = 0.99998
 
 class Trainer:
     def __init__(self, args):
@@ -108,15 +108,17 @@ class Trainer:
                 if self.args.distributed:
                     self.train_sampler.set_epoch(epoch)
 
+                if self.args.auto_encoder:
+                    self.reconst_weight = ALPHA ** global_step
+                    self.model.net_coarse.reconst_weight = 1 - self.reconst_weight 
+                    self.model.net_fine.reconst_weight = 1 - self.reconst_weight
+                    if global_step % 1000 == 1: 
+                        print(f"####### Reconst Weight = ", round(1 - self.reconst_weight, 5), " ############")
+                
+
                 # core optimization loop
                 ray_batch_out, ray_batch_in = self.training_loop(train_data)
                 dt = time.time() - time0
-                
-                if self.args.auto_encoder:
-                    self.model.net_coarse.reconst_weight = 1 - ALPHA ** global_step 
-                    self.model.net_fine.reconst_weight = 1 - ALPHA ** global_step
-                    if global_step % 1000 == 1: 
-                        print(f"####### Reconst Weight = ", round(1 - ALPHA ** global_step, 5), " ############")
                 
                 # Logging and saving
                 self.logging(train_data, ray_batch_in, ray_batch_out, dt, global_step, epoch)
@@ -181,11 +183,11 @@ class Trainer:
 
                 if self.model.args.weighted_reconst:
                     down_sig_ests = F.interpolate(fullres_sig_est[0].permute(0,3,1,2), hw, mode='bilinear')
-                    reconst_err = torch.mean((reconst_sig[:3] - down_imgs[:3, :3])**2 ) * (1 / torch.sqrt(torch.mean(torch.abs(down_sig_ests)))) 
-                    reconst_loss += reconst_err * 0.1 * (0.25 ** down_factor)                   
+                    reconst_err = torch.mean((signal[:3] - down_target[:3, :3])**2 ) * (1 / torch.sqrt(torch.mean(torch.abs(down_sig_ests)))) 
+                    reconst_loss += reconst_err * 0.1 * (0.25 ** down_factor)  * self.reconst_weight                  
                 else:
                     reconst_err = torch.mean(torch.abs(signal- down_target))
-                    reconst_loss +=  reconst_err * (0.25 ** down_factor)
+                    reconst_loss +=  reconst_err * (0.25 ** down_factor) * self.reconst_weight
 
                 loss += self.model.args.lambda_reconst_loss * reconst_loss
             self.scalars_to_log['reconst_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
