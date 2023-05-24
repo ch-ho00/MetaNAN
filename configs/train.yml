@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_meta_unet_residual_annealMixRGB_revised
+expname                     : nan_unet_meta_residual
 render_stride               : 2  # used in evaluation
 distributed                 : False
 

@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from architecture import CNN_Encoder, CNN_Decoder
 from architecture import UNet_Encoder, UNet_Decoder
+from architecture import FeatureNet
 
 
 def conv_down(in_chn, out_chn, bias=False):
@@ -80,6 +81,7 @@ class AutoEncoder(nn.Module):
         super(AutoEncoder, self).__init__()
         self.decoder = UNet_Decoder(bilinear=False)
         self.encoder = UNet_Encoder(meta_module, bilinear=False, patch_kernel=patch_kernel)        
+        self.feature_net = FeatureNet(self.decoder.up2.conv.out_channels)
 
         # self.decoder = CNN_Decoder()
         # self.encoder = CNN_Encoder(meta_module, patch_kernel=patch_kernel)
@@ -87,6 +89,9 @@ class AutoEncoder(nn.Module):
     def forward(self, x, conv_weights, multiscale=False):
         z = self.encoder(x, conv_weights)
         conv_weights = None
-        reconst_x, feature = self.decoder(z)
-        return feature, reconst_x + x
+        reconst_x, _ = self.decoder(z, multiscale=multiscale)
+        reconst_x = reconst_x + x
+        feature = self.feature_net(reconst_x)
+        return feature, reconst_x
+
 
