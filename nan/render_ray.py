@@ -286,7 +286,7 @@ class RayRender:
             if self.model.args.meta_module:
                 noise_vector = self.model.noise_conv(sig_ests[0].permute(0,3,1,2))
                 conv_weights = self.model.weight_generator(noise_vector.reshape(noise_vector.shape[0],-1))
-            featmaps, reconst_signal = self.model.feature_net(noisy_src_rgbs, conv_weights, multiscale=multiscale)  # (B*V, 8, H, W), (B*V, 16, H//2, W//2), (B*V, self.feat_dim, H//4, W//4)
+            featmaps, reconst_signal = self.model.feature_net(noisy_src_rgbs, conv_weights, multiscale=False)  # (B*V, 8, H, W), (B*V, 16, H//2, W//2), (B*V, self.feat_dim, H//4, W//4)
             featmaps = {
                 'coarse' : featmaps,#featmaps[:, :self.model.args.coarse_feat_dim],
                 'fine' :   featmaps #featmaps[:,-self.model.args.fine_feat_dim:]

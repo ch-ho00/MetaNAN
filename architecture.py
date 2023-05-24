@@ -224,6 +224,7 @@ class CNN_Decoder(nn.Module):
         reconst_x = self.final_deconv_3(reconst_x)
         return [reconst_x, reconst_down2, reconst_down4], x
 
+#######################
 
 class DoubleConv(nn.Module):
     """(convolution => [BN] => ReLU) * 2"""
@@ -252,6 +253,13 @@ class DoubleConv(nn.Module):
             self.conv_weights_dim = self.in_channels * 3 * 3 * self.mid_channels // 2 + self.mid_channels * 3 * 3 * self.out_channels // 2
         else:
             self.conv_weights_dim = 0
+
+    def init_weight(self):
+        torch.nn.init.constant_(self.double_conv[0].weight, 0)
+        torch.nn.init.constant_(self.double_conv[0].bias, 0)
+
+        torch.nn.init.constant_(self.double_conv[3].weight, 0)
+        torch.nn.init.constant_(self.double_conv[3].bias, 0)
 
     def forward(self, x, conv_weights=None):
         if self.meta_module:
@@ -340,6 +348,10 @@ class Down(nn.Module):
 
         self.conv_weights_dim = self.maxpool_conv[1].conv_weights_dim
 
+    def init_weight(self):
+        self.maxpool_conv[1].init_weight()
+
+
     def forward(self, x, conv_weights=None):
         if conv_weights is not None:
             x = self.maxpool_conv[0](x)
@@ -363,6 +375,9 @@ class Up(nn.Module):
             self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
             self.conv = DoubleConv(in_channels, out_channels)
 
+    def init_weight(self):
+        self.conv.init_weight()
+
     def forward(self, x1, x2):
         x1 = self.up(x1)
         # input is CHW
@@ -382,6 +397,10 @@ class OutConv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(OutConv, self).__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+    def init_weight(self):
+        torch.nn.init.constant_(self.conv.weight, 0)
+        torch.nn.init.constant_(self.conv.bias, 0)
 
     def forward(self, x):
         return self.conv(x)
@@ -408,6 +427,13 @@ class UNet_Encoder(nn.Module):
             self.down4.conv_weights_dim
         ]
         self.conv_weights_dim = sum(self.conv_weights_dims)
+        self.init_weight()
+
+    def init_weight(self):
+        self.down1.init_weight()
+        self.down2.init_weight()
+        self.down3.init_weight()
+        self.down4.init_weight()
 
     def forward(self, x, conv_weights=None):
         if conv_weights is not None:
@@ -445,6 +471,21 @@ class UNet_Decoder(nn.Module):
             nn.Conv2d(128 // scale // factor, 3, 1, 1, 0),
             nn.Sigmoid()            
         )
+        self.init_weight()
+
+    def init_weight(self):
+        self.down4.init_weight()
+        self.up1.init_weight()
+        self.up2.init_weight()
+        self.up3.init_weight()
+        self.up4.init_weight()
+        self.outc.init_weight()
+
+        torch.nn.init.constant_(self.reconst_conv[0].weight, 0)
+        torch.nn.init.constant_(self.reconst_conv[0].bias, 0)
+
+        torch.nn.init.constant_(self.reconst_conv_2[0].weight, 0)
+        torch.nn.init.constant_(self.reconst_conv_2[0].bias, 0)
 
     def forward(self, x, multiscale=False, conv_weights=None):
         x1, x2, x3, x4, x5 = x

@@ -88,7 +88,6 @@ class AutoEncoder(nn.Module):
 
     def forward(self, x, conv_weights, multiscale=False):
         z = self.encoder(x, conv_weights)
-        conv_weights = None
         reconst_x, _ = self.decoder(z, multiscale=multiscale)
         reconst_x = reconst_x + x
         feature = self.feature_net(reconst_x)
