@@ -255,8 +255,10 @@ class DoubleConv(nn.Module):
             self.conv_weights_dim = 0
 
     def init_weight(self):
-        torch.nn.init.constant_(self.double_conv[0].weight, 0)
-        torch.nn.init.constant_(self.double_conv[3].weight, 0)
+        #torch.nn.init.constant_(self.double_conv[0].weight, 0)
+        #torch.nn.init.constant_(self.double_conv[3].weight, 0)
+        torch.nn.init.normal_(self.double_conv[0].weight, std=1e-3)
+        torch.nn.init.normal_(self.double_conv[3].weight, std=1e-3)
 
     def forward(self, x, conv_weights=None):
         if self.meta_module:
@@ -396,8 +398,10 @@ class OutConv(nn.Module):
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
 
     def init_weight(self):
-        torch.nn.init.constant_(self.conv.weight, 0)
-        torch.nn.init.constant_(self.conv.bias, 0)
+        #torch.nn.init.constant_(self.conv.weight, 0)
+        #torch.nn.init.constant_(self.conv.bias, 0)
+        torch.nn.init.normal_(self.conv.weight, std=1e-3)
+        torch.nn.init.normal_(self.conv.bias, std=1e-3)
 
     def forward(self, x):
         return self.conv(x)
@@ -478,11 +482,18 @@ class UNet_Decoder(nn.Module):
         self.up4.init_weight()
         self.outc.init_weight()
 
-        torch.nn.init.constant_(self.reconst_conv[0].weight, 0)
-        torch.nn.init.constant_(self.reconst_conv[0].bias, 0)
+        #torch.nn.init.constant_(self.reconst_conv[0].weight, 0)
+        #torch.nn.init.constant_(self.reconst_conv[0].bias, 0)
 
-        torch.nn.init.constant_(self.reconst_conv_2[0].weight, 0)
-        torch.nn.init.constant_(self.reconst_conv_2[0].bias, 0)
+        #torch.nn.init.constant_(self.reconst_conv_2[0].weight, 0)
+        #torch.nn.init.constant_(self.reconst_conv_2[0].bias, 0)
+
+        torch.nn.init.normal_(self.reconst_conv[0].weight, std=1e-3)
+        torch.nn.init.normal_(self.reconst_conv[0].bias, std=1e-3)
+
+        torch.nn.init.normal_(self.reconst_conv_2[0].weight, std=1e-3)
+        torch.nn.init.normal_(self.reconst_conv_2[0].bias, std=1e-3)
+
 
     def forward(self, x, multiscale=False, conv_weights=None):
         x1, x2, x3, x4, x5 = x

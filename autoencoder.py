@@ -91,6 +91,7 @@ class AutoEncoder(nn.Module):
     def forward(self, x, conv_weights, multiscale=False):
         z = self.encoder(x, conv_weights)
         reconst_x, _ = self.decoder(z, multiscale=multiscale)
+        #print(torch.max(reconst_x), torch.min(reconst_x), torch.mean(reconst_x), reconst_x.shape)
         reconst_x = reconst_x + x
         feature = self.feature_net(reconst_x)
         return feature, reconst_x

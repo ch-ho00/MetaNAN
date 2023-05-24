@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_unet_resnet18 #_woSplit
+expname                     : nan_unet_resnet18_init_lambda0.1 #_woSplit
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -38,7 +38,7 @@ inv_uniform                 : True
 white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 1000
+i_img                       : 2500
 i_print                     : 100
 i_tb                        : 50
 i_weights                   : 5000
