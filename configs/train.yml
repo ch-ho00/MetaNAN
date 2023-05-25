@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_resUnet_ae #_woSplit
+expname                     : nan_resUnet_ae_reconstVol #_woSplit
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
