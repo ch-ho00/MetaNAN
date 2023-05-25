@@ -270,9 +270,9 @@ class NanMLP(nn.Module):
         w = x.masked_fill((~mask), -1e9).squeeze().view((R, S, V, k, k, C))
         w = w.permute((0, 1, 3, 4, 2, 5))
         blending_weights_valid = softmax3d(w, dim=(2, 3, 4))  # color blending
-        if reconst_rgb != None:
-            rgb_out = torch.sum(reconst_rgb * blending_weights_valid, dim=(2, 3, 4))        
-        else:
-            rgb_out = torch.sum(rgb_in * blending_weights_valid, dim=(2, 3, 4))
+        # if reconst_rgb != None:
+        #     rgb_out = torch.sum(reconst_rgb * blending_weights_valid, dim=(2, 3, 4))        
+        # else:
+        rgb_out = torch.sum(rgb_in * blending_weights_valid, dim=(2, 3, 4))
                         
         return rgb_out, blending_weights_valid

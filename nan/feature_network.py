@@ -158,7 +158,9 @@ class ResUNet(nn.Module):
                  coarse_out_ch=32,
                  fine_out_ch=32,
                  norm_layer=None,
-                 coarse_only=False
+                 coarse_only=False,
+                 auto_encoder=False,
+                 meta_module=False
                  ):
 
         super().__init__()
@@ -186,8 +188,16 @@ class ResUNet(nn.Module):
         self.inplanes = 64
         self.groups = 1
         self.base_width = 64
+
+        self.meta_module = meta_module
+        if not self.meta_module:
+            self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
+                                bias=False, padding_mode='reflect')
+        else:
+            self.kernel_dim = 3 * self.inplanes * 7 * 7
+            
         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
-                               bias=False, padding_mode='reflect')
+                            bias=False, padding_mode='reflect')
         self.bn1 = norm_layer(self.inplanes, track_running_stats=False, affine=True)
         self.relu = nn.ReLU(inplace=True)
         self.layer1 = self._make_layer(block, 64, layers[0], stride=2)
@@ -204,6 +214,25 @@ class ResUNet(nn.Module):
 
         # fine-level conv
         self.out_conv = nn.Conv2d(out_ch, out_ch, 1, 1)
+        self.auto_encoder = auto_encoder
+        if self.auto_encoder:
+            self.final_deconv =  nn.Sequential(
+                nn.Upsample(scale_factor=2, mode='nearest'),
+                nn.Conv2d(out_ch, out_ch//2, 3, 1, 1),
+                nn.BatchNorm2d(out_ch//2),
+                nn.ReLU(True),
+            )
+            self.final_deconv_2 =  nn.Sequential(
+                nn.Upsample(scale_factor=2, mode='nearest'),
+                nn.Conv2d(out_ch//2, out_ch//4, 3, 1, 1),
+                nn.BatchNorm2d(out_ch//4),
+                nn.ReLU(True),
+            )
+            self.final_deconv_3 =  nn.Sequential(
+                nn.Conv2d(out_ch//4, 3, 3, 1, 1),
+                nn.Sigmoid()            
+            )
+            
 
     def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
         norm_layer = self._norm_layer
@@ -242,9 +271,19 @@ class ResUNet(nn.Module):
         x = torch.cat([x2, x1], dim=1)
         return x
 
-    def forward(self, x):
-        x = self.relu(self.bn1(self.conv1(x)))
-
+    def forward(self, x, conv_weights=None):
+        if conv_weights != None:
+            conv_weights = conv_weights.reshape(conv_weights.shape[0],64, 3, 7, 7)
+            x = F.pad(x, pad=(3,3,3,3), mode='reflect')
+            xs = []
+            for xi, conv_weight in zip(x, conv_weights):
+                xi = F.conv2d(xi[None], conv_weight, stride=2, padding=0)
+                xs.append(xi)
+            x = torch.cat(xs, dim=0)
+            del xs
+        else:
+            x = self.conv1(x) 
+        x = self.relu(self.bn1(x))
         x1 = self.layer1(x)
         x2 = self.layer2(x1)
         x3 = self.layer3(x2)
@@ -268,4 +307,13 @@ class ResUNet(nn.Module):
 
             x_coarse = x_out[:, :self.coarse_out_ch, :]
             x_fine = x_out[:, -self.fine_out_ch:, :]
-        return {'coarse': x_coarse, 'fine': x_fine}
+
+        out_dict = {'coarse': x_coarse, 'fine': x_fine}
+            
+        if self.auto_encoder:
+            x = self.final_deconv(x)
+            x = self.final_deconv_2(x)
+            x_reconst = self.final_deconv_3(x)
+            out_dict['reconst_signal'] = x_reconst
+    
+        return out_dict    

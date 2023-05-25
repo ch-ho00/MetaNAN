@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from architecture import CNN_Encoder, CNN_Decoder
 from architecture import UNet_Encoder, UNet_Decoder
-from architecture import FeatureNet
+# from architecture import FeatureNet
 from nan.feature_network import ResUNet
 
 def conv_down(in_chn, out_chn, bias=False):
@@ -44,14 +44,14 @@ class NoiseLevelConv(nn.Module):
         self.out_dim = 128
         self.out_size = 4
         self.conv0 = UNetConvBlock(3, 64, True, 0.2)
-        # self.conv1 = UNetConvBlock(64, 128, True, 0.2)
-        # self.conv2 = UNetConvBlock(128, 64, True, 0.2)
+        self.conv1 = UNetConvBlock(64, 128, True, 0.2)
+        self.conv2 = UNetConvBlock(128, 64, True, 0.2)
         self.conv3 = UNetConvBlock(64, self.out_dim, True, 0.2)
 
     def forward(self, x):
         x = self.conv0(x) # (B, 32, H//2, W//2)
-        # x = self.conv1(x) # (B, 64, H//4, W//4)
-        # x = self.conv2(x) # (B, 128, H//8, W//8)
+        x = self.conv1(x) # (B, 64, H//4, W//4)
+        x = self.conv2(x) # (B, 128, H//8, W//8)
         x = self.conv3(x) # (B, 256, H//16, W//16)
         x = F.adaptive_avg_pool2d(x, (self.out_size, self.out_size))
         return x

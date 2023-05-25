@@ -27,6 +27,7 @@ from configs.local_setting import OUT_DIR
 from nan.feature_network import ResUNet
 from nan.nan_mlp import NanMLP
 from nan.utils.io_utils import get_latest_file, print_link
+from autoencoder import ConvWeightGenerator, NoiseLevelConv
 
 
 def de_parallel(model):
@@ -64,22 +65,17 @@ class NANScheme(nn.Module):
         self.args = args
         device = torch.device(f'cuda:{args.local_rank}')
 
-        # create feature extraction network
-        if self.args.auto_encoder:
-            from autoencoder import AutoEncoder, ConvWeightGenerator, NoiseLevelConv
-            self.feature_net = AutoEncoder(args, self.args.meta_module, patch_kernel=self.args.patch_kernel).to(device)
-            self.args.coarse_feat_dim = self.feature_net.decoder.channel_mult * 2 
-            self.args.fine_feat_dim = self.feature_net.decoder.channel_mult * 2
-            if self.args.meta_module:
-                self.noise_conv =  NoiseLevelConv().to(device)
-                out_dim = self.feature_net.encoder.conv_weights_dim
-                self.weight_generator = ConvWeightGenerator(in_dim=self.noise_conv.out_dim * (1 if self.args.patch_kernel else self.noise_conv.out_size ** 2), out_dim=out_dim, patch_kernel=self.args.patch_kernel).to(device)
 
-            
-        else:
-            self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
-                                    fine_out_ch=args.fine_feat_dim,
-                                    coarse_only=args.coarse_only).to(device)
+        self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
+                                fine_out_ch=args.fine_feat_dim,
+                                coarse_only=args.coarse_only,
+                                auto_encoder=args.auto_encoder,
+                                meta_module=args.meta_module).to(device)
+        
+        if self.args.meta_module:
+            self.noise_conv =  NoiseLevelConv().to(device)
+            out_dim = self.feature_net.kernel_dim
+            self.weight_generator = ConvWeightGenerator(in_dim=self.noise_conv.out_dim * (1 if self.args.patch_kernel else self.noise_conv.out_size ** 2), out_dim=out_dim, patch_kernel=self.args.patch_kernel).to(device)
 
         # create coarse NAN mlps
         self.net_coarse = self.nan_factory('coarse', device)

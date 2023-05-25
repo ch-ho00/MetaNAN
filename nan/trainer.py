@@ -164,7 +164,8 @@ class Trainer:
             loss += self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
 
         if self.model.args.auto_encoder:
-            reconst_loss = torch.mean(torch.abs(reconst_signal[0].permute(1,2,0)- train_data['rgb_clean'][0].to(self.device)))
+            reconst_loss = torch.mean(torch.abs(reconst_signal.permute(0,2,3,1)- train_data['src_rgbs'][0].to(self.device)))
+            # reconst_loss = torch.mean(torch.abs(reconst_signal[0].permute(1,2,0)- train_data['rgb_clean'][0].to(self.device)))
             self.scalars_to_log['reconst_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
 
         loss.backward()

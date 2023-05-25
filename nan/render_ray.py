@@ -281,18 +281,12 @@ class RayRender:
         noisy_src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2).clone()
         src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
 
-        if self.model.args.auto_encoder:
-            conv_weights = None
-            if self.model.args.meta_module:
-                noise_vector = self.model.noise_conv(sig_ests[0].permute(0,3,1,2))
-                conv_weights = self.model.weight_generator(noise_vector.reshape(noise_vector.shape[0],-1))
-            featmaps, reconst_signal = self.model.feature_net(noisy_src_rgbs, conv_weights, multiscale=False)  # (B*V, 8, H, W), (B*V, 16, H//2, W//2), (B*V, self.feat_dim, H//4, W//4)
-            # featmaps = {
-            #     'coarse' : featmaps,#featmaps[:, :self.model.args.coarse_feat_dim],
-            #     'fine' :   featmaps #featmaps[:,-self.model.args.fine_feat_dim:]
-            # }
-        else:
-            featmaps = self.model.feature_net(src_rgbs)
+        conv_weights = None
+        if self.model.args.meta_module:
+            noise_vector = self.model.noise_conv(sig_ests[0].permute(0,3,1,2))
+            conv_weights = self.model.weight_generator(noise_vector.reshape(noise_vector.shape[0],-1))
+
+        featmaps = self.model.feature_net(src_rgbs, conv_weights)
         src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
 
-        return [src_rgbs, reconst_signal] if self.model.args.auto_encoder and return_reconst else src_rgbs, featmaps
+        return [src_rgbs, featmaps['reconst_signal']] if self.model.args.auto_encoder and return_reconst else src_rgbs, featmaps

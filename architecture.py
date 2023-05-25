@@ -511,69 +511,69 @@ class UNet_Decoder(nn.Module):
         return reconst, x_down4
 
 
-from inplace_abn import InPlaceABN
-#############################################     MVS Net models        ################################################
-class ConvBnReLU(nn.Module):
-    def __init__(self, in_channels, out_channels,
-                 kernel_size=3, stride=1, pad=1,
-                 norm_act=InPlaceABN):
-        super(ConvBnReLU, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels,
-                              kernel_size, stride=stride, padding=pad, bias=False)
-        self.bn = norm_act(out_channels)
+# from inplace_abn import InPlaceABN
+# #############################################     MVS Net models        ################################################
+# class ConvBnReLU(nn.Module):
+#     def __init__(self, in_channels, out_channels,
+#                  kernel_size=3, stride=1, pad=1,
+#                  norm_act=InPlaceABN):
+#         super(ConvBnReLU, self).__init__()
+#         self.conv = nn.Conv2d(in_channels, out_channels,
+#                               kernel_size, stride=stride, padding=pad, bias=False)
+#         self.bn = norm_act(out_channels)
 
 
-    def forward(self, x):
-        return self.bn(self.conv(x))
+#     def forward(self, x):
+#         return self.bn(self.conv(x))
 
-class ConvBnReLU3D(nn.Module):
-    def __init__(self, in_channels, out_channels,
-                 kernel_size=3, stride=1, pad=1,
-                 norm_act=InPlaceABN):
-        super(ConvBnReLU3D, self).__init__()
-        self.conv = nn.Conv3d(in_channels, out_channels,
-                              kernel_size, stride=stride, padding=pad, bias=False)
-        self.bn = norm_act(out_channels)
-        # self.bn = nn.ReLU()
+# class ConvBnReLU3D(nn.Module):
+#     def __init__(self, in_channels, out_channels,
+#                  kernel_size=3, stride=1, pad=1,
+#                  norm_act=InPlaceABN):
+#         super(ConvBnReLU3D, self).__init__()
+#         self.conv = nn.Conv3d(in_channels, out_channels,
+#                               kernel_size, stride=stride, padding=pad, bias=False)
+#         self.bn = norm_act(out_channels)
+#         # self.bn = nn.ReLU()
 
-    def forward(self, x):
-        return self.bn(self.conv(x))
+#     def forward(self, x):
+#         return self.bn(self.conv(x))
 
 
-###################################  feature net  ######################################
-class FeatureNet(nn.Module):
-    """
-    output 3 levels of features using a FPN structure
-    """
-    def __init__(self, out_feat, norm_act=InPlaceABN):
-        super(FeatureNet, self).__init__()
+# ###################################  feature net  ######################################
+# class FeatureNet(nn.Module):
+#     """
+#     output 3 levels of features using a FPN structure
+#     """
+#     def __init__(self, out_feat, norm_act=InPlaceABN):
+#         super(FeatureNet, self).__init__()
 
-        self.conv0 = nn.Sequential(
-                        ConvBnReLU(3 , 8, 3, 1, 1, norm_act=norm_act),
-                        ConvBnReLU(8, 8, 3, 1, 1, norm_act=norm_act))
+#         self.conv0 = nn.Sequential(
+#                         ConvBnReLU(3 , 8, 3, 1, 1, norm_act=norm_act),
+#                         ConvBnReLU(8, 8, 3, 1, 1, norm_act=norm_act))
 
-        self.conv1 = nn.Sequential(
-                        ConvBnReLU(8, 16, 5, 2, 2, norm_act=norm_act),
-                        ConvBnReLU(16, 16, 3, 1, 1, norm_act=norm_act),
-                        ConvBnReLU(16, 16, 3, 1, 1, norm_act=norm_act))
+#         self.conv1 = nn.Sequential(
+#                         ConvBnReLU(8, 16, 5, 2, 2, norm_act=norm_act),
+#                         ConvBnReLU(16, 16, 3, 1, 1, norm_act=norm_act),
+#                         ConvBnReLU(16, 16, 3, 1, 1, norm_act=norm_act))
 
-        self.conv2 = nn.Sequential(
-                        ConvBnReLU(16, 32, 5, 2, 2, norm_act=norm_act),
-                        ConvBnReLU(32, 32, 3, 1, 1, norm_act=norm_act),
-                        ConvBnReLU(32, 32, 3, 1, 1, norm_act=norm_act))
+#         self.conv2 = nn.Sequential(
+#                         ConvBnReLU(16, 32, 5, 2, 2, norm_act=norm_act),
+#                         ConvBnReLU(32, 32, 3, 1, 1, norm_act=norm_act),
+#                         ConvBnReLU(32, 32, 3, 1, 1, norm_act=norm_act))
 
-        self.toplayer = nn.Conv2d(32, out_feat, 1)
+#         self.toplayer = nn.Conv2d(32, out_feat, 1)
 
-    def _upsample_add(self, x, y):
-        return F.interpolate(x, scale_factor=2,
-                             mode="bilinear", align_corners=True) + y
+#     def _upsample_add(self, x, y):
+#         return F.interpolate(x, scale_factor=2,
+#                              mode="bilinear", align_corners=True) + y
 
-    def forward(self, x):
-        # x: (B, 3, H, W)
-        x = self.conv0(x) # (B, 8, H, W)
-        x = self.conv1(x) # (B, 16, H//2, W//2)
-        x = self.conv2(x) # (B, 32, H//4, W//4)
-        x = self.toplayer(x) # (B, 32, H//4, W//4)
+#     def forward(self, x):
+#         # x: (B, 3, H, W)
+#         x = self.conv0(x) # (B, 8, H, W)
+#         x = self.conv1(x) # (B, 16, H//2, W//2)
+#         x = self.conv2(x) # (B, 32, H//4, W//4)
+#         x = self.toplayer(x) # (B, 32, H//4, W//4)
 
-        return x
+#         return x
 
