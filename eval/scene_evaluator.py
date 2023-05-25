@@ -152,6 +152,16 @@ class SceneEvaluator:
         # process ground truth
         gt_rgb = self.process_gt(data, ray_sampler)
 
+        if 'reconst_signal' in rays_output.keys():
+            noisy_img = de_linearize(data['src_rgbs'][0,0].detach().cpu(), data['white_level'])
+            psnr, ssim, lpips = calculate_metrics(noisy_img, gt_rgb.cpu())
+            print(f"noisy source image psnr :\t", psnr, ssim, lpips)
+
+            pred_denoised = de_linearize(rays_output['reconst_signal'][0].permute(1,2,0).detach().cpu(), data['white_level'])
+            psnr, ssim, lpips = calculate_metrics(pred_denoised, gt_rgb.cpu())
+            print("reconstruction psnr :\t", psnr, ssim, lpips)
+            plt.imsave(str(self.res_dir / f"{file_id}_denoised.png"), np.clip(pred_denoised.numpy(),0,1))
+
         # coarse
         self.sum_burst_output_per_level(ray_sampler, data, gt_rgb, rays_output, file_id, 'coarse')
 
@@ -170,6 +180,7 @@ class SceneEvaluator:
 
         if gt_rgb is not None:
             psnr, ssim, lpips = calculate_metrics(pred_rgb, gt_rgb)
+            print(f"{level} PSNR :\t", psnr, ssim, lpips)
         else:
             psnr, ssim, lpips = 0, 0, 0
 
@@ -202,9 +213,9 @@ class SceneEvaluator:
             print("********** evaluate images ***********")
             self.evaluate_images(data, ray_sampler, file_id)
 
-        if self.eval_args.eval_rays and self.eval_args.factor == 4:
-            print("********** evaluate rays   ***********")
-            self.evaluate_rays(data, ray_sampler)
+        # if self.eval_args.eval_rays and self.eval_args.factor == 4:
+        #     print("********** evaluate rays   ***********")
+        #     self.evaluate_rays(data, ray_sampler)
 
     def save_input(self, data, file_id):
         src_rgbs = data['src_rgbs'][0].cpu().numpy()

@@ -21,7 +21,7 @@ from nan.utils.io_utils import print_link
 
 
 def eval_multi_scenes(ckpt=None, differ_from_train_args=(), scene_list=LLFF_SCENES_LIST):
-    for scene in scene_list:
+    for scene in LLFF_SCENES_LIST: #scene_list:
         additional_eval_args = ['--eval_scenes', scene]
         if ckpt is not None:
             additional_eval_args += ['--ckpt_path', str(ckpt)]
