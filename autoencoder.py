@@ -42,17 +42,18 @@ class NoiseLevelConv(nn.Module):
         super(NoiseLevelConv, self).__init__()
 
         self.out_dim = 128
+        self.out_size = 4
         self.conv0 = UNetConvBlock(3, 64, True, 0.2)
-        self.conv1 = UNetConvBlock(64, 128, True, 0.2)
-        self.conv2 = UNetConvBlock(128, 64, True, 0.2)
+        # self.conv1 = UNetConvBlock(64, 128, True, 0.2)
+        # self.conv2 = UNetConvBlock(128, 64, True, 0.2)
         self.conv3 = UNetConvBlock(64, self.out_dim, True, 0.2)
 
     def forward(self, x):
         x = self.conv0(x) # (B, 32, H//2, W//2)
-        x = self.conv1(x) # (B, 64, H//4, W//4)
-        x = self.conv2(x) # (B, 128, H//8, W//8)
+        # x = self.conv1(x) # (B, 64, H//4, W//4)
+        # x = self.conv2(x) # (B, 128, H//8, W//8)
         x = self.conv3(x) # (B, 256, H//16, W//16)
-        x = F.adaptive_avg_pool2d(x, (8, 8))
+        x = F.adaptive_avg_pool2d(x, (self.out_size, self.out_size))
         return x
 
 class ConvWeightGenerator(nn.Module):
@@ -63,11 +64,11 @@ class ConvWeightGenerator(nn.Module):
       self.patch_kernel = patch_kernel
 
       self.transform = nn.Sequential(
-        nn.Linear(self.in_dim, 1024),
+        nn.Linear(self.in_dim, 512),
         nn.LeakyReLU(0.2),
-        nn.Linear(1024,1024),
+        nn.Linear(512,512),
         nn.LeakyReLU(0.2),
-        nn.Linear(1024,self.out_dim)
+        nn.Linear(512,self.out_dim)
       )
 
     def forward(self,noise_vec):

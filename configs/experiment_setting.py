@@ -8,11 +8,11 @@ LLFF_SCENES_LIST = [
     'orchids',
     'flower',
     'horns',
-    'leaves',
-    'room',
-    'trex',
-    'fortress'
 ]
+    # 'leaves',
+    # 'room',
+    # 'trex',
+    # 'fortress'
 
 STEP_DICT = defaultdict(lambda: 255000)
 

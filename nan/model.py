@@ -73,7 +73,7 @@ class NANScheme(nn.Module):
             if self.args.meta_module:
                 self.noise_conv =  NoiseLevelConv().to(device)
                 out_dim = self.feature_net.encoder.conv_weights_dim
-                self.weight_generator = ConvWeightGenerator(in_dim=self.noise_conv.out_dim * (1 if self.args.patch_kernel else 64), out_dim=out_dim, patch_kernel=self.args.patch_kernel).to(device)
+                self.weight_generator = ConvWeightGenerator(in_dim=self.noise_conv.out_dim * (1 if self.args.patch_kernel else self.noise_conv.out_size ** 2), out_dim=out_dim, patch_kernel=self.args.patch_kernel).to(device)
 
             
         else:

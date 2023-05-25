@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_unet_resnet18_init_lambda0.1 #_woSplit
+expname                     : nan_unet_resnet18_meta_init_lambda0.1 #_woSplit
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -24,7 +24,7 @@ chunk_size                  : 2048 # can be bigger depend on the gpu memory
 
 ## AutoEncoder Module
 auto_encoder                : True
-meta_module                 : False
+meta_module                 : True
 patch_kernel                : False
 multiscale                  : False
 weighted_reconst            : False

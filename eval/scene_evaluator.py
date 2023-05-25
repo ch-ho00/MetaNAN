@@ -218,8 +218,10 @@ class SceneEvaluator:
         if self.eval_args.eval_dataset == 'usfm':
             noisy_rgb = noisy_rgb * data['white_level']
             averaged_img = averaged_img * data['white_level'].numpy()
-        imwrite(str(self.res_dir / f"{file_id}_noisy.png"), to_uint(noisy_rgb.cpu().numpy()))
-        imwrite(str(self.res_dir / f"{file_id}_average.png"), to_uint(averaged_img))
+        plt.imsave(str(self.res_dir / f"{file_id}_noisy.png"), np.clip(noisy_rgb.cpu().numpy(),0,1))
+        plt.imsave(str(self.res_dir / f"{file_id}_average.png"), np.clip(averaged_img, 0, 1))
+        # imwrite(str(self.res_dir / f"{file_id}_noisy.png"), to_uint(noisy_rgb.cpu().numpy()))
+        # imwrite(str(self.res_dir / f"{file_id}_average.png"), to_uint(averaged_img))
 
     def load_results(self, file_id):
         pred_fine = torch.tensor(imread(self.res_dir / f"{self.eval_args.post}{file_id}_pred_fine.png"))
@@ -262,24 +264,29 @@ class SceneEvaluator:
         if gt_rgb is not None:
             err_map = (((pred_rgb - gt_rgb) ** 2).sum(-1).clamp(0, 1) ** (1 / 3)).numpy()
             err_map_colored = to_uint(self.CMAP(err_map)[..., :3])
-            imwrite(str(self.res_dir / f"{file_id}_err_map_{level}.png"), err_map_colored)
+            # imwrite(str(self.res_dir / f"{file_id}_err_map_{level}.png"), err_map_colored)
+            # imwrite(str(self.res_dir / f"{file_id}_err_map_{level}.png"), err_map_colored)
 
         # predicted rgb
-        pred_rgb = to_uint(pred_rgb.numpy())
-        imwrite(str(self.res_dir / f"{file_id}_pred_{level}.png"), pred_rgb)
+        # pred_rgb = to_uint(pred_rgb.numpy())
+        # imwrite(str(self.res_dir / f"{file_id}_pred_{level}.png"), pred_rgb)
+        plt.imsave(str(self.res_dir / f"{file_id}_pred_{level}.png"), np.clip(pred_rgb.numpy(), 0, 1))
 
         # accuracy map
         acc_map = torch.sum(rays_output[level].weights, dim=-1).detach().cpu()
         acc_map_colored = to_uint(self.CMAP(acc_map)[..., :3])
-        imwrite(str(self.res_dir / f"{file_id}_acc_map_{level}.png"), acc_map_colored)
+        # imwrite(str(self.res_dir / f"{file_id}_acc_map_{level}.png"), acc_map_colored)
+        # plt.imsave(str(self.res_dir / f"{file_id}_acc_map_{level}.png"), acc_map_colored)
 
         # predicted depth (depth error is saved under calc_depth)
-        imwrite(str(self.res_dir / f"{file_id}_depth_{level}.png"), (pred_depth * 1000).astype(np.uint16))
+        # imwrite(str(self.res_dir / f"{file_id}_depth_{level}.png"), (pred_depth * 1000).astype(np.uint16))
+        # plt.imsave(str(self.res_dir / f"{file_id}_depth_{level}.png"), (pred_depth * 1000).astype(np.uint16))
 
         depth_range = data['depth_range']
         norm_depth = plt.Normalize(vmin=depth_range.squeeze()[0], vmax=depth_range.squeeze()[1])
         pred_depth_colored = to_uint(self.CMAP(norm_depth(pred_depth))[..., :3])
-        imwrite(str(self.res_dir / f"{file_id}_depth_vis_{level}.png"), pred_depth_colored)
+        # imwrite(str(self.res_dir / f"{file_id}_depth_vis_{level}.png"), pred_depth_colored)
+        # plt.imsave(str(self.res_dir / f"{file_id}_depth_vis_{level}.png"), pred_depth_colored)
 
         # warp images
         if ray_sampler.render_stride == 1:
@@ -289,13 +296,15 @@ class SceneEvaluator:
             if self.eval_args.eval_dataset == 'usfm':
                 warped_img_rgb = warped_img_rgb * data['white_level']
             warped_img_rgb = to_uint(warped_img_rgb.cpu().numpy())
-            imwrite(str(self.res_dir / f"{file_id}_warped_images_{level}.png"), warped_img_rgb)
+            # imwrite(str(self.res_dir / f"{file_id}_warped_images_{level}.png"), warped_img_rgb)
+            # plt.imsave(str(self.res_dir / f"{file_id}_warped_images_{level}.png"), warped_img_rgb)
 
             summary_image = np.concatenate((pred_rgb, warped_img_rgb, pred_depth_colored), axis=1)
         else:
             summary_image = np.concatenate((pred_rgb, pred_depth_colored), axis=1)
 
-        imwrite(str(self.res_dir / f"{file_id}_sum_{level}.png"), summary_image)
+        # imwrite(str(self.res_dir / f"{file_id}_sum_{level}.png"), summary_image)
+        plt.imsave(str(self.res_dir / f"{file_id}_sum_{level}.png"), np.clip(summary_image, 0, 1))
 
     def depth_evaluation(self, rays_output, data, level, file_id):
         depth_range = data['depth_range']
@@ -306,7 +315,8 @@ class SceneEvaluator:
             if gt_depth.shape != () and gt_depth.shape == pred_depth.shape and pred_depth.sum() > 0:
                 depth_error_map = ((gt_depth - pred_depth) ** 2)
                 depth_error = depth_error_map.mean()
-                imwrite(str(self.res_dir / f"{file_id}_depth_error_{level}.png"), to_uint(norm_depth(depth_error_map)))
+                # imwrite(str(self.res_dir / f"{file_id}_depth_error_{level}.png"), to_uint(norm_depth(depth_error_map)))
+                plt.imsave(str(self.res_dir / f"{file_id}_depth_error_{level}.png"), np.clip(norm_depth(depth_error_map), 0, 1))
             else:
                 depth_error = 0
         else:

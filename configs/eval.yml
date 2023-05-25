@@ -1,6 +1,7 @@
 ### INPUT
 
-ckpt_path     : out/reproduce__NAN/model_255000.pth
+# ckpt_path     : out/reproduce__NAN/model_255000.pth
+ckpt_path     : /home/chan/MetaNAN/out/nan_unet_resnet18_init_lambda0.5__NAN/model_030000.pth
 distributed   : False
 
 ## dataset
