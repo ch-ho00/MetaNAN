@@ -25,6 +25,14 @@ from nan.utils.general_utils import img_HWC2CHW
 from nan.utils.io_utils import print_link, colorize
 import torch.nn.functional as F
 
+def tv_loss_2d(img):
+    tv_h = ((img[:,:,1:,:] - img[:,:,:-1,:]).pow(2)).sum() / img.shape[-2]
+    tv_w = ((img[:,:,:,1:] - img[:,:,:,:-1]).pow(2)).sum() / img.shape[-1]
+
+    return tv_h + tv_w
+
+ALPHA = 0.99997
+
 
 class Trainer:
     def __init__(self, args):
@@ -40,6 +48,7 @@ class Trainer:
         self.save_ymls(args, sys.argv[1:], self.exp_out_dir)
 
         # create training dataset
+        args.eval_gain = [20,16,8]
         self.train_dataset, self.train_sampler = create_training_dataset(args)
         # currently only support batch_size=1 (i.e., one set of target and source views) for each GPU node
         # please use distributed parallel on multiple GPUs to train multiple target views per batch
@@ -106,7 +115,7 @@ class Trainer:
                     self.train_sampler.set_epoch(epoch)
                 
                 # core optimization loop
-                ray_batch_out, ray_batch_in = self.training_loop(train_data)
+                ray_batch_out, ray_batch_in = self.training_loop(train_data, global_step)
                 dt = time.time() - time0
                 
                 # Logging and saving
@@ -118,7 +127,7 @@ class Trainer:
             epoch += 1
         return self.last_weights_path
 
-    def training_loop(self, train_data):
+    def training_loop(self, train_data, global_step):
         """
 
         :param train_data: dict {camera: (B, 34),
@@ -159,14 +168,23 @@ class Trainer:
 
         # compute loss
         self.model.optimizer.zero_grad()
+        loss = 0
         loss = self.criterion(batch_out['coarse'], ray_batch, self.scalars_to_log)
         if batch_out['fine'] is not None:
             loss += self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
 
         if self.model.args.auto_encoder:
-            reconst_loss = torch.mean(torch.abs(reconst_signal.permute(0,2,3,1)- train_data['src_rgbs'][0].to(self.device)))
+            factor = ALPHA ** global_step
+            self.scalars_to_log['lambda_factor'] =  factor
+            reconst_loss = torch.mean(torch.abs(reconst_signal.permute(0,2,3,1)- train_data['src_rgbs'][0].to(self.device))) * factor
+            loss += self.model.args.lambda_reconst_loss * reconst_loss 
             # reconst_loss = torch.mean(torch.abs(reconst_signal[0].permute(1,2,0)- train_data['rgb_clean'][0].to(self.device)))
             self.scalars_to_log['reconst_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
+            if self.model.args.lambda_tv_loss > 0:
+                tv_loss = torch.mean(torch.abs(reconst_signal.permute(0,2,3,1)- train_data['src_rgbs'][0].to(self.device))) * factor
+                loss += self.model.args.lambda_tv_loss * tv_loss
+                # reconst_loss = torch.mean(torch.abs(reconst_signal[0].permute(1,2,0)- train_data['rgb_clean'][0].to(self.device)))
+                self.scalars_to_log['tv_loss'] = self.model.args.lambda_tv_loss * tv_loss.item()
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
@@ -281,11 +299,11 @@ class Trainer:
         self.model.switch_to_train()
 
     def log_images(self, train_data, global_step):
-        print('Logging a random validation view...')
+        print(f'Logging a random validation view... {len(self.val_dataset)}')
         # val_data = next(self.val_loader_iterator)
         count = 0
         for val_idx in range(len(self.val_dataset)):
-            if val_idx % 10 != 0:
+            if val_idx % len(self.val_dataset.render_rgb_files) not in [0, (len(self.val_dataset.render_rgb_files) - 1) // 2, len(self.val_dataset.render_rgb_files) - 1]:
                 continue            
             elif global_step == 1 and val_idx > 0:
                 break
@@ -295,8 +313,9 @@ class Trainer:
             tmp_ray_sampler = RaySampler(val_data, self.device, render_stride=self.args.render_stride)
             H, W = tmp_ray_sampler.H, tmp_ray_sampler.W
             gt_img = tmp_ray_sampler.rgb_clean.reshape(H, W, 3)
-            iter_ = val_idx//10
-            self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_iter{iter_}")
+            iter_ = [0, (len(self.val_dataset.render_rgb_files) - 1) // 2, len(self.val_dataset.render_rgb_files) - 1].index(val_idx % len(self.val_dataset.render_rgb_files))
+            eval_gain = val_data['eval_gain']
+            self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_gain{eval_gain}_iter{iter_}")
             torch.cuda.empty_cache()
         print('Logging current training view...')
         tmp_ray_train_sampler = RaySampler(train_data, self.device,

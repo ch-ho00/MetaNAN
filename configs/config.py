@@ -112,6 +112,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
                                                                     'nerf_synthetic')
 
 
+        parser.add_argument('--lambda_tv_loss', type=float, default=0)
         parser.add_argument('--lambda_reconst_loss', type=float, default=0)
         parser.add_argument('--auto_encoder', default=False, action="store_true")
         parser.add_argument('--meta_module', default=False, action="store_true")

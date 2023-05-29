@@ -20,7 +20,7 @@ CONFIG_TRAIN_DICT = LocalSettingDict()
 CONFIG_TRAIN_DICT[PC_NAME] = 'train.yml'
 
 CONFIG_EVAL_DICT = LocalSettingDict()
-CONFIG_EVAL_DICT[PC_NAME] = 'eval.yml'
+CONFIG_EVAL_DICT[PC_NAME] = 'eval2.yml'
 
 ROOT_DIR     = ROOT_DIR_DICT[PC_NAME]
 OUT_DIR      = ROOT_DIR / 'out'

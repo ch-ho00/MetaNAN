@@ -1,16 +1,16 @@
 ### INPUT
-expname                     : nan_resUnet_ae_reconstVol #_woSplit
+expname                     : test #nan_resUnet_ae_reconstVol_annealLambda_5e-1_tvloss_5e-2 #_tvLoss #_woSplit
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
 ## dataset
 train_dataset               : llff
 eval_dataset                : llff_test
-eval_scenes                 : [fern, orchids, flower, horns, leaves, room, trex, fortress]
+eval_scenes                 : [fern, trex, leaves, horns] # fern, orchids, flower, horns, leaves, room, trex, fortress
 
 ### TRAINING
 n_iters                     : 255000
-N_rand                      : 256
+N_rand                      : 512
 lrate_feature               : 0.001
 lrate_mlp                   : 0.0005
 lrate_decay_factor          : 0.5
@@ -23,12 +23,13 @@ workers                     : 0
 chunk_size                  : 2048 # can be bigger depend on the gpu memory
 
 ## AutoEncoder Module
-auto_encoder                : True
+auto_encoder                : True # True
 meta_module                 : False
 patch_kernel                : False
 multiscale                  : False
 weighted_reconst            : False
-lambda_reconst_loss         : 0.1
+lambda_reconst_loss         : 0.5
+lambda_tv_loss              : 0.05 # 0.01
 
 
 ### RENDERING
@@ -38,7 +39,7 @@ inv_uniform                 : True
 white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 2500
+i_img                       : 100 # 2500
 i_print                     : 100
 i_tb                        : 50
 i_weights                   : 5000

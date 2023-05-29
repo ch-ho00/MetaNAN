@@ -166,18 +166,18 @@ class CNN_Decoder(nn.Module):
         self.output_channels = 3
 
         self.deconv_0 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Upsample(scale_factor=2, mode='bilinear'),
             nn.Conv2d(self.channel_mult * 16, self.channel_mult*4, 3, 1, 1),
             nn.BatchNorm2d(self.channel_mult*4),
             nn.ReLU(True),
         )
             
         self.deconv_1 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Upsample(scale_factor=2, mode='bilinear'),
             nn.Conv2d(self.channel_mult*4, self.channel_mult*2, 3, 1, 1),
             nn.BatchNorm2d(self.channel_mult*2),
             nn.ReLU(True),
-            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Upsample(scale_factor=2, mode='bilinear'),
             nn.Conv2d(self.channel_mult*2, self.channel_mult*2, 3, 1, 1),
             nn.BatchNorm2d(self.channel_mult*2),
             nn.ReLU(True),
@@ -186,13 +186,13 @@ class CNN_Decoder(nn.Module):
             nn.ReLU(True),
         )
         self.final_deconv =  nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Upsample(scale_factor=2, mode='bilinear'),
             nn.Conv2d(self.channel_mult*2, self.channel_mult*1, 3, 1, 1),
             nn.BatchNorm2d(self.channel_mult*1),
             nn.ReLU(True),
         )
         self.final_deconv_2 =  nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Upsample(scale_factor=2, mode='bilinear'),
             nn.Conv2d(self.channel_mult*1, self.channel_mult*1, 3, 1, 1),
             nn.BatchNorm2d(self.channel_mult*1),
             nn.ReLU(True),

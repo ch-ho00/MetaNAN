@@ -217,13 +217,13 @@ class ResUNet(nn.Module):
         self.auto_encoder = auto_encoder
         if self.auto_encoder:
             self.final_deconv =  nn.Sequential(
-                nn.Upsample(scale_factor=2, mode='nearest'),
+                nn.Upsample(scale_factor=2, mode='bilinear'),
                 nn.Conv2d(out_ch, out_ch//2, 3, 1, 1),
                 nn.BatchNorm2d(out_ch//2),
                 nn.ReLU(True),
             )
             self.final_deconv_2 =  nn.Sequential(
-                nn.Upsample(scale_factor=2, mode='nearest'),
+                nn.Upsample(scale_factor=2, mode='bilinear'),
                 nn.Conv2d(out_ch//2, out_ch//4, 3, 1, 1),
                 nn.BatchNorm2d(out_ch//4),
                 nn.ReLU(True),
