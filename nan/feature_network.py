@@ -160,7 +160,8 @@ class ResUNet(nn.Module):
                  norm_layer=None,
                  coarse_only=False,
                  auto_encoder=False,
-                 meta_module=False
+                 meta_module=False,
+                 patch_kernel=False
                  ):
 
         super().__init__()
@@ -194,10 +195,10 @@ class ResUNet(nn.Module):
             self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
                                 bias=False, padding_mode='reflect')
         else:
-            self.kernel_dim = 3 * self.inplanes * 7 * 7
+            self.kernel_dim = 3 * (self.inplanes // 2) * 7 * 7
+            self.conv1 = nn.Conv2d(3, self.inplanes // 2, kernel_size=7, stride=2, padding=3,
+                                bias=False, padding_mode='reflect')
             
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
-                            bias=False, padding_mode='reflect')
         self.bn1 = norm_layer(self.inplanes, track_running_stats=False, affine=True)
         self.relu = nn.ReLU(inplace=True)
         self.layer1 = self._make_layer(block, 64, layers[0], stride=2)
@@ -273,13 +274,15 @@ class ResUNet(nn.Module):
 
     def forward(self, x, conv_weights=None):
         if conv_weights != None:
-            conv_weights = conv_weights.reshape(conv_weights.shape[0],64, 3, 7, 7)
+            conv_weights = conv_weights.reshape(conv_weights.shape[0], 32, 3, 7, 7)
+            xx = self.conv1(x)
             x = F.pad(x, pad=(3,3,3,3), mode='reflect')
             xs = []
             for xi, conv_weight in zip(x, conv_weights):
                 xi = F.conv2d(xi[None], conv_weight, stride=2, padding=0)
                 xs.append(xi)
             x = torch.cat(xs, dim=0)
+            x = torch.cat([x, xx], dim=1)
             del xs
         else:
             x = self.conv1(x) 

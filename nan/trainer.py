@@ -174,17 +174,37 @@ class Trainer:
             loss += self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
 
         if self.model.args.auto_encoder:
-            factor = ALPHA ** global_step
-            self.scalars_to_log['lambda_factor'] =  factor
-            reconst_loss = torch.mean(torch.abs(reconst_signal.permute(0,2,3,1)- train_data['src_rgbs'][0].to(self.device))) * factor
+            if self.model.args.annealing_loss:
+                factor = ALPHA ** global_step
+            else:
+                factor = 1 
+
+            if self.model.args.clean_target:
+                pred = reconst_signal.permute(0,2,3,1)[0]
+                target = train_data['src_rgbs_clean'][0,0].to(self.device)
+
+                if self.model.args.weighted_reconst:
+                    weight = 1/(ray_sampler.sigma_estimate[0,0].to(self.device).pow(1/3).mean())
+                else:
+                    weight = 1
+
+            else:
+                pred = reconst_signal.permute(0,2,3,1)
+                target = train_data['src_rgbs'][0].to(self.device)
+                if self.model.args.weighted_reconst:
+                    weight = 1/(ray_sampler.sigma_estimate[0].to(self.device).pow(1/3).mean())
+                else:
+                    weight = 1
+
+            reconst_loss = torch.mean(torch.abs(pred-target) * weight) * factor
             loss += self.model.args.lambda_reconst_loss * reconst_loss 
-            # reconst_loss = torch.mean(torch.abs(reconst_signal[0].permute(1,2,0)- train_data['rgb_clean'][0].to(self.device)))
             self.scalars_to_log['reconst_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
             if self.model.args.lambda_tv_loss > 0:
-                tv_loss = torch.mean(torch.abs(reconst_signal.permute(0,2,3,1)- train_data['src_rgbs'][0].to(self.device))) * factor
+                tv_loss = tv_loss_2d(reconst_signal.permute(0,2,3,1)) * factor
                 loss += self.model.args.lambda_tv_loss * tv_loss
-                # reconst_loss = torch.mean(torch.abs(reconst_signal[0].permute(1,2,0)- train_data['rgb_clean'][0].to(self.device)))
                 self.scalars_to_log['tv_loss'] = self.model.args.lambda_tv_loss * tv_loss.item()
+
+            self.scalars_to_log['lambda_factor'] =  factor
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
@@ -250,7 +270,7 @@ class Trainer:
             reconst_signal = None
             if 'reconst_signal' in ret.keys():
                 reconst_signal = ret['reconst_signal'][...,::render_stride, ::render_stride].detach().cpu()
-                reconst_signal = de_linearize(reconst_signal.clamp(min=0.,max=1.), ray_sampler.white_level)
+                reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
                 
 
         rgb_gt = img_HWC2CHW(gt_img)
@@ -276,8 +296,8 @@ class Trainer:
             rgb_fine_ = torch.zeros(3, h_max, w_max)
             rgb_fine_[:, :rgb_fine.shape[-2], :rgb_fine.shape[-1]] = rgb_fine
             rgb_im = torch.cat((rgb_im, rgb_fine_), dim=-1)
-            rgb_im = rgb_im.clamp(min=0., max=1.)
-            rgb_im = de_linearize(rgb_im, ray_sampler.white_level)
+            # rgb_im = rgb_im
+            rgb_im = de_linearize(rgb_im, ray_sampler.white_level).clamp(min=0., max=1.)
             depth_im = torch.cat((depth_im, ret['fine'].depth.detach().cpu()), dim=-1)
             depth_im = img_HWC2CHW(colorize(depth_im, cmap_name='jet', append_cbar=True))
             acc_map = torch.cat((acc_map, torch.sum(ret['fine'].weights, dim=-1).detach().cpu()), dim=-1)

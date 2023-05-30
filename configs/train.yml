@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : test #nan_resUnet_ae_reconstVol_annealLambda_5e-1_tvloss_5e-2 #_tvLoss #_woSplit
+expname                     : resUnet_ae_cleanTarget_weightedLambda_annealLambda_5e-1 #_tvloss_1e-3 #_tvLoss #_woSplit
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -27,9 +27,11 @@ auto_encoder                : True # True
 meta_module                 : False
 patch_kernel                : False
 multiscale                  : False
-weighted_reconst            : False
+weighted_reconst            : True
+clean_target                : True
+annealing_loss              : True
 lambda_reconst_loss         : 0.5
-lambda_tv_loss              : 0.05 # 0.01
+lambda_tv_loss              : 0.001 #5 # 0.01
 
 
 ### RENDERING
@@ -39,7 +41,7 @@ inv_uniform                 : True
 white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 100 # 2500
+i_img                       : 2500
 i_print                     : 100
 i_tb                        : 50
 i_weights                   : 5000
