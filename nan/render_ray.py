@@ -286,7 +286,10 @@ class RayRender:
             noise_vector = self.model.noise_conv(sig_ests[0].permute(0,3,1,2))
             conv_weights = self.model.weight_generator(noise_vector.reshape(noise_vector.shape[0],-1))
 
-        featmaps = self.model.feature_net(src_rgbs, conv_weights)
+        if self.model.args.noisy_src_feature:
+            featmaps = self.model.feature_net(noisy_src_rgbs, conv_weights)
+        else: 
+            featmaps = self.model.feature_net(src_rgbs, conv_weights)
         src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
 
         return [src_rgbs, featmaps['reconst_signal']] if self.model.args.auto_encoder and return_reconst else src_rgbs, featmaps

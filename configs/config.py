@@ -121,7 +121,8 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--weighted_reconst', default=False, action="store_true")    
         parser.add_argument('--clean_target', default=False, action="store_true")    
         parser.add_argument('--annealing_loss', default=False, action="store_true")    
-        
+        parser.add_argument('--noisy_src_feature', default=False, action="store_true")    
+
         # ########## model options ##########
         # ## ray sampling options
         parser.add_argument('--sample_mode', type=str, default='uniform',
