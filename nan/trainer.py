@@ -154,11 +154,11 @@ class Trainer:
         # Calculate the feature maps of all views.
         # This step is seperated because in evaluation time we want to do it once for each image.
         org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
-        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, sig_ests=train_data['sigma_estimate'].to(self.device), return_reconst=True, multiscale=self.model.args.multiscale)
+        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, sig_ests=train_data['sigma_estimate'].to(self.device), return_reconst=True, inference=False)
 
         reconst_signal = None
         if self.model.args.auto_encoder:
-            proc_src_rgbs, reconst_signal = proc_src_rgbs
+            proc_src_rgbs, reconst_signal, decoder_output = proc_src_rgbs
 
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
@@ -174,31 +174,24 @@ class Trainer:
             loss += self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
 
         if self.model.args.auto_encoder:
-            if self.model.args.annealing_loss:
-                factor = ALPHA ** global_step
-            else:
-                factor = 1 
+            factor = ALPHA ** global_step if self.model.args.annealing_loss else 1            
+            weight = 1/(ray_sampler.sigma_estimate[0,0].to(self.device).pow(1/3).mean()) if self.model.args.weighted_reconst else 1
+            for idx, task in enumerate(decoder_output.keys()):
+                pred = decoder_output[task].permute(0,2,3,1)
+                
+                if task == 1:
+                    target = train_data['src_rgbs_clean'][:,0].to(self.device)
+                elif task == 2:
+                    target = train_data['src_rgbs_clean'][:,0].to(self.device)                    
+                elif task == 3:
+                    target = org_src_rgbs[:,1:]
+                elif task == 4:
+                    target = proc_src_rgbs[:,1:]
+                
+                reconst_loss = torch.mean(torch.abs(pred-target) * weight) * factor
+                loss += self.model.args.decoder_lambdas[idx] * reconst_loss 
+                self.scalars_to_log[f'reconst_loss_{task}'] = self.model.args.decoder_lambdas[idx] * reconst_loss.item()
 
-            if self.model.args.clean_target:
-                pred = reconst_signal.permute(0,2,3,1)[0]
-                target = train_data['src_rgbs_clean'][0,0].to(self.device)
-
-                if self.model.args.weighted_reconst:
-                    weight = 1/(ray_sampler.sigma_estimate[0,0].to(self.device).pow(1/3).mean())
-                else:
-                    weight = 1
-
-            else:
-                pred = reconst_signal.permute(0,2,3,1)
-                target = train_data['src_rgbs'][0].to(self.device)
-                if self.model.args.weighted_reconst:
-                    weight = 1/(ray_sampler.sigma_estimate[0].to(self.device).pow(1/3).mean())
-                else:
-                    weight = 1
-
-            reconst_loss = torch.mean(torch.abs(pred-target) * weight) * factor
-            loss += self.model.args.lambda_reconst_loss * reconst_loss 
-            self.scalars_to_log['reconst_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
             if self.model.args.lambda_tv_loss > 0:
                 tv_loss = tv_loss_2d(reconst_signal.permute(0,2,3,1)) * factor
                 loss += self.model.args.lambda_tv_loss * tv_loss

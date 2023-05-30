@@ -122,6 +122,10 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--clean_target', default=False, action="store_true")    
         parser.add_argument('--annealing_loss', default=False, action="store_true")    
         parser.add_argument('--noisy_src_feature', default=False, action="store_true")    
+        parser.add_argument("--decoder_tasks", nargs='+', type=float, default=[],
+                            help='list of weights for the losses')
+        parser.add_argument("--decoder_lambdas", nargs='+', type=float, default=[],
+                            help='list of weights for the losses')
 
         # ########## model options ##########
         # ## ray sampling options

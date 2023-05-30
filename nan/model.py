@@ -71,7 +71,12 @@ class NANScheme(nn.Module):
                                 coarse_only=args.coarse_only,
                                 auto_encoder=args.auto_encoder,
                                 meta_module=args.meta_module,
-                                patch_kernel=args.patch_kernel).to(device)
+                                patch_kernel=args.patch_kernel,
+                                decoder_tasks=args.decoder_tasks).to(device)
+        
+        if len(self.args.decoder_tasks) > 0:
+            for k in self.feature_net.decoders.keys():
+                self.feature_net.decoders[k].to(device)
         
         if self.args.meta_module:
             self.noise_conv =  NoiseLevelConv().to(device)

@@ -197,7 +197,8 @@ class ResUNet(nn.Module):
                  coarse_only=False,
                  auto_encoder=False,
                  meta_module=False,
-                 patch_kernel=False
+                 patch_kernel=False,
+                 decoder_tasks=[]
                  ):
 
         super().__init__()
@@ -254,22 +255,20 @@ class ResUNet(nn.Module):
         self.out_conv = nn.Conv2d(out_ch, out_ch, 1, 1)
         self.auto_encoder = auto_encoder
         if self.auto_encoder:
-            self.final_deconv =  nn.Sequential(
-                nn.Upsample(scale_factor=2, mode='bilinear'),
-                nn.Conv2d(out_ch, out_ch//2, 3, 1, 1),
-                nn.BatchNorm2d(out_ch//2),
-                nn.ReLU(True),
-            )
-            self.final_deconv_2 =  nn.Sequential(
-                nn.Upsample(scale_factor=2, mode='bilinear'),
-                nn.Conv2d(out_ch//2, out_ch//4, 3, 1, 1),
-                nn.BatchNorm2d(out_ch//4),
-                nn.ReLU(True),
-            )
-            self.final_deconv_3 =  nn.Sequential(
-                nn.Conv2d(out_ch//4, 3, 3, 1, 1),
-                nn.Sigmoid()            
-            )
+            self.decoders = {}
+            for task_num in decoder_tasks:
+                self.decoders[task_num] =  nn.Sequential(
+                    nn.Upsample(scale_factor=2, mode='bilinear'),
+                    nn.Conv2d(out_ch, out_ch//2, 3, 1, 1),
+                    nn.BatchNorm2d(out_ch//2),
+                    nn.ReLU(True),
+                    nn.Upsample(scale_factor=2, mode='bilinear'),
+                    nn.Conv2d(out_ch//2, out_ch//4, 3, 1, 1),
+                    nn.BatchNorm2d(out_ch//4),
+                    nn.ReLU(True),
+                    nn.Conv2d(out_ch//4, 3, 3, 1, 1),
+                    nn.Sigmoid()            
+                )
             
 
     def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
@@ -309,7 +308,7 @@ class ResUNet(nn.Module):
         x = torch.cat([x2, x1], dim=1)
         return x
 
-    def forward(self, x, conv_weights=None):
+    def forward(self, x, conv_weights=None, task_num=None):
         if conv_weights != None:
             if self.patch_kernel:
                 conv_weights = conv_weights.reshape(conv_weights.shape[0], -1, 32, 3, 7, 7)
@@ -367,9 +366,8 @@ class ResUNet(nn.Module):
         out_dict = {'coarse': x_coarse, 'fine': x_fine}
             
         if self.auto_encoder:
-            x = self.final_deconv(x)
-            x = self.final_deconv_2(x)
-            x_reconst = self.final_deconv_3(x)
-            out_dict['reconst_signal'] = x_reconst
+            assert task_num != None
+            output = self.decoders[task_num](x)
+            out_dict[f'decoder_{task_num}'] = output
     
         return out_dict    

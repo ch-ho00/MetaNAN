@@ -50,12 +50,12 @@ def render_single_image(ray_sampler: RaySampler,
 
 
     ray_render = RayRender(model=model, args=args, device=device, save_pixel=save_pixel)
-    src_rgbs, featmaps = ray_render.calc_featmaps(ray_sampler.src_rgbs.to(device), ray_sampler.sigma_estimate.to(device), return_reconst=True, multiscale=args.multiscale)
+    src_rgbs, featmaps = ray_render.calc_featmaps(ray_sampler.src_rgbs.to(device), ray_sampler.sigma_estimate.to(device), return_reconst=True, inference=True)
     
 
     reconst_signal = None
     if isinstance(src_rgbs, list):
-        src_rgbs, reconst_signal = src_rgbs
+        src_rgbs, reconst_signal, decoder_output = src_rgbs
         all_ret['reconst_signal'] = reconst_signal
 
     if args.N_importance > 0:

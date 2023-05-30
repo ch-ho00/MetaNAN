@@ -271,7 +271,7 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs, sig_ests=None, return_reconst=False, multiscale=False):
+    def calc_featmaps(self, src_rgbs, sig_ests=None, return_reconst=False, inference=False):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)
@@ -286,10 +286,29 @@ class RayRender:
             noise_vector = self.model.noise_conv(sig_ests[0].permute(0,3,1,2))
             conv_weights = self.model.weight_generator(noise_vector.reshape(noise_vector.shape[0],-1))
 
+        decoder_output = {}
+        if not inference:
+            for task_num in self.model.args.decoder_tasks:
+                if task_num == 1:
+                    input_ = noisy_src_rgbs[:1]
+                elif task_num == 2:
+                    input_ = src_rgbs[:1]                
+                elif task_num == 3:
+                    input_ = noisy_src_rgbs[1:]
+                elif task_num == 4:
+                    input_ = src_rgbs[1:]                
+                else:
+                    raise NotImplementedError
+                
+                output = self.model.feature_net(input_, conv_weights=conv_weights, task_num=task_num)
+                decoder_output[task_num] = output[f'decoder_{task_num}']
+                
         if self.model.args.noisy_src_feature:
-            featmaps = self.model.feature_net(noisy_src_rgbs, conv_weights)
+            task_num = 3
+            featmaps = self.model.feature_net(noisy_src_rgbs, conv_weights, task_num=task_num)
         else: 
-            featmaps = self.model.feature_net(src_rgbs, conv_weights)
+            task_num = 4
+            featmaps = self.model.feature_net(src_rgbs, conv_weights, task_num=task_num)
         src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
 
-        return [src_rgbs, featmaps['reconst_signal']] if self.model.args.auto_encoder and return_reconst else src_rgbs, featmaps
+        return [src_rgbs, featmaps[f'decoder_{task_num}'], decoder_output] if self.model.args.auto_encoder and return_reconst else src_rgbs, featmaps

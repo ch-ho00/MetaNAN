@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : resUnet_ae_noisySrcFeat_cleanTarget_annealLambda_1e-1 #_tvloss_5e-3 #_tvLoss #_woSplit
+expname                     : resUnet_ae_smoothSrcFeat_task24_annealLambda_1e-2_1e-1 #_tvloss_5e-3 #_tvLoss #_woSplit
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -28,11 +28,16 @@ meta_module                 : False
 patch_kernel                : False
 multiscale                  : False
 weighted_reconst            : False
-clean_target                : True
 annealing_loss              : True
-noisy_src_feature           : True
+noisy_src_feature           : False
 lambda_reconst_loss         : 0.1
 lambda_tv_loss              : 0.0 #5 # 0.01
+decoder_lambdas             : [0.01, 0.1]
+decoder_tasks               : [2,4]
+# decoder 1 | 1. noisy ref img -> clean ref input
+# decoder 2 | 2. smooth ref img -> clean ref input
+# decoder 3 | 3. noisy src img -> noisy src input
+# decoder 4 | 4. smooth src img -> smooth src input
 
 
 ### RENDERING
