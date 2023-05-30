@@ -19,6 +19,42 @@ import torch.nn.functional as F
 import importlib
 
 
+TOTAL_PATCH_N = 64 
+
+def stack_image(image, N=8, pad=2):
+    b, c, h, w = image.size()
+    assert h % N == 0 and w % 8 == 0
+    padded_image = torch.nn.functional.pad(image, (pad, pad, pad, pad), mode='constant', value=0)
+    patch_h = h//N
+    patch_w = w//N 
+    stacked = torch.zeros((b, c*N*N, patch_h + 2*pad, patch_w + 2*pad)).to(image.device)
+    for j in range(N):
+        for k in range(N):
+            row_start = j* patch_h
+            row_end = (j+1)* patch_h + 2*pad
+            col_start = k* patch_w
+            col_end = (k+1)* patch_w + 2*pad
+            stacked[:, c * (j * N + k): c * (j * N + k + 1)] = padded_image[:, :, row_start:row_end, col_start:col_end]
+    return stacked
+
+
+def unstack_image(stack_image, total_n_patch):
+    b, c, patch_h, patch_w = stack_image.size()
+    assert c % total_n_patch == 0
+    N = int(total_n_patch ** 0.5)
+    output_c = c // total_n_patch
+    output = torch.zeros((b, output_c, patch_h * N, patch_w * N)).to(stack_image.device)
+
+    for patch_idx in range(total_n_patch):
+        h_idx = patch_idx // N
+        w_idx = patch_idx % N
+        output[:, :, h_idx * patch_h : (h_idx + 1) * patch_h, w_idx * patch_w : (w_idx + 1) * patch_w] = stack_image[:,patch_idx * output_c: (patch_idx + 1) * output_c]
+    return output
+
+
+
+
+
 def class_for_name(module_name, class_name):
     # load the module, will raise ImportError if module cannot be loaded
     m = importlib.import_module(module_name)
@@ -191,6 +227,7 @@ class ResUNet(nn.Module):
         self.base_width = 64
 
         self.meta_module = meta_module
+        self.patch_kernel = patch_kernel
         if not self.meta_module:
             self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
                                 bias=False, padding_mode='reflect')
@@ -274,16 +311,32 @@ class ResUNet(nn.Module):
 
     def forward(self, x, conv_weights=None):
         if conv_weights != None:
-            conv_weights = conv_weights.reshape(conv_weights.shape[0], 32, 3, 7, 7)
-            xx = self.conv1(x)
-            x = F.pad(x, pad=(3,3,3,3), mode='reflect')
-            xs = []
-            for xi, conv_weight in zip(x, conv_weights):
-                xi = F.conv2d(xi[None], conv_weight, stride=2, padding=0)
-                xs.append(xi)
-            x = torch.cat(xs, dim=0)
-            x = torch.cat([x, xx], dim=1)
-            del xs
+            if self.patch_kernel:
+                conv_weights = conv_weights.reshape(conv_weights.shape[0], -1, 32, 3, 7, 7)
+                conv_weights = conv_weights.reshape(conv_weights.shape[0], -1, 3, 7, 7)
+                xx = self.conv1(x)
+                x_stacked = stack_image(x, N=int(TOTAL_PATCH_N ** 0.5), pad=0)
+                x_stacked = F.pad(x_stacked, pad=(3,3,3,3), mode='reflect')
+                xs = []
+                for xi, conv_weight in zip(x_stacked, conv_weights):
+                    xi = F.conv2d(xi[None], conv_weight, stride=2, padding=0, groups=TOTAL_PATCH_N)
+                    xs.append(xi)
+                x = torch.cat(xs, dim=0)
+                x = unstack_image(x, TOTAL_PATCH_N)
+                x = torch.cat([x, xx], dim=1)
+                del xs
+
+            else:
+                conv_weights = conv_weights.reshape(conv_weights.shape[0], 32, 3, 7, 7)
+                xx = self.conv1(x)
+                x = F.pad(x, pad=(3,3,3,3), mode='reflect')
+                xs = []
+                for xi, conv_weight in zip(x, conv_weights):
+                    xi = F.conv2d(xi[None], conv_weight, stride=2, padding=0)
+                    xs.append(xi)
+                x = torch.cat(xs, dim=0)
+                x = torch.cat([x, xx], dim=1)
+                del xs
         else:
             x = self.conv1(x) 
         x = self.relu(self.bn1(x))

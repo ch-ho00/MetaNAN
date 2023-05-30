@@ -70,7 +70,8 @@ class NANScheme(nn.Module):
                                 fine_out_ch=args.fine_feat_dim,
                                 coarse_only=args.coarse_only,
                                 auto_encoder=args.auto_encoder,
-                                meta_module=args.meta_module).to(device)
+                                meta_module=args.meta_module,
+                                patch_kernel=args.patch_kernel).to(device)
         
         if self.args.meta_module:
             self.noise_conv =  NoiseLevelConv().to(device)
