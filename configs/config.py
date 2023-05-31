@@ -111,22 +111,6 @@ class CustomArgumentParser(configargparse.ArgumentParser):
                                                                     'useful for large datasets like deepvoxels or '
                                                                     'nerf_synthetic')
 
-
-        parser.add_argument('--lambda_tv_loss', type=float, default=0)
-        parser.add_argument('--lambda_reconst_loss', type=float, default=0)
-        parser.add_argument('--auto_encoder', default=False, action="store_true")
-        parser.add_argument('--meta_module', default=False, action="store_true")
-        parser.add_argument('--patch_kernel', default=False, action="store_true")    
-        parser.add_argument('--multiscale', default=False, action="store_true")    
-        parser.add_argument('--weighted_reconst', default=False, action="store_true")    
-        parser.add_argument('--clean_target', default=False, action="store_true")    
-        parser.add_argument('--annealing_loss', default=False, action="store_true")    
-        parser.add_argument('--noisy_src_feature', default=False, action="store_true")    
-        parser.add_argument("--decoder_tasks", nargs='+', type=float, default=[],
-                            help='list of weights for the losses')
-        parser.add_argument("--decoder_lambdas", nargs='+', type=float, default=[],
-                            help='list of weights for the losses')
-
         # ########## model options ##########
         # ## ray sampling options
         parser.add_argument('--sample_mode', type=str, default='uniform',

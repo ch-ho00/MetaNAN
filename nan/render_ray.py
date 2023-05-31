@@ -179,7 +179,7 @@ class RayRender:
         return pts, z_vals
 
     def render_batch(self, ray_batch, proc_src_rgbs, featmaps, org_src_rgbs,
-                     sigma_estimate, reconst_signal=None) -> Dict[str, RaysOutput]:
+                     sigma_estimate) -> Dict[str, RaysOutput]:
         """
         :param sigma_estimate: (1, N, H, W, 3)
         :param org_src_rgbs: (1, N, H, W, 3)
@@ -214,7 +214,7 @@ class RayRender:
         # Process the rays and return the coarse phase output
         coarse_ray_out = self.process_rays_batch(ray_batch=ray_batch, pts=pts_coarse, z_vals=z_vals_coarse, save_idx=save_idx,
                                          level='coarse', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                         org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, reconst_signal=reconst_signal)
+                                         org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate)
         batch_out['coarse'] = coarse_ray_out
 
         if self.fine_processing:
@@ -226,13 +226,13 @@ class RayRender:
             # Process the rays and return the fine phase output
             fine = self.process_rays_batch(ray_batch=ray_batch, pts=pts_fine, z_vals=z_vals_fine, save_idx=save_idx,
                                            level='fine', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, reconst_signal=reconst_signal)
+                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate)
 
             batch_out['fine'] = fine
         return batch_out
 
     def process_rays_batch(self, ray_batch, pts, z_vals, save_idx, level, proc_src_rgbs, featmaps,
-                           org_src_rgbs, sigma_estimate, reconst_signal=None):
+                           org_src_rgbs, sigma_estimate):
         """
         :param sigma_estimate: (1, N, H, W, 3)
         :param org_src_rgbs: (1, N, H, W, 3)
@@ -249,14 +249,14 @@ class RayRender:
         # based on the target camera and src cameras (intrinsics - K, rotation - R, translation - t)
         proj_out = self.projector.compute(pts, ray_batch['camera'], proc_src_rgbs, org_src_rgbs, sigma_estimate,
                                           ray_batch['src_cameras'],
-                                          featmaps=featmaps[level], reconst_signal=reconst_signal)  # [N_rays, N_samples, N_views, x]
-        rgb_feat, ray_diff, pts_mask, org_rgb, sigma_est, reconst_rgb = proj_out
+                                          featmaps=featmaps[level])  # [N_rays, N_samples, N_views, x]
+        rgb_feat, ray_diff, pts_mask, org_rgb, sigma_est = proj_out
 
         # [N_rays, N_samples, 4]
         # Process the feature vectors of all 3D points along each ray to predict density and rgb value
         rgb_out, rho_out, *debug_info = self.model.mlps[level](rgb_feat, ray_diff,
                                                                pts_mask.unsqueeze(-3).unsqueeze(-3),
-                                                               org_rgb, sigma_est, reconst_rgb)
+                                                               org_rgb, sigma_est)
         ray_outputs = RaysOutput.raw2output(rgb_out, rho_out, z_vals, pts_mask, white_bkgd=self.white_bkgd)
 
         if save_idx is not None:
@@ -271,44 +271,18 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs, sig_ests=None, return_reconst=False, inference=False):
+    def calc_featmaps(self, src_rgbs):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)
         :return: src_rgbs after pre_net (if exists) (1, N, H, W, 3),
                  features maps: dict {'coarse': (N, C, H', W'), 'fine': (N, C, H', W')}
         """
-        noisy_src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2).clone()
-        src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
+        if self.model.pre_net is not None:
+            src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
+            featmaps = self.model.feature_net(src_rgbs)
+            src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
+        else:
+            featmaps = self.model.feature_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))
 
-        conv_weights = None
-        if self.model.args.meta_module:
-            noise_vector = self.model.noise_conv(sig_ests[0].permute(0,3,1,2))
-            conv_weights = self.model.weight_generator(noise_vector.reshape(noise_vector.shape[0],-1))
-
-        decoder_output = {}
-        if not inference:
-            for task_num in self.model.args.decoder_tasks:
-                if task_num == 1:
-                    input_ = noisy_src_rgbs[:1]
-                elif task_num == 2:
-                    input_ = src_rgbs[:1]                
-                elif task_num == 3:
-                    input_ = noisy_src_rgbs[1:]
-                elif task_num == 4:
-                    input_ = src_rgbs[1:]                
-                else:
-                    raise NotImplementedError
-                
-                output = self.model.feature_net(input_, conv_weights=conv_weights, task_num=task_num)
-                decoder_output[task_num] = output[f'decoder_{task_num}']
-                
-        if self.model.args.noisy_src_feature:
-            task_num = 3
-            featmaps = self.model.feature_net(noisy_src_rgbs, conv_weights, task_num=task_num)
-        else: 
-            task_num = 4
-            featmaps = self.model.feature_net(src_rgbs, conv_weights, task_num=task_num)
-        src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
-
-        return [src_rgbs, featmaps[f'decoder_{task_num}'], decoder_output] if self.model.args.auto_encoder and return_reconst else src_rgbs, featmaps
+        return src_rgbs, featmaps

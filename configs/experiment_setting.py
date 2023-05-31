@@ -1,18 +1,18 @@
 from collections import defaultdict
 from configs.config import CustomArgumentParser
 
-DEFAULT_GAIN_LIST = [8, 16, 20]  # 1, 2, 4, 
+DEFAULT_GAIN_LIST = [1, 2, 4, 8, 16, 20]
 
 LLFF_SCENES_LIST = [
+    'fern',
     'orchids',
     'flower',
     'horns',
-    'fern',
+    'leaves',
+    'room',
+    'trex',
+    'fortress'
 ]
-    # 'leaves',
-    # 'room',
-    # 'trex',
-    # 'fortress'
 
 STEP_DICT = defaultdict(lambda: 255000)
 

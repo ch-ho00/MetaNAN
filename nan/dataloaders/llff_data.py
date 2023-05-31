@@ -59,15 +59,13 @@ class COLMAPDataset(NoiseDataset, ABC):
         return load_llff_data(scene_path, load_imgs=False, factor=factor)
 
     def __len__(self):
-        return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files) * len(self.args.eval_gain)
+        return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files)
 
     def __getitem__(self, idx):
 
         # Read target data:
-        eval_gain = self.args.eval_gain[idx // len(self.render_rgb_files)]
         idx = idx % len(self.render_rgb_files)
         rgb_file: Path = self.render_rgb_files[idx]
-        
 
         # image (H, W, 3)
         rgb = self.read_image(rgb_file)
@@ -138,7 +136,7 @@ class COLMAPDataset(NoiseDataset, ABC):
             gt_depth = 0
 
         depth_range = self.final_depth_range(depth_range)
-        return self.create_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain)
+        return self.create_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth)
 
     def get_nearest_pose_ids(self, render_pose, depth_range, train_poses, subsample_factor, id_render):
         return get_nearest_pose_ids(render_pose,
@@ -184,9 +182,9 @@ class LLFFTestDataset(COLMAPDataset):
 
     def apply_transform(self, rgb, camera, src_rgbs, src_cameras):
         if self.mode is Mode.train and self.random_crop:
-            crop_h = int(np.random.randint(low=250, high=750) // 32 * 32 )
+            crop_h = np.random.randint(low=250, high=750)
             crop_h = crop_h + 1 if crop_h % 2 == 1 else crop_h
-            crop_w = int(375 * 575 / crop_h // 32 * 32) # 375 x 575
+            crop_w = int(400 * 600 / crop_h)
             crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
             rgb, camera, src_rgbs, src_cameras = random_crop(rgb, camera, src_rgbs, src_cameras,
                                                              (crop_h, crop_w))

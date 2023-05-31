@@ -27,7 +27,6 @@ from configs.local_setting import OUT_DIR
 from nan.feature_network import ResUNet
 from nan.nan_mlp import NanMLP
 from nan.utils.io_utils import get_latest_file, print_link
-from autoencoder import ConvWeightGenerator, NoiseLevelConv
 
 
 def de_parallel(model):
@@ -65,23 +64,10 @@ class NANScheme(nn.Module):
         self.args = args
         device = torch.device(f'cuda:{args.local_rank}')
 
-
+        # create feature extraction network
         self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
-                                fine_out_ch=args.fine_feat_dim,
-                                coarse_only=args.coarse_only,
-                                auto_encoder=args.auto_encoder,
-                                meta_module=args.meta_module,
-                                patch_kernel=args.patch_kernel,
-                                decoder_tasks=args.decoder_tasks).to(device)
-        
-        if len(self.args.decoder_tasks) > 0:
-            for k in self.feature_net.decoders.keys():
-                self.feature_net.decoders[k].to(device)
-        
-        if self.args.meta_module:
-            self.noise_conv =  NoiseLevelConv().to(device)
-            out_dim = self.feature_net.kernel_dim
-            self.weight_generator = ConvWeightGenerator(in_dim=self.noise_conv.out_dim * (1 if self.args.patch_kernel else self.noise_conv.out_size ** 2), out_dim=out_dim, patch_kernel=self.args.patch_kernel).to(device)
+                                   fine_out_ch=args.fine_feat_dim,
+                                   coarse_only=args.coarse_only).to(device)
 
         # create coarse NAN mlps
         self.net_coarse = self.nan_factory('coarse', device)

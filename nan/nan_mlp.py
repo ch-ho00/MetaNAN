@@ -67,7 +67,6 @@ class NanMLP(nn.Module):
         super().__init__()
         self.args = args
         self.device = torch.device(f"cuda:{args.local_rank}")
-        self.reconst_weight = 0
 
         assert self.args.kernel_size[0] == self.args.kernel_size[1]
         self.k_mid = int(self.args.kernel_size[0] // 2)
@@ -80,10 +79,10 @@ class NanMLP(nn.Module):
 
         self.ray_dir_fc = nn.Sequential(nn.Linear(4, 16),
                                         self.activation_func,
-                                        nn.Linear(16, in_feat_ch + 3 + (3 if self.args.auto_encoder else 0)), #  
+                                        nn.Linear(16, in_feat_ch + 3),
                                         self.activation_func)
 
-        base_input_channels = (in_feat_ch + 3 + (3 if self.args.auto_encoder else 0)) * 3  # 
+        base_input_channels = (in_feat_ch + 3) * 3
         if self.args.noise_feat:
             base_input_channels += 3
 
@@ -93,7 +92,7 @@ class NanMLP(nn.Module):
                                      self.activation_func)
 
         if args.views_attn:
-            input_channel = in_feat_ch + 3  + (3 if self.args.auto_encoder else 0) # 
+            input_channel = 35
             self.views_attention = MultiHeadAttention(5, input_channel, 7, 8)
             # self.spatial_views_attention = MultiHeadAttention(5, input_channel, 7, 8)
         self.vis_fc = nn.Sequential(nn.Linear(32, 32),
@@ -165,7 +164,7 @@ class NanMLP(nn.Module):
 
         return sinusoid_table
 
-    def forward(self, rgb_feat, ray_diff, mask, rgb_in, sigma_est, reconst_rgb):
+    def forward(self, rgb_feat, ray_diff, mask, rgb_in, sigma_est):
         """
         :param rgb_feat: rgbs and image features [R, S, k, k, N, F]
         :param ray_diff: ray direction difference [R, S, 1, 1, N, 4], first 3 channels are directions, last channel is inner product
@@ -189,7 +188,7 @@ class NanMLP(nn.Module):
 
         rho_out, rho_globalfeat = self.compute_rho(x[:, :, 0, 0], vis[:, :, 0, 0], num_valid_obs[:, :, 0, 0])
         x = torch.cat([x, vis, ray_diff], dim=-1)
-        rgb_out, w_rgb = self.compute_rgb(x, mask, rgb_in, reconst_rgb)
+        rgb_out, w_rgb = self.compute_rgb(x, mask, rgb_in)
         return rgb_out, rho_out, w_rgb, rgb_in, rho_globalfeat
 
     def compute_extended_features(self, ray_diff, rgb_feat, mask, num_valid_obs, sigma_est):
@@ -245,9 +244,9 @@ class NanMLP(nn.Module):
 
         return rho_out, rho_globalfeat
 
-    def compute_rgb(self, x, mask, rgb_in, reconst_rgb):
+    def compute_rgb(self, x, mask, rgb_in):
         x = self.rgb_fc(x)
-        rgb_out, blending_weights_rgb = self.rgb_reduce_fn(x, mask, rgb_in, reconst_rgb, self.reconst_weight)
+        rgb_out, blending_weights_rgb = self.rgb_reduce_fn(x, mask, rgb_in)
         return rgb_out, blending_weights_rgb
 
     def rgb_reduce_factory(self):
@@ -265,14 +264,10 @@ class NanMLP(nn.Module):
         return rgb_out, blending_weights_valid
 
     @staticmethod
-    def expanded_rgb_weighted_rgb_fn(x, mask, rgb_in, reconst_rgb, reconst_weight):
+    def expanded_rgb_weighted_rgb_fn(x, mask, rgb_in):
         R, S, k, _, V, C = rgb_in.shape
         w = x.masked_fill((~mask), -1e9).squeeze().view((R, S, V, k, k, C))
         w = w.permute((0, 1, 3, 4, 2, 5))
         blending_weights_valid = softmax3d(w, dim=(2, 3, 4))  # color blending
-        # if reconst_rgb != None:
-        #     rgb_out = torch.sum(reconst_rgb * blending_weights_valid, dim=(2, 3, 4))        
-        # else:
         rgb_out = torch.sum(rgb_in * blending_weights_valid, dim=(2, 3, 4))
-                        
         return rgb_out, blending_weights_valid

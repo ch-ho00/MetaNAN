@@ -1,12 +1,12 @@
 ### INPUT
-expname                     : resUnet_ae_smoothSrcFeat_task24_annealLambda_1e-2_1e-1 #_tvloss_5e-3 #_tvLoss #_woSplit
+expname                     : reproduce
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
 ## dataset
 train_dataset               : llff
 eval_dataset                : llff_test
-eval_scenes                 : [fern, trex, leaves, horns] # fern, orchids, flower, horns, leaves, room, trex, fortress
+eval_scenes                 : [fern, orchids, flower, horns, leaves, room, trex, fortress]
 
 ### TRAINING
 n_iters                     : 255000
@@ -22,24 +22,6 @@ workers                     : 0
 ### TESTING
 chunk_size                  : 2048 # can be bigger depend on the gpu memory
 
-## AutoEncoder Module
-auto_encoder                : True # True
-meta_module                 : False
-patch_kernel                : False
-multiscale                  : False
-weighted_reconst            : False
-annealing_loss              : True
-noisy_src_feature           : False
-lambda_reconst_loss         : 0.1
-lambda_tv_loss              : 0.0 #5 # 0.01
-decoder_lambdas             : [0.01, 0.1]
-decoder_tasks               : [2,4]
-# decoder 1 | 1. noisy ref img -> clean ref input
-# decoder 2 | 2. smooth ref img -> clean ref input
-# decoder 3 | 3. noisy src img -> noisy src input
-# decoder 4 | 4. smooth src img -> smooth src input
-
-
 ### RENDERING
 N_importance                : 64
 N_samples                   : 64
@@ -47,9 +29,9 @@ inv_uniform                 : True
 white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 2500
+i_img                       : 1000
 i_print                     : 100
-i_tb                        : 50
+i_tb                        : 20
 i_weights                   : 5000
 
 ### additional

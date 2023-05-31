@@ -1,1 +1,1 @@
-OMP_NUM_THREADS=4  CUDA_VISIBLE_DEVICES=$1 python train.py # --auto_encoder --lambda_reconst_loss 0.01  --meta_module # --patch_kernel # --resume_training
+python train.py --resume_training
