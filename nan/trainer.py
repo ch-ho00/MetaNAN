@@ -237,7 +237,7 @@ class Trainer:
         with torch.no_grad():
             ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args)
 
-        average_im = ray_sampler.src_rgbs.cpu().mean(dim=(0, 1))
+        average_im = ray_sampler.src_rgbs.cpu()[0,0]
 
         if self.args.render_stride != 1:
             gt_img = gt_img[::render_stride, ::render_stride]
@@ -246,12 +246,12 @@ class Trainer:
             if 'reconst_signal' in ret.keys():
                 reconst_signal = ret['reconst_signal'][...,::render_stride, ::render_stride].detach().cpu()
                 reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
-
+                
         rgb_gt = img_HWC2CHW(gt_img)
         average_im = img_HWC2CHW(average_im)
 
         rgb_pred = img_HWC2CHW(ret['coarse'].rgb.detach().cpu())
-
+        
         h_max = max(rgb_gt.shape[-2], rgb_pred.shape[-2], average_im.shape[-2])
         w_max = max(rgb_gt.shape[-1], rgb_pred.shape[-1], average_im.shape[-1])
         rgb_im = torch.zeros(3, h_max, 3 * w_max)
@@ -270,8 +270,8 @@ class Trainer:
             rgb_fine_ = torch.zeros(3, h_max, w_max)
             rgb_fine_[:, :rgb_fine.shape[-2], :rgb_fine.shape[-1]] = rgb_fine
             rgb_im = torch.cat((rgb_im, rgb_fine_), dim=-1)
-            rgb_im = rgb_im.clamp(min=0., max=1.)
-            rgb_im = de_linearize(rgb_im, ray_sampler.white_level)
+            # rgb_im = rgb_im
+            rgb_im = de_linearize(rgb_im, ray_sampler.white_level).clamp(min=0., max=1.)
             depth_im = torch.cat((depth_im, ret['fine'].depth.detach().cpu()), dim=-1)
             depth_im = img_HWC2CHW(colorize(depth_im, cmap_name='jet', append_cbar=True))
             acc_map = torch.cat((acc_map, torch.sum(ret['fine'].weights, dim=-1).detach().cpu()), dim=-1)
@@ -290,7 +290,6 @@ class Trainer:
         psnr_curr_img = img2psnr(de_linearize(pred_rgb.detach().cpu(), ray_sampler.white_level),
                                  de_linearize(gt_img, ray_sampler.white_level))
         self.writer.add_scalar(prefix + 'psnr_image' + postfix, psnr_curr_img, global_step)
-
         self.model.switch_to_train()
 
     def log_images(self, train_data, global_step):

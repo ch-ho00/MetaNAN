@@ -298,8 +298,8 @@ class ResUNet(nn.Module):
 
         out_dict = {'coarse': x_coarse, 'fine': x_fine}
         if self.auto_encoder:
-            x_reconst = self.reconst_deconv(x)
-            x_denoised = self.denoise_deconv(x[:1])
+            x_reconst = self.reconst_deconv(x_out)
+            x_denoised = self.denoise_deconv(x_out[:1])
 
             out_dict['reconst_signal'] = x_reconst
             out_dict['denoised_signal'] = x_denoised
