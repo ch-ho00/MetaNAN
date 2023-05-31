@@ -67,7 +67,7 @@ def render_single_image(ray_sampler: RaySampler,
                                             featmaps=featmaps,
                                             org_src_rgbs=ray_sampler.src_rgbs.to(device),
                                             sigma_estimate=ray_sampler.sigma_estimate.to(device),
-                                            reconst_signal=reconst_signal)
+                                            reconst_signal=reconst_signal if args.reconstruct_vol else None)
 
         all_ret['coarse'].append(ret['coarse'])
         if ret['fine'] is not None:

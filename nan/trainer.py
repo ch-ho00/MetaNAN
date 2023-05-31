@@ -156,7 +156,7 @@ class Trainer:
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
                                                  org_src_rgbs=org_src_rgbs,
                                                  sigma_estimate=ray_sampler.sigma_estimate.to(self.device),
-                                                 reconst_signal=reconst_signal)
+                                                 reconst_signal=reconst_signal if self.args.reconstruct_vol else None)
 
         # compute loss
         self.model.optimizer.zero_grad()
@@ -178,8 +178,8 @@ class Trainer:
 
             denoise_loss = denoised_signal[0].permute(1,2,0) - train_data['src_rgbs_clean'][0,0].to(denoised_signal.device)
             denoise_loss = torch.mean(torch.abs(denoise_loss)) * factor
-            loss += self.model.args.lambda_reconst_loss * denoise_loss 
-            self.scalars_to_log['denoise_loss'] = self.model.args.lambda_reconst_loss * denoise_loss.item()
+            loss += self.model.args.lambda_denoise_loss * denoise_loss 
+            self.scalars_to_log['denoise_loss'] = self.model.args.lambda_denoise_loss * denoise_loss.item()
             self.scalars_to_log['lambda_factor'] =  factor
 
         loss.backward()

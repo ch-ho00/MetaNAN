@@ -6,7 +6,7 @@ distributed                 : False
 ## dataset
 train_dataset               : llff
 eval_dataset                : llff_test
-eval_scenes                 : [fern, orchids, flower, horns, leaves, room, trex, fortress]
+eval_scenes                 : [fern, trex, leaves, horns] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
 
 ### TRAINING
 n_iters                     : 255000
@@ -26,6 +26,8 @@ meta_module                 : False
 patch_kernel                : False
 annealing_loss              : True
 lambda_reconst_loss         : 0.1
+lambda_denoise_loss         : 0.1
+reconstruct_vol             : False
 
 
 ### TESTING
