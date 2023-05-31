@@ -155,7 +155,8 @@ class Trainer:
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
                                                  org_src_rgbs=org_src_rgbs,
-                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device))
+                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device),
+                                                 reconst_signal=reconst_signal)
 
         # compute loss
         self.model.optimizer.zero_grad()
@@ -277,9 +278,9 @@ class Trainer:
             acc_map = img_HWC2CHW(colorize(acc_map, range=(0., 1.), cmap_name='jet', append_cbar=False))
 
         # write the pred/gt rgb images and depths
-        self.writer.add_image(prefix + 'rgb_gt-coarse-fine', rgb_im, global_step)
-        self.writer.add_image(prefix + 'depth_gt-coarse-fine', depth_im, global_step)
-        self.writer.add_image(prefix + 'acc-coarse-fine', acc_map, global_step)
+        self.writer.add_image(prefix + 'rgb_gt-coarse-fine' + postfix, rgb_im, global_step)
+        self.writer.add_image(prefix + 'depth_gt-coarse-fine'+ postfix, depth_im, global_step)
+        self.writer.add_image(prefix + 'acc-coarse-fine'+ postfix, acc_map, global_step)
         if reconst_signal != None:
             reconst_signal = reconst_signal.permute(1,2,0,3).reshape(3,reconst_signal.shape[-2], -1)
             self.writer.add_image(prefix + 'reconst_signal'+ postfix, reconst_signal, global_step)
@@ -288,7 +289,7 @@ class Trainer:
         pred_rgb = ret['fine'].rgb if ret['fine'] is not None else ret['coarse'].rgb
         psnr_curr_img = img2psnr(de_linearize(pred_rgb.detach().cpu(), ray_sampler.white_level),
                                  de_linearize(gt_img, ray_sampler.white_level))
-        self.writer.add_scalar(prefix + 'psnr_image', psnr_curr_img, global_step)
+        self.writer.add_scalar(prefix + 'psnr_image' + postfix, psnr_curr_img, global_step)
 
         self.model.switch_to_train()
 

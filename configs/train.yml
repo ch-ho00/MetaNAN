@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : AE_multiDeconv_1e-1
+expname                     : AE_multiDeconv_reconstVol_wSigmoid_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -38,7 +38,7 @@ inv_uniform                 : True
 white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 1000
+i_img                       : 2000
 i_print                     : 100
 i_tb                        : 20
 i_weights                   : 5000

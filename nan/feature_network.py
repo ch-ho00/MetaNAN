@@ -218,7 +218,7 @@ class ResUNet(nn.Module):
                 nn.BatchNorm2d(out_ch//4),
                 nn.ReLU(True),
                 nn.Conv2d(out_ch//4, 3, 3, 1, 1),
-                # nn.Sigmoid()            
+                nn.Sigmoid()            
             )
 
             self.denoise_deconv =  nn.Sequential(
@@ -231,7 +231,7 @@ class ResUNet(nn.Module):
                 nn.BatchNorm2d(out_ch//4),
                 nn.ReLU(True),
                 nn.Conv2d(out_ch//4, 3, 3, 1, 1),
-                # nn.Sigmoid()            
+                nn.Sigmoid()            
             )
 
 
