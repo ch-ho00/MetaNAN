@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : AE_multiDeconv_xout_reconstVol_wSigmoid_1e-1
+expname                     : AE_wreconstVol_perlevel_1e-1_1e-1 #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -25,10 +25,10 @@ auto_encoder                : True
 meta_module                 : False
 patch_kernel                : False
 annealing_loss              : True
-lambda_reconst_loss         : 0.1
 lambda_denoise_loss         : 0.1
-reconstruct_vol             : False
-
+lambda_reconst_loss         : 0.1
+reconstruct_vol             : True
+per_level_render            : True
 
 ### TESTING
 chunk_size                  : 2048 # can be bigger depend on the gpu memory
@@ -40,7 +40,7 @@ inv_uniform                 : True
 white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 1000
+i_img                       : 3000
 i_print                     : 100
 i_tb                        : 20
 i_weights                   : 5000

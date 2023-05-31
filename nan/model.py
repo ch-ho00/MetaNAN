@@ -68,7 +68,8 @@ class NANScheme(nn.Module):
         self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
                                    fine_out_ch=args.fine_feat_dim,
                                    coarse_only=args.coarse_only,
-                                   auto_encoder=args.auto_encoder).to(device)
+                                   auto_encoder=args.auto_encoder,
+                                   per_level_render=args.per_level_render).to(device)
 
         # create coarse NAN mlps
         self.net_coarse = self.nan_factory('coarse', device)

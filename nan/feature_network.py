@@ -160,6 +160,7 @@ class ResUNet(nn.Module):
                  norm_layer=None,
                  coarse_only=False,
                  auto_encoder=False,
+                 per_level_render=False
                  ):
 
         super().__init__()
@@ -207,31 +208,35 @@ class ResUNet(nn.Module):
         self.out_conv = nn.Conv2d(out_ch, out_ch, 1, 1)
 
         self.auto_encoder = auto_encoder
+        self.per_level_render = per_level_render
         if self.auto_encoder:
+            deconv_in_dim = out_ch // 2 if self.per_level_render else out_ch
             self.reconst_deconv =  nn.Sequential(
                 nn.Upsample(scale_factor=2, mode='bilinear'),
-                nn.Conv2d(out_ch, out_ch//2, 3, 1, 1),
+                nn.Conv2d(deconv_in_dim, out_ch//2, 3, 1, 1),
                 nn.BatchNorm2d(out_ch//2),
-                nn.ReLU(True),
+                nn.LeakyReLU(0.2, True),
                 nn.Upsample(scale_factor=2, mode='bilinear'),
                 nn.Conv2d(out_ch//2, out_ch//4, 3, 1, 1),
                 nn.BatchNorm2d(out_ch//4),
-                nn.ReLU(True),
-                nn.Conv2d(out_ch//4, 3, 3, 1, 1),
-                nn.Sigmoid()            
+                nn.LeakyReLU(0.2, True),
+                nn.Conv2d(out_ch//4, 3, 1, 1, 0),
+                # nn.Conv2d(out_ch//4, 3, 3, 1, 1),
+                # nn.Sigmoid()            
             )
 
             self.denoise_deconv =  nn.Sequential(
                 nn.Upsample(scale_factor=2, mode='bilinear'),
-                nn.Conv2d(out_ch, out_ch//2, 3, 1, 1),
+                nn.Conv2d(deconv_in_dim, out_ch//2, 3, 1, 1),
                 nn.BatchNorm2d(out_ch//2),
-                nn.ReLU(True),
+                nn.LeakyReLU(0.2, True),
                 nn.Upsample(scale_factor=2, mode='bilinear'),
                 nn.Conv2d(out_ch//2, out_ch//4, 3, 1, 1),
                 nn.BatchNorm2d(out_ch//4),
-                nn.ReLU(True),
-                nn.Conv2d(out_ch//4, 3, 3, 1, 1),
-                nn.Sigmoid()            
+                nn.LeakyReLU(0.2, True),
+                nn.Conv2d(out_ch//4, 3, 1, 1, 0),
+                # nn.Conv2d(out_ch//4, 3, 3, 1, 1),
+                # nn.Sigmoid()            
             )
 
 
@@ -272,7 +277,7 @@ class ResUNet(nn.Module):
         x = torch.cat([x2, x1], dim=1)
         return x
 
-    def forward(self, x):
+    def forward(self, x, per_level_render=False):
         x = self.relu(self.bn1(self.conv1(x)))
 
         x1 = self.layer1(x)
@@ -298,10 +303,21 @@ class ResUNet(nn.Module):
 
         out_dict = {'coarse': x_coarse, 'fine': x_fine}
         if self.auto_encoder:
-            x_reconst = self.reconst_deconv(x_out)
-            x_denoised = self.denoise_deconv(x_out[:1])
+            if self.per_level_render:
+                x_reconst_coarse = self.reconst_deconv(x_coarse)
+                x_denoised_coarse = self.denoise_deconv(x_coarse[:1])
 
-            out_dict['reconst_signal'] = x_reconst
-            out_dict['denoised_signal'] = x_denoised
+                x_reconst_fine = self.reconst_deconv(x_fine)
+                x_denoised_fine = self.denoise_deconv(x_fine[:1])
+
+                out_dict['reconst_signal'] = ( x_reconst_coarse + x_reconst_fine ) / 2
+                out_dict['denoised_signal'] = ( x_denoised_coarse + x_denoised_fine ) /2
+                
+            else:
+                x_reconst = self.reconst_deconv(x_out)
+                x_denoised = self.denoise_deconv(x_out[:1])
+
+                out_dict['reconst_signal'] = x_reconst
+                out_dict['denoised_signal'] = x_denoised
                 
         return out_dict

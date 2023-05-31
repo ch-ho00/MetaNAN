@@ -41,6 +41,7 @@ class Trainer:
         self.save_ymls(args, sys.argv[1:], self.exp_out_dir)
 
         # create training dataset
+        args.eval_gain = [20,16,8]
         self.train_dataset, self.train_sampler = create_training_dataset(args)
         # currently only support batch_size=1 (i.e., one set of target and source views) for each GPU node
         # please use distributed parallel on multiple GPUs to train multiple target views per batch
