@@ -285,4 +285,4 @@ class RayRender:
         else:
             featmaps = self.model.feature_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))
 
-        return src_rgbs, featmaps
+        return [src_rgbs, featmaps['reconst_signal'], featmaps['denoised_signal']] if self.model.args.auto_encoder else src_rgbs, featmaps

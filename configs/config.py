@@ -93,6 +93,13 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                             help='number of data loading workers (default: 8)')
 
+
+        parser.add_argument('--lambda_reconst_loss', type=float, default=0)
+        parser.add_argument('--auto_encoder', default=False, action="store_true")
+        parser.add_argument('--meta_module', default=False, action="store_true")
+        parser.add_argument('--patch_kernel', default=False, action="store_true")    
+        parser.add_argument('--annealing_loss', default=False, action="store_true")    
+
         # ########## dataset options ##########
         # ## train and eval dataset
         parser.add_argument("--train_dataset", type=str, default='ibrnet_collected',
@@ -223,8 +230,11 @@ class CustomArgumentParser(configargparse.ArgumentParser):
                                  'used to generate the noise in training in'
                                  'nan.dataloaders.basic_dataset.NoiseDataset.get_noise_params_train')
 
-        parser.add_argument("--eval_gain", type=int, default=None,
-                            help='gain to apply in evaluation')
+        # parser.add_argument("--eval_gain", type=int, default=None,
+        #                     help='gain to apply in evaluation')
+        parser.add_argument("--eval_gain", nargs='+', type=int, default=[20, 16, 8],
+                            help='list of weights for the losses')
+
         parser.add_argument("--include_target", action='store_true',
                             help='whether to include the target image in the input to the algorithm (burst denoising '
                                  'task) or not (novel view synthesis)')

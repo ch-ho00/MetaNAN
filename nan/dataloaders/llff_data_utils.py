@@ -23,7 +23,7 @@ from nan.dataloaders.colmap_read_model import read_images_binary
 ##########  see https://github.com/Fyusion/LLFF for original
 
 
-def parse_llff_pose(pose):
+def parse_llff_pose(pose, hw=None):
     """
     convert llff format pose to 4x4 matrix of intrinsics and extrinsics (opencv convention)
     Args:
@@ -39,14 +39,18 @@ def parse_llff_pose(pose):
                            [0, f, h / 2., 0],
                            [0, 0, 1, 0],
                            [0, 0, 0, 1]])
+    if hw != None:
+        intrinsics[0,:] *= hw[1] / w
+        intrinsics[1,:] *= hw[0] / h
+    
     return intrinsics, c2w_4x4
 
 
-def batch_parse_llff_poses(poses):
+def batch_parse_llff_poses(poses, hw=None):
     all_intrinsics = []
     all_c2w_mats = []
     for pose in poses:
-        intrinsics, c2w_mat = parse_llff_pose(pose)
+        intrinsics, c2w_mat = parse_llff_pose(pose, hw=hw)
         all_intrinsics.append(intrinsics)
         all_c2w_mats.append(c2w_mat)
     all_intrinsics = np.stack(all_intrinsics)
@@ -149,7 +153,7 @@ def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
 
     sh = imageio.imread(imgfiles[0]).shape
     poses[:2, 4, :] = np.array(sh[:2]).reshape([2, 1])
-    poses[2, 4, :] = poses[2, 4, :] * 1. / factor
+    poses[2, 4, :] = poses[2, 4, :] * 1. / factor    
 
     def imread(f):
         if f.endswith('png'):

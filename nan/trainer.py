@@ -24,6 +24,8 @@ from nan.utils.eval_utils import mse2psnr, img2psnr
 from nan.utils.general_utils import img_HWC2CHW
 from nan.utils.io_utils import print_link, colorize
 
+ALPHA = 0.99997
+
 
 class Trainer:
     def __init__(self, args):
@@ -105,7 +107,7 @@ class Trainer:
                     self.train_sampler.set_epoch(epoch)
 
                 # core optimization loop
-                ray_batch_out, ray_batch_in = self.training_loop(train_data)
+                ray_batch_out, ray_batch_in = self.training_loop(train_data, global_step)
                 dt = time.time() - time0
 
                 # Logging and saving
@@ -117,7 +119,7 @@ class Trainer:
             epoch += 1
         return self.last_weights_path
 
-    def training_loop(self, train_data):
+    def training_loop(self, train_data, global_step):
         """
 
         :param train_data: dict {camera: (B, 34),
@@ -146,6 +148,10 @@ class Trainer:
         org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
         proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs)
 
+        reconst_signal = None
+        if self.model.args.auto_encoder:
+            proc_src_rgbs, reconst_signal, denoised_signal = proc_src_rgbs
+
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
                                                  org_src_rgbs=org_src_rgbs,
@@ -157,6 +163,23 @@ class Trainer:
 
         if batch_out['fine'] is not None:
             loss += self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
+
+        if self.model.args.auto_encoder:
+            if self.model.args.annealing_loss:
+                factor = ALPHA ** global_step
+            else:
+                factor = 1 
+
+            reconst_loss = reconst_signal.permute(0,2,3,1) - proc_src_rgbs[0]
+            reconst_loss = torch.mean(torch.abs(reconst_loss)) * factor
+            loss += self.model.args.lambda_reconst_loss * reconst_loss 
+            self.scalars_to_log['reconst_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
+
+            denoise_loss = denoised_signal[0].permute(1,2,0) - train_data['src_rgbs_clean'][0,0].to(denoised_signal.device)
+            denoise_loss = torch.mean(torch.abs(denoise_loss)) * factor
+            loss += self.model.args.lambda_reconst_loss * denoise_loss 
+            self.scalars_to_log['denoise_loss'] = self.model.args.lambda_reconst_loss * denoise_loss.item()
+            self.scalars_to_log['lambda_factor'] =  factor
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
@@ -208,7 +231,7 @@ class Trainer:
             print(logstr)
             print(f"each iter time {dt:.05f} seconds")
 
-    def log_view_to_tb(self, global_step, ray_sampler, gt_img, render_stride=1, prefix=''):
+    def log_view_to_tb(self, global_step, ray_sampler, gt_img, render_stride=1, prefix='', postfix=''):
         self.model.switch_to_eval()
         with torch.no_grad():
             ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args)
@@ -218,6 +241,10 @@ class Trainer:
         if self.args.render_stride != 1:
             gt_img = gt_img[::render_stride, ::render_stride]
             average_im = average_im[::render_stride, ::render_stride]
+            reconst_signal = None
+            if 'reconst_signal' in ret.keys():
+                reconst_signal = ret['reconst_signal'][...,::render_stride, ::render_stride].detach().cpu()
+                reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
 
         rgb_gt = img_HWC2CHW(gt_img)
         average_im = img_HWC2CHW(average_im)
@@ -253,6 +280,9 @@ class Trainer:
         self.writer.add_image(prefix + 'rgb_gt-coarse-fine', rgb_im, global_step)
         self.writer.add_image(prefix + 'depth_gt-coarse-fine', depth_im, global_step)
         self.writer.add_image(prefix + 'acc-coarse-fine', acc_map, global_step)
+        if reconst_signal != None:
+            reconst_signal = reconst_signal.permute(1,2,0,3).reshape(3,reconst_signal.shape[-2], -1)
+            self.writer.add_image(prefix + 'reconst_signal'+ postfix, reconst_signal, global_step)
 
         # write scalar
         pred_rgb = ret['fine'].rgb if ret['fine'] is not None else ret['coarse'].rgb
@@ -264,12 +294,20 @@ class Trainer:
 
     def log_images(self, train_data, global_step):
         print('Logging a random validation view...')
-        val_data = next(self.val_loader_iterator)
-        tmp_ray_sampler = RaySampler(val_data, self.device, render_stride=self.args.render_stride)
-        H, W = tmp_ray_sampler.H, tmp_ray_sampler.W
-        gt_img = tmp_ray_sampler.rgb_clean.reshape(H, W, 3)
-        self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/')
-        torch.cuda.empty_cache()
+        for val_idx in range(len(self.val_dataset)):
+            if val_idx % len(self.val_dataset.render_rgb_files) not in [0, (len(self.val_dataset.render_rgb_files) - 1) // 2, len(self.val_dataset.render_rgb_files) - 1]:
+                continue            
+            elif global_step == 1 and val_idx > 0:
+                break
+            val_data = self.val_dataset[val_idx]
+            val_data = {k : val_data[k][None] if isinstance(val_data[k], torch.Tensor) else val_data[k] for k in val_data.keys()}
+            tmp_ray_sampler = RaySampler(val_data, self.device, render_stride=self.args.render_stride)
+            H, W = tmp_ray_sampler.H, tmp_ray_sampler.W
+            gt_img = tmp_ray_sampler.rgb_clean.reshape(H, W, 3)
+            iter_ = [0, (len(self.val_dataset.render_rgb_files) - 1) // 2, len(self.val_dataset.render_rgb_files) - 1].index(val_idx % len(self.val_dataset.render_rgb_files))
+            eval_gain = val_data['eval_gain']
+            self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_gain{eval_gain}_iter{iter_}")
+            torch.cuda.empty_cache()
 
         print('Logging current training view...')
         tmp_ray_train_sampler = RaySampler(train_data, self.device,

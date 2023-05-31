@@ -158,7 +158,8 @@ class ResUNet(nn.Module):
                  coarse_out_ch=32,
                  fine_out_ch=32,
                  norm_layer=None,
-                 coarse_only=False
+                 coarse_only=False,
+                 auto_encoder=False,
                  ):
 
         super().__init__()
@@ -204,6 +205,35 @@ class ResUNet(nn.Module):
 
         # fine-level conv
         self.out_conv = nn.Conv2d(out_ch, out_ch, 1, 1)
+
+        self.auto_encoder = auto_encoder
+        if self.auto_encoder:
+            self.reconst_deconv =  nn.Sequential(
+                nn.Upsample(scale_factor=2, mode='bilinear'),
+                nn.Conv2d(out_ch, out_ch//2, 3, 1, 1),
+                nn.BatchNorm2d(out_ch//2),
+                nn.ReLU(True),
+                nn.Upsample(scale_factor=2, mode='bilinear'),
+                nn.Conv2d(out_ch//2, out_ch//4, 3, 1, 1),
+                nn.BatchNorm2d(out_ch//4),
+                nn.ReLU(True),
+                nn.Conv2d(out_ch//4, 3, 3, 1, 1),
+                # nn.Sigmoid()            
+            )
+
+            self.denoise_deconv =  nn.Sequential(
+                nn.Upsample(scale_factor=2, mode='bilinear'),
+                nn.Conv2d(out_ch, out_ch//2, 3, 1, 1),
+                nn.BatchNorm2d(out_ch//2),
+                nn.ReLU(True),
+                nn.Upsample(scale_factor=2, mode='bilinear'),
+                nn.Conv2d(out_ch//2, out_ch//4, 3, 1, 1),
+                nn.BatchNorm2d(out_ch//4),
+                nn.ReLU(True),
+                nn.Conv2d(out_ch//4, 3, 3, 1, 1),
+                # nn.Sigmoid()            
+            )
+
 
     def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
         norm_layer = self._norm_layer
@@ -265,4 +295,13 @@ class ResUNet(nn.Module):
         else:
             x_coarse = x_out[:, :self.coarse_out_ch, :]
             x_fine = x_out[:, -self.fine_out_ch:, :]
-        return {'coarse': x_coarse, 'fine': x_fine}
+
+        out_dict = {'coarse': x_coarse, 'fine': x_fine}
+        if self.auto_encoder:
+            x_reconst = self.reconst_deconv(x)
+            x_denoised = self.denoise_deconv(x[:1])
+
+            out_dict['reconst_signal'] = x_reconst
+            out_dict['denoised_signal'] = x_denoised
+                
+        return out_dict

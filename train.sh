@@ -1,1 +1,1 @@
-python train.py --resume_training
+OMP_NUM_THREADS=4  CUDA_VISIBLE_DEVICES=$1 python train.py

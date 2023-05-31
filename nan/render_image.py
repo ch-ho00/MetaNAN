@@ -50,6 +50,11 @@ def render_single_image(ray_sampler: RaySampler,
 
     all_ret = OrderedDict([('coarse', RaysOutput.empty_ret()),
                            ('fine', None)])
+
+    if isinstance(src_rgbs, list):
+        src_rgbs, reconst_signal, denoised_signal = src_rgbs
+        all_ret['reconst_signal'] = reconst_signal
+
     if args.N_importance > 0:
         all_ret['fine'] = RaysOutput.empty_ret()
     N_rays = ray_sampler.rays_o.shape[0]

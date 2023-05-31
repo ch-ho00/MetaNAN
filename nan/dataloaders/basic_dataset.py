@@ -9,6 +9,8 @@ import imageio
 import matplotlib.pyplot as plt
 from enum import Enum
 import numpy as np
+from torchvision import transforms as T
+from PIL import Image
 
 
 class Mode(Enum):
@@ -28,6 +30,7 @@ k0 = (1 + a) * (1 / gamma) * t ** ((1 / gamma) - 1.)  # 12.92
 # k0 = 12.92
 inv_t = t * k0
 
+transform = T.ToTensor()
 
 def de_linearize(rgb, wl=1.):
     """
@@ -111,9 +114,19 @@ class BurstDataset(Dataset, ABC):
     def listdir(folder):
         return list(folder.glob("*"))
 
+    # @staticmethod
+    # def read_image(filename, **kwargs):
+    #     return imageio.imread(filename).astype(np.float32) / 255.
+
     @staticmethod
-    def read_image(filename, **kwargs):
-        return imageio.imread(filename).astype(np.float32) / 255.
+    def read_image(filename, multiple32=True, **kwargs):
+        
+        img = Image.open(filename).convert('RGB')
+
+        if multiple32:
+            img = img.resize([1024, 768], Image.LANCZOS)
+        img = transform(img)
+        return img.permute(1,2,0).numpy()
 
     def apply_transform(self, rgb, camera, src_rgbs, src_cameras):
         if self.mode == Mode.train and self.random_crop:
@@ -155,24 +168,24 @@ class NoiseDataset(BurstDataset, ABC):
                 sig_read_list = np.unique(noise_data['sig_read'])[2:]
                 sig_shot_list = np.unique(noise_data['sig_shot'])[2:]
 
-                log_sig_read = np.log10(sig_read_list)
-                log_sig_shot = np.log10(sig_shot_list)
+                self.log_sig_read = np.log10(sig_read_list)
+                self.log_sig_shot = np.log10(sig_shot_list)
 
-                d_read = np.diff(log_sig_read)[0]
-                d_shot = np.diff(log_sig_shot)[0]
+                self.d_read = np.diff(self.log_sig_read)[0]
+                self.d_shot = np.diff(self.log_sig_shot)[0]
 
-                gain_log = np.log2(self.args.eval_gain)
+                # gain_log = np.log2(self.args.eval_gain)
 
-                sig_read = 10 ** (log_sig_read[0] + d_read * gain_log)
-                sig_shot = 10 ** (log_sig_shot[0] + d_shot * gain_log)
+                # sig_read = 10 ** (log_sig_read[0] + d_read * gain_log)
+                # sig_shot = 10 ** (log_sig_shot[0] + d_shot * gain_log)
 
-                print(f"Loading {mode} set for gain {self.args.eval_gain}. "  
-                      f"Max std {self.get_std(1, sig_read, sig_shot)}")
+                # print(f"Loading {mode} set for gain {self.args.eval_gain}. "  
+                #       f"Max std {self.get_std(1, sig_read, sig_shot)}")
 
-            def get_noise_params_test():
-                return sig_read, sig_shot
+            # def get_noise_params_test():
+            #     return sig_read, sig_shot
 
-            self.get_noise_params = get_noise_params_test
+            # self.get_noise_params = get_noise_params_test
         self.depth_range = None
 
     def choose_views(self, possible_views, num_views, target_view):
@@ -205,6 +218,23 @@ class NoiseDataset(BurstDataset, ABC):
 
         return sigma_read, sigma_shot
 
+    def get_noise_params_level(self, gain_level):
+
+        gain_read = gain_shot = np.log2(gain_level)
+        sig_read = 10 ** (self.log_sig_read[0] + self.d_read * gain_read)
+        sig_shot = 10 ** (self.log_sig_shot[0] + self.d_shot * gain_shot)
+
+        return sig_read, sig_shot
+
+    def add_noise_level(self, rgb, gain_level):
+        sig_read, sig_shot = self.get_noise_params_level(gain_level)
+        std = self.get_std(rgb, sig_read, sig_shot)
+        noise = std * torch.randn_like(rgb)
+
+        noise_rgb = rgb + noise
+        sigma_estimate = self.get_std(noise_rgb.clamp(0, 1), sig_read, sig_shot)
+        return noise_rgb, sigma_estimate
+
     @classmethod
     def get_std(cls, rgb, sig_read, sig_shot):
         return (sig_read ** 2 + sig_shot ** 2 * rgb) ** 0.5
@@ -218,7 +248,7 @@ class NoiseDataset(BurstDataset, ABC):
         return noise_rgb, sigma_estimate
 
     def create_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs_clean, src_cameras, depth_range,
-                                gt_depth=None):
+                                gt_depth=None, eval_gain=1):
         if self.mode in [Mode.train, Mode.validation]:
             white_level = 10 ** -torch.rand(1)
         else:
@@ -226,11 +256,17 @@ class NoiseDataset(BurstDataset, ABC):
 
         if rgb_clean is not None:
             rgb_clean = re_linearize(torch.from_numpy(rgb_clean[..., :3]), white_level)
-            rgb, _ = self.add_noise(rgb_clean)
+            if self.mode is Mode.train:
+                rgb, _ = self.add_noise(rgb_clean)        
+            else:
+                rgb, _ = self.add_noise_level(rgb_clean, eval_gain)                        
         else:
             rgb = None
         src_rgbs_clean = re_linearize(torch.from_numpy(src_rgbs_clean[..., :3]), white_level)
-        src_rgbs, sigma_est = self.add_noise(src_rgbs_clean)
+        if self.mode is Mode.train:
+            src_rgbs, sigma_est = self.add_noise(src_rgbs_clean)
+        else:
+            src_rgbs, sigma_est = self.add_noise_level(src_rgbs_clean, eval_gain)
 
         batch_dict = {'camera'        : torch.from_numpy(camera),
                       'rgb_path'      : str(rgb_file),
@@ -239,7 +275,8 @@ class NoiseDataset(BurstDataset, ABC):
                       'src_cameras'   : torch.from_numpy(src_cameras),
                       'depth_range'   : depth_range,
                       'sigma_estimate': sigma_est,
-                      'white_level'   : white_level}
+                      'white_level'   : white_level,
+                      'eval_gain' : eval_gain}
 
         if rgb_clean is not None:
             batch_dict['rgb_clean'] = rgb_clean
