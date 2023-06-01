@@ -214,7 +214,7 @@ class RayRender:
         # Process the rays and return the coarse phase output
         coarse_ray_out = self.process_rays_batch(ray_batch=ray_batch, pts=pts_coarse, z_vals=z_vals_coarse, save_idx=save_idx,
                                          level='coarse', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                         org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, reconst_signal=reconst_signal)
+                                         org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, reconst_signal=reconst_signal[0] if reconst_signal != None else None)
         batch_out['coarse'] = coarse_ray_out
 
         if self.fine_processing:
@@ -226,7 +226,7 @@ class RayRender:
             # Process the rays and return the fine phase output
             fine = self.process_rays_batch(ray_batch=ray_batch, pts=pts_fine, z_vals=z_vals_fine, save_idx=save_idx,
                                            level='fine', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, reconst_signal=reconst_signal)
+                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, reconst_signal=reconst_signal[1] if reconst_signal != None else None)
 
             batch_out['fine'] = fine
         return batch_out
@@ -272,18 +272,26 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs):
+    def calc_featmaps(self, src_rgbs, sigma_estimate=None):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)
         :return: src_rgbs after pre_net (if exists) (1, N, H, W, 3),
                  features maps: dict {'coarse': (N, C, H', W'), 'fine': (N, C, H', W')}
         """
+        conv1_weights = None
+        if self.model.args.meta_module:
+            sigma_estimate = sigma_estimate[0].permute(0,3,1,2)
+            noise_vector = self.model.noise_conv(sigma_estimate)
+            noise_vector = noise_vector.reshape(noise_vector.shape[0], -1)
+            conv1_weights = self.model.weight_generator(noise_vector)
+
+
         if self.model.pre_net is not None:
             src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
-            featmaps = self.model.feature_net(src_rgbs)
+            featmaps = self.model.feature_net(src_rgbs, conv1_weights)
             src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
         else:
             featmaps = self.model.feature_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))
 
-        return [src_rgbs, featmaps['reconst_signal'], featmaps['denoised_signal']] if self.model.args.auto_encoder else src_rgbs, featmaps
+        return [src_rgbs, [featmaps['reconst_signal_coarse'], featmaps['reconst_signal_fine']], [featmaps['denoised_signal_coarse'], featmaps['denoised_signal_fine']]] if self.model.args.auto_encoder else src_rgbs, featmaps

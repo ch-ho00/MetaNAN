@@ -22,6 +22,7 @@ import kornia
 import matplotlib.pyplot as plt
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from configs.local_setting import OUT_DIR
 from nan.feature_network import ResUNet
@@ -51,6 +52,80 @@ class Gaussian2D(nn.Conv2d):
         nn.init.zeros_(self.bias.data)
 
 
+
+def conv_down(in_chn, out_chn, bias=False):
+    layer = nn.Conv2d(in_chn, out_chn, kernel_size=4, stride=2, padding=1, bias=bias)
+    return layer
+
+
+class UNetConvBlock(nn.Module):
+
+    def __init__(self, in_size, out_size, downsample, relu_slope):
+        super(UNetConvBlock, self).__init__()
+        self.block = nn.Sequential(
+            nn.Conv2d(in_size, out_size, kernel_size=3, padding=1, bias=True),
+            nn.LeakyReLU(relu_slope),
+            nn.Conv2d(out_size, out_size, kernel_size=3, padding=1, bias=True),
+            nn.LeakyReLU(relu_slope))
+
+        self.downsample = downsample
+        if downsample:
+            self.downsample = conv_down(out_size, out_size, bias=False)
+
+        self.shortcut = nn.Conv2d(in_size, out_size, kernel_size=1, bias=True)
+
+    def forward(self, x):
+        
+        out = self.block(x)
+        sc = self.shortcut(x)
+        out = out + sc
+        out_down = self.downsample(out)
+        
+        return out_down
+
+
+class NoiseLevelConv(nn.Module):
+    def __init__(self):
+        super(NoiseLevelConv, self).__init__()
+
+        self.out_dim = 256
+        self.out_size = 8
+        self.conv0 = UNetConvBlock(3, 64, True, 0.2)
+        self.conv1 = UNetConvBlock(64, 128, True, 0.2)
+        self.conv2 = UNetConvBlock(128, 256, True, 0.2)
+        self.conv3 = UNetConvBlock(256, self.out_dim, True, 0.2)
+
+    def forward(self, x):
+        x = self.conv0(x) # (B, 32, H//2, W//2)
+        x = self.conv1(x) # (B, 64, H//4, W//4)
+        x = self.conv2(x) # (B, 128, H//8, W//8)
+        x = self.conv3(x) # (B, 256, H//16, W//16)
+        x = F.adaptive_avg_pool2d(x, (self.out_size, self.out_size))
+        return x
+
+
+class ConvWeightGenerator(nn.Module):
+    def __init__(self, in_dim, out_dim, patch_kernel=False):
+      super(ConvWeightGenerator,self).__init__()
+      self.in_dim = in_dim
+      self.out_dim = out_dim
+      self.patch_kernel = patch_kernel
+
+      self.transform = nn.Sequential(
+        nn.Linear(self.in_dim, 4096),
+        nn.LeakyReLU(0.2),
+        nn.Linear(4096,4096),
+        nn.LeakyReLU(0.2),
+        nn.Linear(4096,self.out_dim)
+      )
+
+    def forward(self,noise_vec):
+      if self.patch_kernel:
+        noise_vec = noise_vec.reshape(noise_vec.shape[0], self.in_dim, -1).permute(0,2,1)
+      weights = self.transform(noise_vec)
+      return weights 
+
+
 class NANScheme(nn.Module):
     @classmethod
     def create(cls, args):
@@ -69,7 +144,12 @@ class NANScheme(nn.Module):
                                    fine_out_ch=args.fine_feat_dim,
                                    coarse_only=args.coarse_only,
                                    auto_encoder=args.auto_encoder,
-                                   per_level_render=args.per_level_render).to(device)
+                                   per_level_render=args.per_level_render,
+                                   meta_module=args.meta_module).to(device)
+
+        if args.meta_module:
+            self.noise_conv = NoiseLevelConv().to(device)
+            self.weight_generator = ConvWeightGenerator(in_dim=self.noise_conv.out_dim * (self.noise_conv.out_size ** 2), out_dim=self.feature_net.conv1_kdim).to(device)
 
         # create coarse NAN mlps
         self.net_coarse = self.nan_factory('coarse', device)
@@ -103,6 +183,10 @@ class NANScheme(nn.Module):
             if self.args.pre_net:
                 params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
 
+        if self.args.meta_module:
+            params_list.append({'params': self.noise_conv.parameters(), 'lr': self.args.lrate_feature})
+            params_list.append({'params': self.weight_generator.parameters(), 'lr': self.args.lrate_feature})
+
         optimizer = torch.optim.Adam(params_list)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
                                                     step_size=self.args.lrate_decay_steps,
@@ -120,6 +204,10 @@ class NANScheme(nn.Module):
             if self.pre_net is not None:
                 self.pre_net.eval()
 
+        if self.args.meta_module:
+            self.noise_conv.eval()
+            self.weight_generator.eval()
+
     def switch_to_train(self):
         self.net_coarse.train()
         self.feature_net.train()
@@ -129,6 +217,10 @@ class NANScheme(nn.Module):
         if not self.args.frozen_prenet:
             if self.pre_net is not None:
                 self.pre_net.train()
+
+        if self.args.meta_module:
+            self.noise_conv.train()
+            self.weight_generator.train()
 
     def save_model(self, filename):
         to_save = {'optimizer'  : self.optimizer.state_dict(),

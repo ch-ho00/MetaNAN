@@ -160,7 +160,8 @@ class ResUNet(nn.Module):
                  norm_layer=None,
                  coarse_only=False,
                  auto_encoder=False,
-                 per_level_render=False):
+                 per_level_render=False,
+                 meta_module=False):
 
         super().__init__()
         assert encoder in ['resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152'], "Incorrect encoder type"
@@ -175,6 +176,8 @@ class ResUNet(nn.Module):
         self.fine_out_ch = fine_out_ch
         out_ch = coarse_out_ch + fine_out_ch
 
+        self.meta_module = meta_module
+
         # original
         layers = [3, 4, 6, 3]
         if norm_layer is None:
@@ -187,8 +190,15 @@ class ResUNet(nn.Module):
         self.inplanes = 64
         self.groups = 1
         self.base_width = 64
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
-                            bias=False, padding_mode='reflect')
+        if not self.meta_module:
+            self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
+                                bias=False, padding_mode='reflect')
+        else:
+            self.conv1_in_dim = self.inplanes // 2
+            self.conv1_kdim = self.conv1_in_dim * 3 * 7 * 7 
+            self.conv1_half = nn.Conv2d(3, self.conv1_in_dim, kernel_size=7, stride=2, padding=3,
+                                bias=False, padding_mode='reflect')
+
         self.bn1 = norm_layer(self.inplanes, track_running_stats=False, affine=True)
         self.relu = nn.ReLU(inplace=True)
         self.layer1 = self._make_layer(block, 64, layers[0], stride=2)
@@ -276,8 +286,22 @@ class ResUNet(nn.Module):
         x = torch.cat([x2, x1], dim=1)
         return x
 
-    def forward(self, x, per_level_render=False):
-        x = self.relu(self.bn1(self.conv1(x)))
+    def forward(self, x, conv1_weights=None):
+        if conv1_weights == None:
+            x = self.conv1(x)
+        else:
+            conv1_weights = conv1_weights.reshape(x.shape[0], self.conv1_in_dim, 3, 7, 7)
+            meta_half = []
+            x_half = self.conv1_half(x) 
+            x = F.pad(x, pad=(3,3,3,3), mode='reflect')
+            for xi, conv1_weight in zip(x, conv1_weights):
+                hi = F.conv2d(xi[None], conv1_weight, stride=2, padding=0)
+                meta_half.append(hi)
+            meta_half = torch.cat(meta_half, dim=0)
+            x = torch.cat([x_half, meta_half], dim=1)
+
+
+        x = self.relu(self.bn1(x))
 
         x1 = self.layer1(x)
         x2 = self.layer2(x1)
@@ -302,21 +326,17 @@ class ResUNet(nn.Module):
 
         out_dict = {'coarse': x_coarse, 'fine': x_fine}
         if self.auto_encoder:
-            if self.per_level_render:
-                x_reconst_coarse = self.reconst_deconv(x_coarse)
-                x_denoised_coarse = self.denoise_deconv(x_coarse)
+            x_reconst_coarse = self.reconst_deconv(x_coarse)
+            x_denoised_coarse = self.denoise_deconv(x_coarse)
 
-                x_reconst_fine = self.reconst_deconv(x_fine)
-                x_denoised_fine = self.denoise_deconv(x_fine)
+            x_reconst_fine = self.reconst_deconv(x_fine)
+            x_denoised_fine = self.denoise_deconv(x_fine)
 
-                out_dict['reconst_signal'] = ( x_reconst_coarse + x_reconst_fine ) / 2
-                out_dict['denoised_signal'] = ( x_denoised_coarse + x_denoised_fine ) /2
+            out_dict['reconst_signal_coarse'] = x_reconst_coarse 
+            out_dict['reconst_signal_fine'] = x_reconst_fine 
+            
+            out_dict['denoised_signal_coarse'] = x_denoised_coarse
+            out_dict['denoised_signal_fine'] = x_denoised_fine
                 
-            else:
-                x_reconst = self.reconst_deconv(x_out)
-                x_denoised = self.denoise_deconv(x_out)
-
-                out_dict['reconst_signal'] = x_reconst
-                out_dict['denoised_signal'] = x_denoised
                 
         return out_dict

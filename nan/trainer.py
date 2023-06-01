@@ -147,7 +147,8 @@ class Trainer:
         # Calculate the feature maps of all views.
         # This step is seperated because in evaluation time we want to do it once for each image.
         org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
-        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs)
+        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs,
+                                                                sigma_estimate=ray_sampler.sigma_estimate.to(self.device))
 
         reconst_signal = None
         if self.model.args.auto_encoder:
@@ -178,16 +179,20 @@ class Trainer:
                 factor = 1 
 
             if self.model.args.lambda_reconst_loss > 0:
-                if self.model.args.reconstruct_noisy_src:
-                    reconst_loss = reconst_signal.permute(0,2,3,1) - org_src_rgbs[0]                
-                else:
-                    reconst_loss = reconst_signal.permute(0,2,3,1) - proc_src_rgbs[0]
+                reconst_loss = 0
+                for signal in reconst_signal:
+                    if self.model.args.reconstruct_noisy_src:
+                        reconst_loss += signal.permute(0,2,3,1) - org_src_rgbs[0]                
+                    else:
+                        reconst_loss += signal.permute(0,2,3,1) - proc_src_rgbs[0]
                 reconst_loss = torch.mean(torch.abs(reconst_loss)) * factor
                 loss += self.model.args.lambda_reconst_loss * reconst_loss 
                 self.scalars_to_log['reconst_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
 
             if self.model.args.lambda_denoise_loss > 0:
-                denoise_loss = denoised_signal[:1].permute(0,2,3,1) - train_data['src_rgbs_clean'][0,:1].to(denoised_signal.device)
+                denoise_loss = 0
+                for signal in denoised_signal:
+                    denoise_loss += signal[:1].permute(0,2,3,1) - train_data['src_rgbs_clean'][0,:1].to(signal.device)
                 denoise_loss = torch.mean(torch.abs(denoise_loss)) * factor
                 loss += self.model.args.lambda_denoise_loss * denoise_loss 
                 self.scalars_to_log['denoise_loss'] = self.model.args.lambda_denoise_loss * denoise_loss.item()
@@ -255,10 +260,10 @@ class Trainer:
             average_im = average_im[::render_stride, ::render_stride]
             reconst_signal = None
             if self.args.lambda_reconst_loss > 0 :
-                reconst_signal = ret['reconst_signal'][...,::render_stride, ::render_stride].detach().cpu()
+                reconst_signal = ret['reconst_signal'][1][...,::render_stride, ::render_stride].detach().cpu()
                 reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
             elif self.args.lambda_denoise_loss > 0 :
-                reconst_signal = ret['denoised_signal'][...,::render_stride, ::render_stride].detach().cpu()
+                reconst_signal = ret['denoised_signal'][1][...,::render_stride, ::render_stride].detach().cpu()
                 reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
                 
         rgb_gt = img_HWC2CHW(gt_img)
