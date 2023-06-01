@@ -54,6 +54,7 @@ def render_single_image(ray_sampler: RaySampler,
     if isinstance(src_rgbs, list):
         src_rgbs, reconst_signal, denoised_signal = src_rgbs
         all_ret['reconst_signal'] = reconst_signal
+        all_ret['denoised_signal'] = denoised_signal
 
     if args.N_importance > 0:
         all_ret['fine'] = RaysOutput.empty_ret()

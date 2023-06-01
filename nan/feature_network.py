@@ -305,17 +305,17 @@ class ResUNet(nn.Module):
         if self.auto_encoder:
             if self.per_level_render:
                 x_reconst_coarse = self.reconst_deconv(x_coarse)
-                x_denoised_coarse = self.denoise_deconv(x_coarse[:1])
+                x_denoised_coarse = self.denoise_deconv(x_coarse)
 
                 x_reconst_fine = self.reconst_deconv(x_fine)
-                x_denoised_fine = self.denoise_deconv(x_fine[:1])
+                x_denoised_fine = self.denoise_deconv(x_fine)
 
                 out_dict['reconst_signal'] = ( x_reconst_coarse + x_reconst_fine ) / 2
                 out_dict['denoised_signal'] = ( x_denoised_coarse + x_denoised_fine ) /2
                 
             else:
                 x_reconst = self.reconst_deconv(x_out)
-                x_denoised = self.denoise_deconv(x_out[:1])
+                x_denoised = self.denoise_deconv(x_out)
 
                 out_dict['reconst_signal'] = x_reconst
                 out_dict['denoised_signal'] = x_denoised
