@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : AE_DenoisedReconstVol_5e-1_0 # AE_reconstNoisySrc_0_5e-1 #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : AE_DenoisedReconstVol_1e-1_0 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -25,9 +25,10 @@ auto_encoder                : True
 meta_module                 : False
 patch_kernel                : False
 annealing_loss              : True
-lambda_denoise_loss         : 0.5
+lambda_denoise_loss         : 0.1
 lambda_reconst_loss         : 0.0
 reconstruct_vol             : True
+reconstruct_denoise_vol     : False
 reconstruct_noisy_src       : False
 per_level_render            : True
 
@@ -41,7 +42,7 @@ inv_uniform                 : True
 white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 1000
+i_img                       : 3000
 i_print                     : 100
 i_tb                        : 20
 i_weights                   : 5000

@@ -152,12 +152,17 @@ class Trainer:
         reconst_signal = None
         if self.model.args.auto_encoder:
             proc_src_rgbs, reconst_signal, denoised_signal = proc_src_rgbs
+        
+        if self.args.reconstruct_vol:
+            reconstruct_input = denoised_signal if self.args.lambda_reconst_loss == 0 or self.args.reconstruct_denoise_vol else reconst_signal
+        else:
+            reconstruct_input = None
 
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
                                                  org_src_rgbs=org_src_rgbs,
                                                  sigma_estimate=ray_sampler.sigma_estimate.to(self.device),
-                                                 reconst_signal=(reconst_signal if self.args.lambda_reconst_loss > 0 else denoised_signal) if self.args.reconstruct_vol else None)
+                                                 reconst_signal=reconstruct_input)
 
         # compute loss
         self.model.optimizer.zero_grad()

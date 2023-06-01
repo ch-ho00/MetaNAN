@@ -160,8 +160,7 @@ class ResUNet(nn.Module):
                  norm_layer=None,
                  coarse_only=False,
                  auto_encoder=False,
-                 per_level_render=False
-                 ):
+                 per_level_render=False):
 
         super().__init__()
         assert encoder in ['resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152'], "Incorrect encoder type"
@@ -189,7 +188,7 @@ class ResUNet(nn.Module):
         self.groups = 1
         self.base_width = 64
         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
-                               bias=False, padding_mode='reflect')
+                            bias=False, padding_mode='reflect')
         self.bn1 = norm_layer(self.inplanes, track_running_stats=False, affine=True)
         self.relu = nn.ReLU(inplace=True)
         self.layer1 = self._make_layer(block, 64, layers[0], stride=2)
