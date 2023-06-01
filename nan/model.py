@@ -99,8 +99,9 @@ class NANScheme(nn.Module):
         if self.net_fine is not None:
             params_list.append({'params': self.net_fine.parameters(), 'lr': self.args.lrate_mlp})
 
-        if self.args.pre_net:
-            params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
+        if not self.args.frozen_prenet:
+            if self.args.pre_net:
+                params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
 
         optimizer = torch.optim.Adam(params_list)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
@@ -114,16 +115,20 @@ class NANScheme(nn.Module):
         self.feature_net.eval()
         if self.net_fine is not None:
             self.net_fine.eval()
-        if self.pre_net is not None:
-            self.pre_net.eval()
+
+        if not self.args.frozen_prenet:
+            if self.pre_net is not None:
+                self.pre_net.eval()
 
     def switch_to_train(self):
         self.net_coarse.train()
         self.feature_net.train()
         if self.net_fine is not None:
             self.net_fine.train()
-        if self.pre_net is not None:
-            self.pre_net.train()
+
+        if not self.args.frozen_prenet:
+            if self.pre_net is not None:
+                self.pre_net.train()
 
     def save_model(self, filename):
         to_save = {'optimizer'  : self.optimizer.state_dict(),

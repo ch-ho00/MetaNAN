@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : AE_DenoisedReconstVol_1e-1_0 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : AE__NoisyReconstVol_0_5e-1 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -25,12 +25,13 @@ auto_encoder                : True
 meta_module                 : False
 patch_kernel                : False
 annealing_loss              : True
-lambda_denoise_loss         : 0.1
-lambda_reconst_loss         : 0.0
+lambda_denoise_loss         : 0.0
+lambda_reconst_loss         : 0.5
 reconstruct_vol             : True
 reconstruct_denoise_vol     : False
-reconstruct_noisy_src       : False
+reconstruct_noisy_src       : True
 per_level_render            : True
+frozen_prenet               : True
 
 ### TESTING
 chunk_size                  : 2048 # can be bigger depend on the gpu memory

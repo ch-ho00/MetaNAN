@@ -103,6 +103,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--per_level_render', default=False, action="store_true")    
         parser.add_argument('--reconstruct_noisy_src', default=False, action="store_true")    
         parser.add_argument('--reconstruct_denoise_vol', default=False, action="store_true")    
+        parser.add_argument('--frozen_prenet', default=False, action="store_true")
 
         # ########## dataset options ##########
         # ## train and eval dataset

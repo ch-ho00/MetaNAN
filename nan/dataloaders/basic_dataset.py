@@ -225,9 +225,9 @@ class NoiseDataset(BurstDataset, ABC):
         sig_shot = 10 ** (self.log_sig_shot[0] + self.d_shot * gain_shot)
 
         # self.log_sig_read[0], self.d_read
-        # (-2.165236260368697, 0.36172783601759284)
+        # (-2.165236260368697, 0.36172783601759284) = 5.06
         # self.log_sig_shot[0],self.d_shot
-        # (-1.2839898550226507, 0.1808639180087963)
+        # (-1.2839898550226507, 0.1808639180087963) = 2.333
 
         return sig_read, sig_shot
 
