@@ -24,6 +24,12 @@ from nan.utils.eval_utils import mse2psnr, img2psnr
 from nan.utils.general_utils import img_HWC2CHW
 from nan.utils.io_utils import print_link, colorize
 
+def tv_loss_2d(img):
+    tv_h = ((img[:,:,1:,:] - img[:,:,:-1,:]).pow(2)).sum() / img.shape[-2]
+    tv_w = ((img[:,:,:,1:] - img[:,:,:,:-1]).pow(2)).sum() / img.shape[-1]
+
+    return tv_h + tv_w
+
 ALPHA = 0.99997
 
 
@@ -196,6 +202,19 @@ class Trainer:
                 denoise_loss = torch.mean(torch.abs(denoise_loss)) * factor
                 loss += self.model.args.lambda_denoise_loss * denoise_loss 
                 self.scalars_to_log['denoise_loss'] = self.model.args.lambda_denoise_loss * denoise_loss.item()
+
+            if self.model.args.lambda_tv_loss > 0: 
+                tv_loss = 0
+                if self.model.args.lambda_reconst_loss > 0:
+                    for signal in reconst_signal:
+                        tv_loss += tv_loss_2d(signal)
+                if self.model.args.lambda_denoise_loss > 0:
+                    for signal in denoised_signal:
+                        tv_loss += tv_loss_2d(signal)
+                tv_loss = tv_loss * factor
+                loss += self.model.args.lambda_tv_loss * tv_loss 
+                self.scalars_to_log['tv_loss'] = self.model.args.lambda_tv_loss * tv_loss.item()
+            
             self.scalars_to_log['lambda_factor'] =  factor
 
         loss.backward()
