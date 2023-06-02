@@ -219,7 +219,7 @@ class ResUNet(nn.Module):
         self.auto_encoder = auto_encoder
         self.per_level_render = per_level_render
         if self.auto_encoder:
-            deconv_in_dim = out_ch // 2 if self.per_level_render else out_ch
+            deconv_in_dim = out_ch // 2
             self.reconst_deconv =  nn.Sequential(
                 nn.Upsample(scale_factor=2, mode='bilinear'),
                 nn.Conv2d(deconv_in_dim, out_ch//2, 3, 1, 1),
@@ -326,17 +326,29 @@ class ResUNet(nn.Module):
 
         out_dict = {'coarse': x_coarse, 'fine': x_fine}
         if self.auto_encoder:
-            x_reconst_coarse = self.reconst_deconv(x_coarse)
-            x_denoised_coarse = self.denoise_deconv(x_coarse)
+            if not self.per_level_render:
+                x_reconst_coarse = self.reconst_deconv(x_coarse)
+                x_denoised_coarse = self.denoise_deconv(x_coarse)
 
-            x_reconst_fine = self.reconst_deconv(x_fine)
-            x_denoised_fine = self.denoise_deconv(x_fine)
+                x_reconst_fine = self.reconst_deconv(x_fine)
+                x_denoised_fine = self.denoise_deconv(x_fine)
 
-            out_dict['reconst_signal_coarse'] = x_reconst_coarse 
-            out_dict['reconst_signal_fine'] = x_reconst_fine 
-            
-            out_dict['denoised_signal_coarse'] = x_denoised_coarse
-            out_dict['denoised_signal_fine'] = x_denoised_fine
+                out_dict['reconst_signal'] = (x_reconst_coarse + x_reconst_fine) / 2 
+                out_dict['denoised_signal'] = (x_denoised_coarse + x_denoised_fine) / 2
+                    
+            else:
+
+                x_reconst_coarse = self.reconst_deconv(x_coarse)
+                x_denoised_coarse = self.denoise_deconv(x_coarse)
+
+                x_reconst_fine = self.reconst_deconv(x_fine)
+                x_denoised_fine = self.denoise_deconv(x_fine)
+
+                out_dict['reconst_signal_coarse'] = x_reconst_coarse 
+                out_dict['reconst_signal_fine'] = x_reconst_fine 
                 
+                out_dict['denoised_signal_coarse'] = x_denoised_coarse
+                out_dict['denoised_signal_fine'] = x_denoised_fine
+                    
                 
         return out_dict

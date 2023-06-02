@@ -260,10 +260,10 @@ class Trainer:
             average_im = average_im[::render_stride, ::render_stride]
             reconst_signal = None
             if self.args.lambda_reconst_loss > 0 :
-                reconst_signal = ret['reconst_signal'][1][...,::render_stride, ::render_stride].detach().cpu()
+                reconst_signal = ret['reconst_signal'][-1][...,::render_stride, ::render_stride].detach().cpu()
                 reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
             elif self.args.lambda_denoise_loss > 0 :
-                reconst_signal = ret['denoised_signal'][1][...,::render_stride, ::render_stride].detach().cpu()
+                reconst_signal = ret['denoised_signal'][-1][...,::render_stride, ::render_stride].detach().cpu()
                 reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
                 
         rgb_gt = img_HWC2CHW(gt_img)

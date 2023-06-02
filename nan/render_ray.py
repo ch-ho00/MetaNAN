@@ -226,7 +226,7 @@ class RayRender:
             # Process the rays and return the fine phase output
             fine = self.process_rays_batch(ray_batch=ray_batch, pts=pts_fine, z_vals=z_vals_fine, save_idx=save_idx,
                                            level='fine', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, reconst_signal=reconst_signal[1] if reconst_signal != None else None)
+                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, reconst_signal=reconst_signal[-1] if reconst_signal != None else None)
 
             batch_out['fine'] = fine
         return batch_out
@@ -294,4 +294,11 @@ class RayRender:
         else:
             featmaps = self.model.feature_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))
 
-        return [src_rgbs, [featmaps['reconst_signal_coarse'], featmaps['reconst_signal_fine']], [featmaps['denoised_signal_coarse'], featmaps['denoised_signal_fine']]] if self.model.args.auto_encoder else src_rgbs, featmaps
+        if self.model.args.auto_encoder:
+            reconst_signal = [featmaps['reconst_signal_coarse'], featmaps['reconst_signal_fine']] if self.model.args.per_level_render else [featmaps['reconst_signal']]
+            denoise_signal = [featmaps['denoised_signal_coarse'], featmaps['denoised_signal_fine']] if self.model.args.per_level_render else [featmaps['denoised_signal']]
+            output = [src_rgbs, reconst_signal, denoise_signal]
+        else:
+            output = src_rgbs
+        
+        return output , featmaps

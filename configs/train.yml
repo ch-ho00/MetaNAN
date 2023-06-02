@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : metaAE_NoisyReconstVol_0_1e-1 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : metaAE_singleRender_NoisyReconstVol_0_1e-1 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -30,7 +30,7 @@ lambda_reconst_loss         : 0.1
 reconstruct_vol             : True
 reconstruct_denoise_vol     : False
 reconstruct_noisy_src       : True
-per_level_render            : True
+per_level_render            : False
 frozen_prenet               : False
 
 ### TESTING
