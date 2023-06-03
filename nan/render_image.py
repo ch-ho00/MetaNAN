@@ -51,15 +51,13 @@ def render_single_image(ray_sampler: RaySampler,
     all_ret = OrderedDict([('coarse', RaysOutput.empty_ret()),
                            ('fine', None)])
 
+    denoise_signal, reconst_signal = None, None
     if isinstance(src_rgbs, list):
-        src_rgbs, reconst_signal, denoised_signal = src_rgbs
+        src_rgbs, reconst_signal, denoise_signal = src_rgbs
         all_ret['reconst_signal'] = reconst_signal
-        all_ret['denoised_signal'] = denoised_signal
-        if args.reconstruct_vol:
-            reconstruct_input = denoised_signal if args.lambda_reconst_loss == 0 or args.reconstruct_denoise_vol  else reconst_signal
-        else:
-            reconstruct_input = None
-        
+        all_ret['denoised_signal'] = denoise_signal
+
+
     if args.N_importance > 0:
         all_ret['fine'] = RaysOutput.empty_ret()
     N_rays = ray_sampler.rays_o.shape[0]
@@ -72,7 +70,8 @@ def render_single_image(ray_sampler: RaySampler,
                                             featmaps=featmaps,
                                             org_src_rgbs=ray_sampler.src_rgbs.to(device),
                                             sigma_estimate=ray_sampler.sigma_estimate.to(device),
-                                            reconst_signal=reconstruct_input)
+                                            reconst_signal=reconst_signal,
+                                            denoise_signal=denoise_signal)
 
         all_ret['coarse'].append(ret['coarse'])
         if ret['fine'] is not None:

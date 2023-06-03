@@ -100,11 +100,11 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--meta_module', default=False, action="store_true")
         parser.add_argument('--patch_kernel', default=False, action="store_true")    
         parser.add_argument('--annealing_loss', default=False, action="store_true")    
-        parser.add_argument('--reconstruct_vol', default=False, action="store_true")    
+        parser.add_argument('--reconst_vol', default=False, action="store_true")    
+        parser.add_argument('--denoise_vol', default=False, action="store_true")    
         parser.add_argument('--per_level_render', default=False, action="store_true")    
-        parser.add_argument('--reconstruct_noisy_src', default=False, action="store_true")    
-        parser.add_argument('--reconstruct_denoise_vol', default=False, action="store_true")    
         parser.add_argument('--frozen_prenet', default=False, action="store_true")
+        parser.add_argument('--seperate_branch', default=False, action="store_true")
 
         # ########## dataset options ##########
         # ## train and eval dataset

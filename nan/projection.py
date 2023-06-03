@@ -108,7 +108,7 @@ class Projector:
         ray_diff = ray_diff.reshape((num_views,) + original_shape + (4,))
         return ray_diff
 
-    def compute(self, xyz, query_camera, src_imgs, org_src_imgs, sigma_estimate, src_cameras, featmaps, reconst_signal=None):
+    def compute(self, xyz, query_camera, src_imgs, org_src_imgs, sigma_estimate, src_cameras, featmaps, reconst_signal=None, denoise_signal=None):
         """ Given 3D points and the camera of the target and src views,
         computing the rgb values of the incident pixels and their kxk environment.
 
@@ -169,6 +169,11 @@ class Projector:
             reconst_sampled = F.grid_sample(reconst_signal, norm_xys, align_corners=True)
             reconst_sampled = reconst_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, 3]
             rgb_feat_sampled = torch.cat([rgb_feat_sampled, reconst_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
+
+        if denoise_signal != None:
+            denoised_sampled = F.grid_sample(denoise_signal, norm_xys, align_corners=True)
+            denoised_sampled = denoised_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, 3]
+            rgb_feat_sampled = torch.cat([rgb_feat_sampled, denoised_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
 
         rgb_feat_sampled = self.reshape_features(rgb_feat_sampled)
 

@@ -77,12 +77,13 @@ class NanMLP(nn.Module):
 
         self.n_samples = n_samples
 
+        reconst_dim = 3 * (int(self.args.denoise_vol) + int(self.args.reconst_vol))
         self.ray_dir_fc = nn.Sequential(nn.Linear(4, 16),
                                         self.activation_func,
-                                        nn.Linear(16, in_feat_ch + 3 + (3 if self.args.auto_encoder and self.args.reconstruct_vol else 0)), #  
+                                        nn.Linear(16, in_feat_ch + 3 + reconst_dim), #  
                                         self.activation_func)
 
-        base_input_channels = (in_feat_ch + 3 + (3 if self.args.auto_encoder and self.args.reconstruct_vol else 0)) * 3  # 
+        base_input_channels = (in_feat_ch + 3 + reconst_dim) * 3
         if self.args.noise_feat:
             base_input_channels += 3
 
@@ -92,9 +93,9 @@ class NanMLP(nn.Module):
                                      self.activation_func)
 
         if args.views_attn:
-            input_channel = in_feat_ch + 3 + (3 if self.args.auto_encoder and self.args.reconstruct_vol else 0)  # 
+            input_channel = in_feat_ch + 3 + reconst_dim
             self.views_attention = MultiHeadAttention(5, input_channel, 7, 8)
-            # self.spatial_views_attention = MultiHeadAttention(5, input_channel, 7, 8)
+
         self.vis_fc = nn.Sequential(nn.Linear(32, 32),
                                     self.activation_func,
                                     nn.Linear(32, 33),

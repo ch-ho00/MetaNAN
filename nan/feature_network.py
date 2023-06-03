@@ -177,7 +177,6 @@ class ResUNet(nn.Module):
         out_ch = coarse_out_ch + fine_out_ch
 
         self.meta_module = meta_module
-
         # original
         layers = [3, 4, 6, 3]
         if norm_layer is None:
@@ -286,7 +285,7 @@ class ResUNet(nn.Module):
         x = torch.cat([x2, x1], dim=1)
         return x
 
-    def forward(self, x, conv1_weights=None):
+    def forward(self, x, conv1_weights=None, reconstruct=False):
         if conv1_weights == None:
             x = self.conv1(x)
         else:
@@ -325,7 +324,7 @@ class ResUNet(nn.Module):
             x_fine = x_out[:, -self.fine_out_ch:, :]
 
         out_dict = {'coarse': x_coarse, 'fine': x_fine}
-        if self.auto_encoder:
+        if self.auto_encoder and reconstruct:
             if not self.per_level_render:
                 x_reconst_coarse = self.reconst_deconv(x_coarse)
                 x_denoised_coarse = self.denoise_deconv(x_coarse)
