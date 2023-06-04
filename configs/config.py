@@ -93,6 +93,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                             help='number of data loading workers (default: 8)')
 
+        parser.add_argument('--ssim_alpha', type=float, default=0)
         parser.add_argument('--lambda_tv_loss', type=float, default=0)
         parser.add_argument('--lambda_denoise_loss', type=float, default=0)
         parser.add_argument('--lambda_reconst_loss', type=float, default=0)

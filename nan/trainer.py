@@ -23,6 +23,8 @@ from nan.sample_ray import RaySampler
 from nan.utils.eval_utils import mse2psnr, img2psnr
 from nan.utils.general_utils import img_HWC2CHW
 from nan.utils.io_utils import print_link, colorize
+# from pytorch_msssim import ms_ssim
+from nan.ssim_l1_loss import MS_SSIM_L1_LOSS
 
 def tv_loss_2d(img):
     tv_h = ((img[:,:,1:,:] - img[:,:,:-1,:]).pow(2)).sum() / img.shape[-2]
@@ -72,6 +74,8 @@ class Trainer:
 
         # Create criterion
         self.criterion = NANLoss(args)
+        self.ssim_alpha = args.ssim_alpha
+        self.ssim_l1_loss = MS_SSIM_L1_LOSS(alpha=args.ssim_alpha)
 
         # tb_dir will contain tensorboard files and later evaluation results
         tb_dir = LOG_DIR / args.expname
@@ -183,19 +187,42 @@ class Trainer:
 
             if self.model.args.lambda_reconst_loss > 0:
                 reconst_loss = 0
+                reconst_ssim_loss = 0
                 for signal in reconst_signal:
-                    reconst_loss += signal.permute(0,2,3,1) - proc_src_rgbs[0]
-                reconst_loss = torch.mean(torch.abs(reconst_loss)) * factor
-                loss += self.model.args.lambda_reconst_loss * reconst_loss 
-                self.scalars_to_log['reconst_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
+                    if self.ssim_alpha > 0:
+                        ssim_tmp, l1_tmp = self.ssim_l1_loss(org_src_rgbs[0].permute(0,3,1,2), signal, raw_signal=True, white_level=ray_batch['white_level'])
+                        reconst_ssim_loss += ssim_tmp
+                        reconst_loss += l1_tmp                        
+                    else:
+                        reconst_loss += signal.permute(0,2,3,1) - org_src_rgbs[0]                
+
+                if self.ssim_alpha == 0:
+                    reconst_loss = torch.mean(torch.abs(reconst_loss)) * factor
+                loss += self.model.args.lambda_reconst_loss * (reconst_loss + reconst_ssim_loss) 
+                self.scalars_to_log['train/reconst/total_loss'] = self.model.args.lambda_reconst_loss * (reconst_loss + reconst_ssim_loss).item()
+                self.scalars_to_log['train/reconst/l1_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
+                if self.ssim_alpha > 0:
+                    self.scalars_to_log['train/reconst/ssim_loss'] = self.model.args.lambda_reconst_loss * reconst_ssim_loss.item()
 
             if self.model.args.lambda_denoise_loss > 0:
                 denoise_loss = 0
+                denoise_ssim_loss = 0 
                 for signal in denoise_signal:
-                    denoise_loss += signal[:1].permute(0,2,3,1) - train_data['src_rgbs_clean'][0,:1].to(signal.device)
-                denoise_loss = torch.mean(torch.abs(denoise_loss)) * factor
-                loss += self.model.args.lambda_denoise_loss * denoise_loss 
-                self.scalars_to_log['denoise_loss'] = self.model.args.lambda_denoise_loss * denoise_loss.item()
+                    if self.ssim_alpha > 0:
+                        ssim_tmp, l1_tmp = self.ssim_l1_loss(train_data['src_rgbs_clean'][0,:1].permute(0,3,1,2).to(signal.device), signal[:1], raw_signal=True, white_level=ray_batch['white_level'])
+                        denoise_ssim_loss += ssim_tmp
+                        denoise_loss += l1_tmp
+                    else:
+                        denoise_loss += signal[:1].permute(0,2,3,1) - train_data['src_rgbs_clean'][0,:1].to(signal.device)
+                
+                if self.ssim_alpha == 0:
+                    denoise_loss = torch.mean(torch.abs(denoise_loss)) * factor
+
+                loss += self.model.args.lambda_denoise_loss * (denoise_loss + denoise_ssim_loss) 
+                self.scalars_to_log['train/denoise/total_loss'] = self.model.args.lambda_denoise_loss * (denoise_loss + denoise_ssim_loss).item()
+                self.scalars_to_log['train/denoise/l1_loss'] = self.model.args.lambda_denoise_loss * denoise_loss.item()
+                if self.ssim_alpha > 0:
+                    self.scalars_to_log['train/denoise/ssim_loss'] = self.model.args.lambda_denoise_loss * denoise_ssim_loss.item()
 
             if self.model.args.lambda_tv_loss > 0: 
                 tv_loss = 0
@@ -207,9 +234,8 @@ class Trainer:
                         tv_loss += tv_loss_2d(signal)
                 tv_loss = tv_loss * factor
                 loss += self.model.args.lambda_tv_loss * tv_loss 
-                self.scalars_to_log['tv_loss'] = self.model.args.lambda_tv_loss * tv_loss.item()
-            
-            self.scalars_to_log['lambda_factor'] =  factor
+                self.scalars_to_log['train/tv_loss'] = self.model.args.lambda_tv_loss * tv_loss.item()
+            self.scalars_to_log['train/lambda_factor'] =  factor
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()

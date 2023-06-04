@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : AE_singleRender_tripleVol_NoisyReconstVol_1e-2_1e-1 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : AE_singleRender_tripleVol_ssim0.1_NoisyReconstVol_1e-1_1e-1 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -25,9 +25,10 @@ auto_encoder                : True
 meta_module                 : True
 patch_kernel                : False
 annealing_loss              : False
-lambda_denoise_loss         : 0.01
+lambda_denoise_loss         : 0.1
 lambda_reconst_loss         : 0.1
 lambda_tv_loss              : 0.0
+ssim_alpha                  : 0.1
 reconst_vol                 : True
 denoise_vol                 : True
 per_level_render            : False
