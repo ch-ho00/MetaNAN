@@ -221,12 +221,10 @@ class ResUNet(nn.Module):
             deconv_in_dim = out_ch // 2
             self.reconst_deconv =  nn.Sequential(
                 nn.Upsample(scale_factor=2, mode='bilinear'),
-                nn.Conv2d(deconv_in_dim, out_ch//2, 3, 1, 1),
-                nn.BatchNorm2d(out_ch//2),
+                nn.Conv2d(deconv_in_dim, out_ch//2, 1, 1, 0),
                 nn.LeakyReLU(0.2, True),
                 nn.Upsample(scale_factor=2, mode='bilinear'),
-                nn.Conv2d(out_ch//2, out_ch//4, 3, 1, 1),
-                nn.BatchNorm2d(out_ch//4),
+                nn.Conv2d(out_ch//2, out_ch//4, 1, 1, 0),
                 nn.LeakyReLU(0.2, True),
                 nn.Conv2d(out_ch//4, 3, 1, 1, 0),
                 # nn.Conv2d(out_ch//4, 3, 3, 1, 1),
@@ -235,17 +233,45 @@ class ResUNet(nn.Module):
 
             self.denoise_deconv =  nn.Sequential(
                 nn.Upsample(scale_factor=2, mode='bilinear'),
-                nn.Conv2d(deconv_in_dim, out_ch//2, 3, 1, 1),
-                nn.BatchNorm2d(out_ch//2),
+                nn.Conv2d(deconv_in_dim, out_ch//2, 1, 1, 0),
                 nn.LeakyReLU(0.2, True),
                 nn.Upsample(scale_factor=2, mode='bilinear'),
-                nn.Conv2d(out_ch//2, out_ch//4, 3, 1, 1),
-                nn.BatchNorm2d(out_ch//4),
+                nn.Conv2d(out_ch//2, out_ch//4, 1, 1, 0),
                 nn.LeakyReLU(0.2, True),
                 nn.Conv2d(out_ch//4, 3, 1, 1, 0),
                 # nn.Conv2d(out_ch//4, 3, 3, 1, 1),
                 # nn.Sigmoid()            
             )
+
+
+            # self.reconst_deconv =  nn.Sequential(
+            #     nn.Upsample(scale_factor=2, mode='bilinear'),
+            #     nn.Conv2d(deconv_in_dim, out_ch//2, 3, 1, 1),
+            #     nn.BatchNorm2d(out_ch//2),
+            #     nn.LeakyReLU(0.2, True),
+            #     nn.Upsample(scale_factor=2, mode='bilinear'),
+            #     nn.Conv2d(out_ch//2, out_ch//4, 3, 1, 1),
+            #     nn.BatchNorm2d(out_ch//4),
+            #     nn.LeakyReLU(0.2, True),
+            #     nn.Conv2d(out_ch//4, 3, 1, 1, 0),
+            #     # nn.Conv2d(out_ch//4, 3, 3, 1, 1),
+            #     # nn.Sigmoid()            
+            # )
+
+
+            # self.denoise_deconv =  nn.Sequential(
+            #     nn.Upsample(scale_factor=2, mode='bilinear'),
+            #     nn.Conv2d(deconv_in_dim, out_ch//2, 3, 1, 1),
+            #     nn.BatchNorm2d(out_ch//2),
+            #     nn.LeakyReLU(0.2, True),
+            #     nn.Upsample(scale_factor=2, mode='bilinear'),
+            #     nn.Conv2d(out_ch//2, out_ch//4, 3, 1, 1),
+            #     nn.BatchNorm2d(out_ch//4),
+            #     nn.LeakyReLU(0.2, True),
+            #     nn.Conv2d(out_ch//4, 3, 1, 1, 0),
+            #     # nn.Conv2d(out_ch//4, 3, 3, 1, 1),
+            #     # nn.Sigmoid()            
+            # )
 
 
     def _make_layer(self, block, planes, blocks, stride=1, dilate=False):

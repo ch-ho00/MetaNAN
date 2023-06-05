@@ -191,7 +191,7 @@ class Trainer:
                 for signal in reconst_signal:
                     if self.ssim_alpha > 0:
                         ssim_tmp, l1_tmp = self.ssim_l1_loss(org_src_rgbs[0].permute(0,3,1,2), signal, raw_signal=True, white_level=ray_batch['white_level'])
-                        reconst_ssim_loss += ssim_tmp
+                        # reconst_ssim_loss += ssim_tmp
                         reconst_loss += l1_tmp                        
                     else:
                         reconst_loss += signal.permute(0,2,3,1) - org_src_rgbs[0]                
@@ -201,8 +201,8 @@ class Trainer:
                 loss += self.model.args.lambda_reconst_loss * (reconst_loss + reconst_ssim_loss) 
                 self.scalars_to_log['train/reconst/total_loss'] = self.model.args.lambda_reconst_loss * (reconst_loss + reconst_ssim_loss).item()
                 self.scalars_to_log['train/reconst/l1_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
-                if self.ssim_alpha > 0:
-                    self.scalars_to_log['train/reconst/ssim_loss'] = self.model.args.lambda_reconst_loss * reconst_ssim_loss.item()
+                # if self.ssim_alpha > 0:
+                #     self.scalars_to_log['train/reconst/ssim_loss'] = self.model.args.lambda_reconst_loss * reconst_ssim_loss.item()
 
             if self.model.args.lambda_denoise_loss > 0:
                 denoise_loss = 0
