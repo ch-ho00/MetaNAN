@@ -165,15 +165,19 @@ class Projector:
         feat_sampled = feat_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, d]
         rgb_feat_sampled = torch.cat([rgbs_sampled, feat_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
 
+        reconst_sampled = None
         if reconst_signal != None:
             reconst_sampled = F.grid_sample(reconst_signal, norm_xys, align_corners=True)
             reconst_sampled = reconst_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, 3]
-            rgb_feat_sampled = torch.cat([rgb_feat_sampled, reconst_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
+            reconst_sampled = self.reshape_features(reconst_sampled)
+            # rgb_feat_sampled = torch.cat([rgb_feat_sampled, reconst_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
 
+        denoised_sampled = None
         if denoise_signal != None:
             denoised_sampled = F.grid_sample(denoise_signal, norm_xys, align_corners=True)
             denoised_sampled = denoised_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, 3]
-            rgb_feat_sampled = torch.cat([rgb_feat_sampled, denoised_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
+            denoised_sampled = self.reshape_features(denoised_sampled)
+            # rgb_feat_sampled = torch.cat([rgb_feat_sampled, denoised_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
 
         rgb_feat_sampled = self.reshape_features(rgb_feat_sampled)
 
@@ -183,7 +187,7 @@ class Projector:
 
         # mask
         mask = mask.permute(1, 2, 0)[..., None]  # [n_rays, n_samples, n_views, 1]
-        return rgb_feat_sampled, ray_diff, mask, org_rgbs_sampled, sigma_estimate
+        return rgb_feat_sampled, ray_diff, mask, org_rgbs_sampled, [sigma_estimate, denoised_sampled, reconst_sampled]
 
     @staticmethod
     def pixel_location_expander_factory(kernel_size, device):

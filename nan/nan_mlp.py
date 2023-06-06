@@ -77,7 +77,7 @@ class NanMLP(nn.Module):
 
         self.n_samples = n_samples
 
-        reconst_dim = 3 * (int(self.args.denoise_vol) + int(self.args.reconst_vol))
+        reconst_dim = 0 #
         self.ray_dir_fc = nn.Sequential(nn.Linear(4, 16),
                                         self.activation_func,
                                         nn.Linear(16, in_feat_ch + 3 + reconst_dim), #  
@@ -86,6 +86,8 @@ class NanMLP(nn.Module):
         base_input_channels = (in_feat_ch + 3 + reconst_dim) * 3
         if self.args.noise_feat:
             base_input_channels += 3
+            
+        base_input_channels += 3 * (int(self.args.denoise_vol) + int(self.args.reconst_vol))
 
         self.base_fc = nn.Sequential(nn.Linear(base_input_channels, 64),
                                      self.activation_func,
@@ -203,7 +205,16 @@ class NanMLP(nn.Module):
             feat, _ = self.views_attention(feat, feat, feat, (num_valid_obs > 1).unsqueeze(-1))
 
         if self.args.noise_feat:
-            feat = torch.cat([feat, sigma_est[:, :, self.k_mid:self.k_mid + 1, self.k_mid:self.k_mid + 1]], dim=-1)
+            if isinstance(sigma_est, list):
+                sigma_est, reconst_signal, denoise_signal = sigma_est
+                concat_feats = [feat, sigma_est[:, :, self.k_mid:self.k_mid + 1, self.k_mid:self.k_mid + 1]]
+                if self.args.denoise_vol and denoise_signal != None: 
+                    concat_feats += [denoise_signal[:, :, self.k_mid:self.k_mid + 1, self.k_mid:self.k_mid + 1]]
+                if self.args.reconst_vol and reconst_signal != None:
+                    concat_feats += [reconst_signal[:, :, self.k_mid:self.k_mid + 1, self.k_mid:self.k_mid + 1]]
+                feat = torch.cat(concat_feats, dim=-1)            
+            else:
+                feat = torch.cat([feat, sigma_est[:, :, self.k_mid:self.k_mid + 1, self.k_mid:self.k_mid + 1]], dim=-1)
 
         weight = self.compute_weights(ray_diff, mask)
 
