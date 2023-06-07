@@ -292,22 +292,12 @@ class RayRender:
             conv1_weights = self.model.weight_generator(noise_vector)
 
 
-        if self.model.args.seperate_branch:
-            orig_src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2).clone()
-            featmaps = self.model.feature_net(orig_src_rgbs, conv1_weights, reconstruct=True)
-            
+        if self.model.pre_net is not None:
             src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
-            smooth_featmaps = self.model.feature_net(src_rgbs, conv1_weights, reconstruct=False)
+            featmaps = self.model.feature_net(src_rgbs, conv1_weights, reconstruct=self.model.args.denoise_vol or self.model.args.reconst_vol)
             src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
-            for level in ['coarse', 'fine']:
-                featmaps[level] = torch.cat([featmaps[level], smooth_featmaps[level]], dim=1)
         else:
-            if self.model.pre_net is not None:
-                src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
-                featmaps = self.model.feature_net(src_rgbs, conv1_weights, reconstruct=self.model.args.denoise_vol or self.model.args.reconst_vol)
-                src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
-            else:
-                featmaps = self.model.feature_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))
+            featmaps = self.model.feature_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))
 
         if self.model.args.auto_encoder:
             reconst_signal = [featmaps['reconst_signal_coarse'], featmaps['reconst_signal_fine']] if self.model.args.per_level_render else [featmaps['reconst_signal']]

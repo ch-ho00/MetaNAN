@@ -321,10 +321,10 @@ class NANScheme(nn.Module):
 
     def nan_factory(self, net_type, device) -> NanMLP:
         if net_type == 'coarse':
-            feat_dim = self.args.coarse_feat_dim * (2 if self.args.seperate_branch else 1)
+            feat_dim = self.args.coarse_feat_dim
             n_samples = self.args.N_samples
         elif net_type == 'fine':
-            feat_dim = self.args.fine_feat_dim * (2 if self.args.seperate_branch else 1)
+            feat_dim = self.args.fine_feat_dim
             n_samples = self.args.N_samples + self.args.N_importance
         else:
             raise NotImplementedError

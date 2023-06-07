@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : metaAE_revised_tripleVol_ssim0.01_1e-1_1e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : test #metaAE_perLevel_revised_tripleVol_ssim0.01_1e-1_1e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -31,9 +31,9 @@ lambda_tv_loss              : 0.0
 ssim_alpha                  : 0.01
 reconst_vol                 : True
 denoise_vol                 : True
-per_level_render            : False
+per_level_render            : True
 frozen_prenet               : False
-seperate_branch             : False
+decode_trans_feat             : False
 
 ### TESTING
 chunk_size                  : 2048 # can be bigger depend on the gpu memory
