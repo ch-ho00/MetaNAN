@@ -72,7 +72,6 @@ def render_single_image(ray_sampler: RaySampler,
                                             sigma_estimate=ray_sampler.sigma_estimate.to(device),
                                             reconst_signal=reconst_signal,
                                             denoise_signal=denoise_signal)
-
         all_ret['coarse'].append(ret['coarse'])
         if ret['fine'] is not None:
             all_ret['fine'].append(ret['fine'])

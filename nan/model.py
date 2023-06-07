@@ -165,6 +165,11 @@ class NANScheme(nn.Module):
             self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(3, 3), sigma=(1.5, 1.5)).to(device)
         else:
             self.pre_net = None
+            
+        if args.decode_trans_feat:
+            self.decode_feat_fc = nn.Sequential(nn.Linear(args.coarse_feat_dim + 3, 64),
+                                            nn.ELU(inplace=True),
+                                            nn.Linear(64, 3)).to(device)
 
         out_folder = OUT_DIR / args.expname
 

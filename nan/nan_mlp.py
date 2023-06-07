@@ -180,7 +180,7 @@ class NanMLP(nn.Module):
 
         # [n_rays, n_samples, n_views, 3*n_feat]
         num_valid_obs = mask.sum(dim=-2)
-        ext_feat, weight = self.compute_extended_features(ray_diff, rgb_feat, mask, num_valid_obs, sigma_est)
+        ext_feat, weight, post_transform_feat = self.compute_extended_features(ray_diff, rgb_feat, mask, num_valid_obs, sigma_est)
 
         x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32)
         x_vis = self.vis_fc(x * weight)
@@ -192,7 +192,8 @@ class NanMLP(nn.Module):
         rho_out, rho_globalfeat = self.compute_rho(x[:, :, 0, 0], vis[:, :, 0, 0], num_valid_obs[:, :, 0, 0])
         x = torch.cat([x, vis, ray_diff], dim=-1)
         rgb_out, w_rgb = self.compute_rgb(x, mask, rgb_in)
-        return rgb_out, rho_out, w_rgb, rgb_in, rho_globalfeat
+
+        return rgb_out, rho_out, w_rgb, rgb_in, rho_globalfeat, post_transform_feat
 
     def compute_extended_features(self, ray_diff, rgb_feat, mask, num_valid_obs, sigma_est):
         direction_feat = self.ray_dir_fc(ray_diff)  # [n_rays, n_samples, k, k, n_views, 35]
@@ -203,7 +204,7 @@ class NanMLP(nn.Module):
         if self.args.views_attn:
             r, s, k, _, v, f = feat.shape
             feat, _ = self.views_attention(feat, feat, feat, (num_valid_obs > 1).unsqueeze(-1))
-
+            post_transform_feat = feat
         if self.args.noise_feat:
             if isinstance(sigma_est, list):
                 sigma_est, reconst_signal, denoise_signal = sigma_est
@@ -224,7 +225,7 @@ class NanMLP(nn.Module):
         globalfeat = globalfeat.expand(*rgb_feat.shape[:-1], globalfeat.shape[-1])
 
         ext_feat = torch.cat([globalfeat, feat], dim=-1)
-        return ext_feat, weight
+        return ext_feat, weight, post_transform_feat
 
     def compute_weights(self, ray_diff, mask):
         if self.anti_alias_pooling:

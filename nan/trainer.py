@@ -179,11 +179,27 @@ class Trainer:
         if batch_out['fine'] is not None:
             loss += self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
 
+
+        if self.model.args.annealing_loss:
+            factor = ALPHA ** global_step
+        else:
+            factor = 1 
+
+        if self.model.args.decode_trans_feat:
+            decoded_coarse_rgb = self.model.decode_feat_fc(batch_out['coarse'].post_transform_feat)
+            decoded_fine_rgb = self.model.decode_feat_fc(batch_out['fine'].post_transform_feat)
+
+            coarse_rgb_err = torch.abs(batch_out['coarse'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_coarse_rgb).squeeze()
+            coarse_rgb_err = torch.mean(coarse_rgb_err * batch_out['coarse'].proj_mask.int())
+
+            fine_rgb_err = torch.abs(batch_out['fine'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_fine_rgb).squeeze()
+            fine_rgb_err = torch.mean(fine_rgb_err * batch_out['fine'].proj_mask.int())
+
+            loss += self.model.args.lambda_reconst_loss * (coarse_rgb_err + fine_rgb_err) * factor
+            self.scalars_to_log['train/decode/l1_loss_fine'] = self.model.args.lambda_reconst_loss * fine_rgb_err.item() * factor
+            self.scalars_to_log['train/decode/l1_loss_coarse'] = self.model.args.lambda_reconst_loss * coarse_rgb_err.item() * factor
+
         if self.model.args.auto_encoder:
-            if self.model.args.annealing_loss:
-                factor = ALPHA ** global_step
-            else:
-                factor = 1 
 
             if self.model.args.lambda_reconst_loss > 0:
                 reconst_loss = 0
@@ -298,12 +314,13 @@ class Trainer:
             gt_img = gt_img[::render_stride, ::render_stride]
             average_im = average_im[::render_stride, ::render_stride]
             reconst_signal = None
-            if self.args.lambda_reconst_loss > 0 :
-                reconst_signal = ret['reconst_signal'][-1][...,::render_stride, ::render_stride].detach().cpu()
-                reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
-            elif self.args.lambda_denoise_loss > 0 :
-                reconst_signal = ret['denoised_signal'][-1][...,::render_stride, ::render_stride].detach().cpu()
-                reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
+            if self.args.auto_encoder:
+                if self.args.lambda_reconst_loss > 0 :
+                    reconst_signal = ret['reconst_signal'][-1][...,::render_stride, ::render_stride].detach().cpu()
+                    reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
+                elif self.args.lambda_denoise_loss > 0 :
+                    reconst_signal = ret['denoised_signal'][-1][...,::render_stride, ::render_stride].detach().cpu()
+                    reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
                 
         rgb_gt = img_HWC2CHW(gt_img)
         average_im = img_HWC2CHW(average_im)

@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : test #metaAE_perLevel_revised_tripleVol_ssim0.01_1e-1_1e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : nan_postTransform_reconst_1e-1 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -21,19 +21,19 @@ workers                     : 0
 
 
 ## AutoEncoder Module
-auto_encoder                : True
-meta_module                 : True
+auto_encoder                : False
+meta_module                 : False
 patch_kernel                : False
 annealing_loss              : False
-lambda_denoise_loss         : 0.1
+lambda_denoise_loss         : 0.0
 lambda_reconst_loss         : 0.1
 lambda_tv_loss              : 0.0
-ssim_alpha                  : 0.01
-reconst_vol                 : True
-denoise_vol                 : True
-per_level_render            : True
+ssim_alpha                  : 0.0
+reconst_vol                 : False
+denoise_vol                 : False
+per_level_render            : False
 frozen_prenet               : False
-decode_trans_feat             : False
+decode_trans_feat           : True
 
 ### TESTING
 chunk_size                  : 2048 # can be bigger depend on the gpu memory

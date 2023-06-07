@@ -12,7 +12,7 @@ class RaysOutput:
     Object that aggregate the network output along the rays.
     """
     def __init__(self, rgb_map, depth_map, weights=None, mask=None, alpha=None, z_vals=None, rho=None,
-                 debug=None):
+                 debug=None, proj_mask = None, proj_noisy_rgb = None, post_transform_feat = None):
         self.rgb = rgb_map
         self.depth = depth_map
         self.weights = weights  # used for importance sampling of fine samples
@@ -20,6 +20,9 @@ class RaysOutput:
         self.alpha = alpha
         self.z_vals = z_vals
         self.rho = rho
+        self.proj_mask = proj_mask
+        self.proj_noisy_rgb = proj_noisy_rgb
+        self.post_transform_feat = post_transform_feat
         self.debug = debug
 
     @classmethod
@@ -85,10 +88,12 @@ class RaysOutput:
 
     @classmethod
     def empty_ret(cls):
-        return cls(rgb_map=[], depth_map=[], weights=[], mask=[], alpha=[], z_vals=[], rho=[], debug={})
+        return cls(rgb_map=[], depth_map=[], weights=[], mask=[], alpha=[], z_vals=[], rho=[], debug={}, proj_mask=[], proj_noisy_rgb=[], post_transform_feat=[])
 
     def append(self, ret):
         for k, v in ret.__dict__.items():
+            if k in ['proj_mask','proj_noisy_rgb','post_transform_feat']:
+                continue
             if v is None:
                 continue
             if type(v) == torch.Tensor:

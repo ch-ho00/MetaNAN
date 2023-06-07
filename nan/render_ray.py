@@ -265,6 +265,9 @@ class RayRender:
                                                                org_rgb, sigma_est)
         ray_outputs = RaysOutput.raw2output(rgb_out, rho_out, z_vals, pts_mask, white_bkgd=self.white_bkgd)
 
+        ray_outputs.proj_mask = pts_mask
+        ray_outputs.proj_noisy_rgb = debug_info[1]
+        ray_outputs.post_transform_feat = debug_info[-1]
         if save_idx is not None:
             debug_dict = {}
             for idx, pixel in save_idx:
