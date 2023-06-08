@@ -180,14 +180,14 @@ class Projector:
             # rgb_feat_sampled = torch.cat([rgb_feat_sampled, denoised_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
 
         rgb_feat_sampled = self.reshape_features(rgb_feat_sampled)
-
+        feat_sampled = self.reshape_features(feat_sampled)
         # ray_diff
         ray_diff = self.compute_angle(xyz, query_camera, src_cameras)
         ray_diff = ray_diff.permute(1, 2, 0, 3).unsqueeze(-3).unsqueeze(-3)
 
         # mask
         mask = mask.permute(1, 2, 0)[..., None]  # [n_rays, n_samples, n_views, 1]
-        return rgb_feat_sampled, ray_diff, mask, org_rgbs_sampled, [sigma_estimate, denoised_sampled, reconst_sampled]
+        return rgb_feat_sampled, ray_diff, mask, org_rgbs_sampled, [sigma_estimate, denoised_sampled, reconst_sampled], feat_sampled
 
     @staticmethod
     def pixel_location_expander_factory(kernel_size, device):

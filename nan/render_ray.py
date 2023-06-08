@@ -256,7 +256,7 @@ class RayRender:
                                           featmaps=featmaps[level],
                                           reconst_signal=reconst_signal,
                                           denoise_signal=denoise_signal)  # [N_rays, N_samples, N_views, x]
-        rgb_feat, ray_diff, pts_mask, org_rgb, sigma_est = proj_out
+        rgb_feat, ray_diff, pts_mask, org_rgb, sigma_est, proj_feat = proj_out
 
         # [N_rays, N_samples, 4]
         # Process the feature vectors of all 3D points along each ray to predict density and rgb value
@@ -267,7 +267,9 @@ class RayRender:
 
         ray_outputs.proj_mask = pts_mask
         ray_outputs.proj_noisy_rgb = debug_info[1]
-        ray_outputs.post_transform_feat = debug_info[-1]
+        ray_outputs.transformer_tar_feat = debug_info[-2]
+        ray_outputs.transformer_src_feat = debug_info[-1]
+        ray_outputs.pre_transform_feat = proj_feat
         if save_idx is not None:
             debug_dict = {}
             for idx, pixel in save_idx:

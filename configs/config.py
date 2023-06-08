@@ -106,6 +106,9 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--per_level_render', default=False, action="store_true")    
         parser.add_argument('--frozen_prenet', default=False, action="store_true")
         parser.add_argument('--decode_trans_feat', default=False, action="store_true")
+        parser.add_argument('--decode_pre_feat', default=False, action="store_true")
+        parser.add_argument('--transform_tar_feat', default=False, action="store_true")
+        parser.add_argument('--transform_src_feat', default=False, action="store_true")
 
         # ########## dataset options ##########
         # ## train and eval dataset

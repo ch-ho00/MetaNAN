@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_postTransform_reconst_1e-1 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : NAN_SrcFeatTransform_1e-1 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -33,7 +33,10 @@ reconst_vol                 : False
 denoise_vol                 : False
 per_level_render            : False
 frozen_prenet               : False
-decode_trans_feat           : True
+decode_trans_feat           : False
+decode_pre_feat             : False
+transform_tar_feat          : False
+transform_src_feat          : True
 
 ### TESTING
 chunk_size                  : 2048 # can be bigger depend on the gpu memory

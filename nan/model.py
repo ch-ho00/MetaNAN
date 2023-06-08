@@ -166,10 +166,17 @@ class NANScheme(nn.Module):
         else:
             self.pre_net = None
             
-        if args.decode_trans_feat:
-            self.decode_feat_fc = nn.Sequential(nn.Linear(args.coarse_feat_dim + 3, 64),
-                                            nn.ELU(inplace=True),
-                                            nn.Linear(64, 3)).to(device)
+
+        if args.transform_tar_feat:
+            self.decode_tar_feat_fc = nn.Sequential(nn.Linear(args.coarse_feat_dim + 3, 64),
+                                        nn.ELU(inplace=True),
+                                        nn.Linear(64, 3)).to(device)
+
+        if args.transform_src_feat:
+            self.decode_src_feat_fc = nn.Sequential(nn.Linear(args.coarse_feat_dim + 3, 64),
+                                        nn.ELU(inplace=True),
+                                        nn.Linear(64, 3)).to(device)
+
 
         out_folder = OUT_DIR / args.expname
 

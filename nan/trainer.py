@@ -185,19 +185,39 @@ class Trainer:
         else:
             factor = 1 
 
-        if self.model.args.decode_trans_feat:
-            decoded_coarse_rgb = self.model.decode_feat_fc(batch_out['coarse'].post_transform_feat)
-            decoded_fine_rgb = self.model.decode_feat_fc(batch_out['fine'].post_transform_feat)
 
-            coarse_rgb_err = torch.abs(batch_out['coarse'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_coarse_rgb).squeeze()
-            coarse_rgb_err = torch.mean(coarse_rgb_err * batch_out['coarse'].proj_mask.int())
+        if self.model.args.transform_tar_feat:
 
-            fine_rgb_err = torch.abs(batch_out['fine'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_fine_rgb).squeeze()
-            fine_rgb_err = torch.mean(fine_rgb_err * batch_out['fine'].proj_mask.int())
+            decoded_coarse_tar = self.model.decode_tar_feat_fc(batch_out['coarse'].transformer_tar_feat)
+            decoded_fine_tar = self.model.decode_tar_feat_fc(batch_out['fine'].transformer_tar_feat)
 
-            loss += self.model.args.lambda_reconst_loss * (coarse_rgb_err + fine_rgb_err) * factor
-            self.scalars_to_log['train/decode/l1_loss_fine'] = self.model.args.lambda_reconst_loss * fine_rgb_err.item() * factor
-            self.scalars_to_log['train/decode/l1_loss_coarse'] = self.model.args.lambda_reconst_loss * coarse_rgb_err.item() * factor
+            coarse_tar_err = torch.abs(batch_out['coarse'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_coarse_tar)
+            coarse_tar_err = torch.mean(coarse_tar_err * batch_out['coarse'].proj_mask[:,:,None,None].float())
+
+            fine_tar_err = torch.abs(batch_out['fine'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_fine_tar)
+            fine_tar_err = torch.mean(fine_tar_err * batch_out['fine'].proj_mask[:,:,None,None].float())
+
+            loss += self.model.args.lambda_reconst_loss * (coarse_tar_err + fine_tar_err) * factor
+            self.scalars_to_log['train/decode_tar_feat/l1_loss_fine'] = self.model.args.lambda_reconst_loss * fine_tar_err.item() * factor
+            self.scalars_to_log['train/decode_tar_feat/l1_loss_coarse'] = self.model.args.lambda_reconst_loss * coarse_tar_err.item() * factor 
+
+        if self.model.args.transform_src_feat:
+
+            decoded_coarse_src = self.model.decode_src_feat_fc(batch_out['coarse'].transformer_src_feat)
+            decoded_fine_tar = self.model.decode_src_feat_fc(batch_out['fine'].transformer_src_feat)
+
+            coarse_src_err = torch.abs(batch_out['coarse'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_coarse_src)
+            coarse_src_err = torch.mean(coarse_src_err * batch_out['coarse'].proj_mask[:,:,None,None].float())
+
+            fine_src_err = torch.abs(batch_out['fine'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_fine_tar)
+            fine_src_err = torch.mean(fine_src_err * batch_out['fine'].proj_mask[:,:,None,None].float())
+
+            loss += self.model.args.lambda_reconst_loss * (coarse_src_err + fine_src_err) * factor
+            self.scalars_to_log['train/decode_src_feat/l1_loss_fine'] = self.model.args.lambda_reconst_loss * fine_src_err.item() * factor 
+            self.scalars_to_log['train/decode_src_feat/l1_loss_coarse'] = self.model.args.lambda_reconst_loss * coarse_src_err.item() * factor
+
+            
+
 
         if self.model.args.auto_encoder:
 

@@ -95,6 +95,19 @@ class NanMLP(nn.Module):
                                      self.activation_func)
 
         if args.views_attn:
+            if self.args.transform_tar_feat:
+                self.transform_tar_fc = nn.Sequential(nn.Linear(in_feat_ch + 3, 32),
+                                    self.activation_func,
+                                    nn.Linear(32, in_feat_ch + 3),
+                                    self.activation_func,
+                                    )
+            if self.args.transform_src_feat:
+                self.transform_src_fc = nn.Sequential(nn.Linear(in_feat_ch + 3, 32),
+                                    self.activation_func,
+                                    nn.Linear(32, in_feat_ch + 3),
+                                    self.activation_func,
+                                    )
+
             input_channel = in_feat_ch + 3 + reconst_dim
             self.views_attention = MultiHeadAttention(5, input_channel, 7, 8)
 
@@ -180,7 +193,7 @@ class NanMLP(nn.Module):
 
         # [n_rays, n_samples, n_views, 3*n_feat]
         num_valid_obs = mask.sum(dim=-2)
-        ext_feat, weight, post_transform_feat = self.compute_extended_features(ray_diff, rgb_feat, mask, num_valid_obs, sigma_est)
+        ext_feat, weight, tar_feat, src_feat = self.compute_extended_features(ray_diff, rgb_feat, mask, num_valid_obs, sigma_est)
 
         x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32)
         x_vis = self.vis_fc(x * weight)
@@ -193,18 +206,21 @@ class NanMLP(nn.Module):
         x = torch.cat([x, vis, ray_diff], dim=-1)
         rgb_out, w_rgb = self.compute_rgb(x, mask, rgb_in)
 
-        return rgb_out, rho_out, w_rgb, rgb_in, rho_globalfeat, post_transform_feat
+        return rgb_out, rho_out, w_rgb, rgb_in, rho_globalfeat, tar_feat, src_feat
 
     def compute_extended_features(self, ray_diff, rgb_feat, mask, num_valid_obs, sigma_est):
         direction_feat = self.ray_dir_fc(ray_diff)  # [n_rays, n_samples, k, k, n_views, 35]
-        rgb_feat = rgb_feat[:, :, self.k_mid:self.k_mid + 1,
-                   self.k_mid:self.k_mid + 1] + direction_feat  # [n_rays, n_samples, 1, 1, n_views, 35]
+        rgb_feat = rgb_feat[:, :, self.k_mid:self.k_mid + 1, 
+                    self.k_mid:self.k_mid + 1] + direction_feat  # [n_rays, n_samples, 1, 1, n_views, 35]
         feat = rgb_feat
 
         if self.args.views_attn:
             r, s, k, _, v, f = feat.shape
-            feat, _ = self.views_attention(feat, feat, feat, (num_valid_obs > 1).unsqueeze(-1))
-            post_transform_feat = feat
+            tar_feat = self.transform_tar_fc(feat) if self.args.transform_tar_feat else feat
+            src_feat = self.transform_src_fc(feat) if self.args.transform_src_feat else feat
+
+            feat, _ = self.views_attention(tar_feat, src_feat, src_feat, (num_valid_obs > 1).unsqueeze(-1))
+
         if self.args.noise_feat:
             if isinstance(sigma_est, list):
                 sigma_est, reconst_signal, denoise_signal = sigma_est
@@ -225,7 +241,7 @@ class NanMLP(nn.Module):
         globalfeat = globalfeat.expand(*rgb_feat.shape[:-1], globalfeat.shape[-1])
 
         ext_feat = torch.cat([globalfeat, feat], dim=-1)
-        return ext_feat, weight, post_transform_feat
+        return ext_feat, weight, tar_feat, src_feat
 
     def compute_weights(self, ray_diff, mask):
         if self.anti_alias_pooling:
