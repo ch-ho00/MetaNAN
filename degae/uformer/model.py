@@ -9,7 +9,9 @@ import math
 import numpy as np
 import time
 from torch import einsum
-
+import sys
+sys.path.append('/disk1/chanho/3d/MetaNAN')
+from nan.feature_network import BasicBlock
 
 class FastLeFF(nn.Module):
     
@@ -663,21 +665,25 @@ class LeFF(nn.Module):
         self.hidden_dim = hidden_dim
         self.eca = eca_layer_1d(dim) if use_eca else nn.Identity()
 
-    def forward(self, x):
+    def forward(self, x, img_wh=None):
         # bs x hw x c
         bs, hw, c = x.size()
-        hh = int(math.sqrt(hw))
+        if img_wh == None:
+            hh = int(math.sqrt(hw))
+            ww = hh
+        else:
+            ww, hh = img_wh
 
         x = self.linear1(x)
 
         # spatial restore
-        x = rearrange(x, ' b (h w) (c) -> b c h w ', h = hh, w = hh)
+        x = rearrange(x, ' b (h w) (c) -> b c h w ', h = hh, w = ww)
         # bs,hidden_dim,32x32
 
         x = self.dwconv(x)
 
         # flaten
-        x = rearrange(x, ' b c h w -> b (h w) c', h = hh, w = hh)
+        x = rearrange(x, ' b c h w -> b (h w) c', h = hh, w = ww)
 
         x = self.linear2(x)
         x = self.eca(x)
@@ -736,11 +742,14 @@ class Downsample(nn.Module):
         self.in_channel = in_channel
         self.out_channel = out_channel
 
-    def forward(self, x):
+    def forward(self, x, img_wh=None):
         B, L, C = x.shape
         # import pdb;pdb.set_trace()
-        H = int(math.sqrt(L))
-        W = int(math.sqrt(L))
+        if img_wh == None:
+            H = int(math.sqrt(L))
+            W = int(math.sqrt(L))
+        else:
+            W,H = img_wh
         x = x.transpose(1, 2).contiguous().view(B, C, H, W)
         out = self.conv(x).flatten(2).transpose(1,2).contiguous()  # B H*W C
         return out
@@ -762,10 +771,14 @@ class Upsample(nn.Module):
         self.in_channel = in_channel
         self.out_channel = out_channel
         
-    def forward(self, x):
+    def forward(self, x, img_wh=None):
         B, L, C = x.shape
-        H = int(math.sqrt(L))
-        W = int(math.sqrt(L))
+        if img_wh == None:
+            H = int(math.sqrt(L))
+            W = int(math.sqrt(L))
+        else:
+            W, H = img_wh
+
         x = x.transpose(1, 2).contiguous().view(B, C, H, W)
         out = self.deconv(x).flatten(2).transpose(1,2).contiguous() # B H*W C
         return out
@@ -825,10 +838,13 @@ class OutputProj(nn.Module):
         self.in_channel = in_channel
         self.out_channel = out_channel
 
-    def forward(self, x):
+    def forward(self, x, img_wh=None):
         B, L, C = x.shape
-        H = int(math.sqrt(L))
-        W = int(math.sqrt(L))
+        if img_wh == None:
+            H = int(math.sqrt(L))
+            W = int(math.sqrt(L))
+        else:
+            W, H = img_wh
         x = x.transpose(1, 2).view(B, C, H, W)
         x = self.proj(x)
         if self.norm is not None:
@@ -905,10 +921,13 @@ class LeWinTransformerBlock(nn.Module):
         return f"dim={self.dim}, input_resolution={self.input_resolution}, num_heads={self.num_heads}, " \
                f"win_size={self.win_size}, shift_size={self.shift_size}, mlp_ratio={self.mlp_ratio},modulator={self.modulator}"
 
-    def forward(self, x, mask=None):
+    def forward(self, x, mask=None, img_wh=None):
         B, L, C = x.shape
-        H = int(math.sqrt(L))
-        W = int(math.sqrt(L))
+        if img_wh == None:
+            H = int(math.sqrt(L))
+            W = int(math.sqrt(L))
+        else:
+            W, H = img_wh
         
         ## input mask
         if mask != None:
@@ -984,7 +1003,7 @@ class LeWinTransformerBlock(nn.Module):
 
         # FFN
         x = shortcut + self.drop_path(x)
-        x = x + self.drop_path(self.mlp(self.norm2(x)))
+        x = x + self.drop_path(self.mlp(self.norm2(x), img_wh=img_wh))
         del attn_mask
         return x
 
@@ -1051,12 +1070,12 @@ class BasicUformerLayer(nn.Module):
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"    
 
-    def forward(self, x, mask=None):
+    def forward(self, x, mask=None, img_wh=None):
         for blk in self.blocks:
             if self.use_checkpoint:
                 x = checkpoint.checkpoint(blk, x)
             else:
-                x = blk(x,mask)
+                x = blk(x,mask, img_wh=img_wh)
         return x
 
     def flops(self):
@@ -1067,7 +1086,7 @@ class BasicUformerLayer(nn.Module):
 
 
 class Uformer(nn.Module):
-    def __init__(self, img_size=256, in_chans=3, dd_in=3,
+    def __init__(self, img_wh=[768,1024], in_chans=3, dd_in=3,
                  embed_dim=32, depths=[2, 2, 2, 2, 2, 2, 2, 2, 2], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
                  win_size=8, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
@@ -1085,7 +1104,7 @@ class Uformer(nn.Module):
         self.token_projection = token_projection
         self.mlp = token_mlp
         self.win_size =win_size
-        self.reso = img_size
+        self.img_wh = img_wh
         self.pos_drop = nn.Dropout(p=drop_rate)
         self.dd_in = dd_in
 
@@ -1117,8 +1136,8 @@ class Uformer(nn.Module):
         self.dowsample_0 = dowsample(embed_dim, embed_dim*2)
         self.encoderlayer_1 = BasicUformerLayer(dim=embed_dim*2,
                             output_dim=embed_dim*2,
-                            input_resolution=(img_size // 2,
-                                                img_size // 2),
+                            input_resolution=(self.img_wh[1] // 2,
+                                                self.img_wh[0] // 2),
                             depth=depths[1],
                             num_heads=num_heads[1],
                             win_size=win_size,
@@ -1132,8 +1151,8 @@ class Uformer(nn.Module):
         self.dowsample_1 = dowsample(embed_dim*2, embed_dim*4)
         self.encoderlayer_2 = BasicUformerLayer(dim=embed_dim*4,
                             output_dim=embed_dim*4,
-                            input_resolution=(img_size // (2 ** 2),
-                                                img_size // (2 ** 2)),
+                            input_resolution=(self.img_wh[1] // (2 ** 2),
+                                                self.img_wh[0] // (2 ** 2)),
                             depth=depths[2],
                             num_heads=num_heads[2],
                             win_size=win_size,
@@ -1147,8 +1166,8 @@ class Uformer(nn.Module):
         self.dowsample_2 = dowsample(embed_dim*4, embed_dim*8)
         self.encoderlayer_3 = BasicUformerLayer(dim=embed_dim*8,
                             output_dim=embed_dim*8,
-                            input_resolution=(img_size // (2 ** 3),
-                                                img_size // (2 ** 3)),
+                            input_resolution=(self.img_wh[1] // (2 ** 3),
+                                                self.img_wh[0] // (2 ** 3)),
                             depth=depths[3],
                             num_heads=num_heads[3],
                             win_size=win_size,
@@ -1164,8 +1183,8 @@ class Uformer(nn.Module):
         # Bottleneck
         self.conv = BasicUformerLayer(dim=embed_dim*16,
                             output_dim=embed_dim*16,
-                            input_resolution=(img_size // (2 ** 4),
-                                                img_size // (2 ** 4)),
+                            input_resolution=(self.img_wh[1] // (2 ** 4),
+                                                self.img_wh[0] // (2 ** 4)),
                             depth=depths[4],
                             num_heads=num_heads[4],
                             win_size=win_size,
@@ -1181,8 +1200,8 @@ class Uformer(nn.Module):
         self.upsample_0 = upsample(embed_dim*16, embed_dim*8)
         self.decoderlayer_0 = BasicUformerLayer(dim=embed_dim*16,
                             output_dim=embed_dim*16,
-                            input_resolution=(img_size // (2 ** 3),
-                                                img_size // (2 ** 3)),
+                            input_resolution=(self.img_wh[1] // (2 ** 3),
+                                                self.img_wh[0] // (2 ** 3)),
                             depth=depths[5],
                             num_heads=num_heads[5],
                             win_size=win_size,
@@ -1197,8 +1216,8 @@ class Uformer(nn.Module):
         self.upsample_1 = upsample(embed_dim*16, embed_dim*4)
         self.decoderlayer_1 = BasicUformerLayer(dim=embed_dim*8,
                             output_dim=embed_dim*8,
-                            input_resolution=(img_size // (2 ** 2),
-                                                img_size // (2 ** 2)),
+                            input_resolution=(self.img_wh[1] // (2 ** 2),
+                                                self.img_wh[0] // (2 ** 2)),
                             depth=depths[6],
                             num_heads=num_heads[6],
                             win_size=win_size,
@@ -1213,8 +1232,8 @@ class Uformer(nn.Module):
         self.upsample_2 = upsample(embed_dim*8, embed_dim*2)
         self.decoderlayer_2 = BasicUformerLayer(dim=embed_dim*4,
                             output_dim=embed_dim*4,
-                            input_resolution=(img_size // 2,
-                                                img_size // 2),
+                            input_resolution=(self.img_wh[1] // 2,
+                                                self.img_wh[0] // 2),
                             depth=depths[7],
                             num_heads=num_heads[7],
                             win_size=win_size,
@@ -1229,8 +1248,8 @@ class Uformer(nn.Module):
         self.upsample_3 = upsample(embed_dim*4, embed_dim)
         self.decoderlayer_3 = BasicUformerLayer(dim=embed_dim*2,
                             output_dim=embed_dim*2,
-                            input_resolution=(img_size,
-                                                img_size),
+                            input_resolution=(self.img_wh[1],
+                                                self.img_wh[0]),
                             depth=depths[8],
                             num_heads=num_heads[8],
                             win_size=win_size,
@@ -1270,68 +1289,68 @@ class Uformer(nn.Module):
         y = self.input_proj(x)
         y = self.pos_drop(y)
         #Encoder
-        conv0 = self.encoderlayer_0(y,mask=mask)
-        pool0 = self.dowsample_0(conv0)
-        conv1 = self.encoderlayer_1(pool0,mask=mask)
-        pool1 = self.dowsample_1(conv1)
-        conv2 = self.encoderlayer_2(pool1,mask=mask)
-        pool2 = self.dowsample_2(conv2)
-        conv3 = self.encoderlayer_3(pool2,mask=mask)
-        pool3 = self.dowsample_3(conv3)
+        conv0 = self.encoderlayer_0(y,mask=mask, img_wh=self.img_wh)
+        pool0 = self.dowsample_0(conv0, img_wh=self.img_wh)
+        conv1 = self.encoderlayer_1(pool0,mask=mask, img_wh=[dim // 2 for dim in self.img_wh])
+        pool1 = self.dowsample_1(conv1, img_wh=[dim // 2 for dim in self.img_wh])
+        conv2 = self.encoderlayer_2(pool1,mask=mask, img_wh=[dim // 2**2 for dim in self.img_wh])
+        pool2 = self.dowsample_2(conv2, img_wh=[dim // 2**2 for dim in self.img_wh])
+        conv3 = self.encoderlayer_3(pool2,mask=mask, img_wh=[dim // 2**3 for dim in self.img_wh] )
+        pool3 = self.dowsample_3(conv3, img_wh=[dim // 2**3 for dim in self.img_wh])
 
         # Bottleneck
-        conv4 = self.conv(pool3, mask=mask)
+        conv4 = self.conv(pool3, mask=mask, img_wh=[dim // 2**4 for dim in self.img_wh])
 
         #Decoder
-        up0 = self.upsample_0(conv4)
+        up0 = self.upsample_0(conv4, img_wh=[dim // 2**4 for dim in self.img_wh])
         deconv0 = torch.cat([up0,conv3],-1)
-        deconv0 = self.decoderlayer_0(deconv0,mask=mask)
+        deconv0 = self.decoderlayer_0(deconv0,mask=mask, img_wh=[dim // 2**3 for dim in self.img_wh])
         
-        up1 = self.upsample_1(deconv0)
+        up1 = self.upsample_1(deconv0, img_wh=[dim // 2**3 for dim in self.img_wh])
         deconv1 = torch.cat([up1,conv2],-1)
-        deconv1 = self.decoderlayer_1(deconv1,mask=mask)
+        deconv1 = self.decoderlayer_1(deconv1,mask=mask, img_wh=[dim // 2**2 for dim in self.img_wh])
 
-        up2 = self.upsample_2(deconv1)
+        up2 = self.upsample_2(deconv1, img_wh=[dim // 2**2 for dim in self.img_wh])
         deconv2 = torch.cat([up2,conv1],-1)
-        deconv2 = self.decoderlayer_2(deconv2,mask=mask)
+        deconv2 = self.decoderlayer_2(deconv2,mask=mask, img_wh=[dim // 2 for dim in self.img_wh])
 
-        up3 = self.upsample_3(deconv2)
+        up3 = self.upsample_3(deconv2, img_wh=[dim // 2 for dim in self.img_wh])
         deconv3 = torch.cat([up3,conv0],-1)
-        deconv3 = self.decoderlayer_3(deconv3,mask=mask)
+        deconv3 = self.decoderlayer_3(deconv3,mask=mask, img_wh=self.img_wh)
 
         # Output Projection
-        y = self.output_proj(deconv3)
+        y = self.output_proj(deconv3, img_wh=self.img_wh)
         return x + y if self.dd_in ==3 else y
 
     def flops(self):
         flops = 0
         # Input Projection
-        flops += self.input_proj.flops(self.reso,self.reso)
+        flops += self.input_proj.flops(self.img_wh[1],self.img_wh[0])
         # Encoder
-        flops += self.encoderlayer_0.flops()+self.dowsample_0.flops(self.reso,self.reso)
-        flops += self.encoderlayer_1.flops()+self.dowsample_1.flops(self.reso//2,self.reso//2)
-        flops += self.encoderlayer_2.flops()+self.dowsample_2.flops(self.reso//2**2,self.reso//2**2)
-        flops += self.encoderlayer_3.flops()+self.dowsample_3.flops(self.reso//2**3,self.reso//2**3)
+        flops += self.encoderlayer_0.flops()+self.dowsample_0.flops(self.img_wh[1],      self.img_wh[0])
+        flops += self.encoderlayer_1.flops()+self.dowsample_1.flops(self.img_wh[1]//2,   self.img_wh[0]//2)
+        flops += self.encoderlayer_2.flops()+self.dowsample_2.flops(self.img_wh[1]//2**2,self.img_wh[0]//2**2)
+        flops += self.encoderlayer_3.flops()+self.dowsample_3.flops(self.img_wh[1]//2**3,self.img_wh[0]//2**3)
 
         # Bottleneck
         flops += self.conv.flops()
 
         # Decoder
-        flops += self.upsample_0.flops(self.reso//2**4,self.reso//2**4)+self.decoderlayer_0.flops()
-        flops += self.upsample_1.flops(self.reso//2**3,self.reso//2**3)+self.decoderlayer_1.flops()
-        flops += self.upsample_2.flops(self.reso//2**2,self.reso//2**2)+self.decoderlayer_2.flops()
-        flops += self.upsample_3.flops(self.reso//2,self.reso//2)+self.decoderlayer_3.flops()
+        flops += self.upsample_0.flops(self.img_wh[1]//2**4,self.img_wh[0]//2**4)+self.decoderlayer_0.flops()
+        flops += self.upsample_1.flops(self.img_wh[1]//2**3,self.img_wh[0]//2**3)+self.decoderlayer_1.flops()
+        flops += self.upsample_2.flops(self.img_wh[1]//2**2,self.img_wh[0]//2**2)+self.decoderlayer_2.flops()
+        flops += self.upsample_3.flops(self.img_wh[1]//2,   self.img_wh[0]//2)+self.decoderlayer_3.flops()
         
         # Output Projection
-        flops += self.output_proj.flops(self.reso,self.reso)
+        flops += self.output_proj.flops(self.img_wh[1],self.img_wh[0])
         return flops
 
 
 if __name__ == "__main__":
-    input_size = 256
+    img_wh = [1024, 768]
     arch = Uformer
     depths=[2, 2, 2, 2, 2, 2, 2, 2, 2]
-    model_restoration = Uformer(img_size=input_size, embed_dim=16,depths=depths,
+    model_restoration = Uformer(img_wh=img_wh, embed_dim=16,depths=depths,
                  win_size=8, mlp_ratio=4., token_projection='linear', token_mlp='leff', modulator=True, shift_flag=False)
     print(model_restoration)
     # from ptflops import get_model_complexity_info
@@ -1339,5 +1358,7 @@ if __name__ == "__main__":
     #                                             print_per_layer_stat=True, verbose=True)
     # print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
     # print('{:<30}  {:<8}'.format('Number of parameters: ', params))
+    print(model_restoration(torch.randn(1,3,768,1024)).shape)
+    # import pdb; pdb.set_trace()
     print('# model_restoration parameters: %.2f M'%(sum(param.numel() for param in model_restoration.parameters())/ 1e6))
     print("number of GFLOPs: %.2f G"%(model_restoration.flops() / 1e9))
