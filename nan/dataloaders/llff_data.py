@@ -22,9 +22,10 @@ from pathlib import Path
 import imageio
 import numpy as np
 import torch
+import random
 
 from configs.local_setting import LOG_DIR
-from nan.dataloaders.basic_dataset import NoiseDataset
+from nan.dataloaders.basic_dataset import NoiseDataset, re_linearize
 from nan.dataloaders.data_utils import random_crop, get_nearest_pose_ids, random_flip, to_uint
 from nan.dataloaders.llff_data_utils import load_llff_data, batch_parse_llff_poses
 from nan.dataloaders.basic_dataset import Mode
@@ -62,7 +63,65 @@ class COLMAPDataset(NoiseDataset, ABC):
         return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files) * len(self.args.eval_gain)
 
     def __getitem__(self, idx):
+        if self.args.degae_training:
+            return self.get_singleview_item(idx)            
+        else:
+            return self.get_multiview_item(idx)
 
+    def get_singleview_item(self, idx):
+        # Read target data:
+        eval_gain = self.args.eval_gain[idx // len(self.render_rgb_files)]
+        idx = idx % len(self.render_rgb_files)
+        rgb_file: Path = self.render_rgb_files[idx]
+        # image (H, W, 3)
+        rgb = self.read_image(rgb_file)
+
+        idx_ref = idx
+        while idx == idx_ref:
+            idx_ref = random.choice(list(range(len(self.render_rgb_files))))        
+        rgb_file_ref: Path = self.render_rgb_files[idx_ref]
+        # image (H, W, 3)
+        rgb_ref = self.read_image(rgb_file_ref)
+
+        if self.mode in [Mode.train]: #, Mode.validation]:
+            white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
+        else:
+            white_level = torch.Tensor([1])
+
+        # d1
+        rgb = re_linearize(torch.from_numpy(rgb[..., :3]), white_level)
+        clean_d1 = False
+        if self.mode is Mode.train:
+            if random.random() > 0.25:
+                rgb_d1 , _ = self.add_noise(rgb)
+            else:
+                rgb_d1 = rgb
+                clean_d1 = True        
+        else:
+            rgb_d1, _ = self.add_noise_level(rgb, eval_gain)                        
+
+        # d2
+        rgb_ref = re_linearize(torch.from_numpy(rgb_ref[..., :3]), white_level)
+        rgbs = torch.stack([rgb, rgb_ref])
+        if self.mode is Mode.train:
+            if random.random() > 0.25 or clean_d1:
+                rgbs_d2, _ = self.add_noise(rgbs)        
+            else:
+                rgbs = rgbs_d2
+        else:
+            rgbs_d2 = rgbs
+        rgb_d2, rgb_ref_d2 = rgbs_d2[0], rgbs_d2[1]
+
+        batch_dict = {'noisy_rgb' : rgb_d1,
+                      'clean_rgb' : rgb,
+                      'target_rgb' : rgb_d2,
+                      'ref_rgb' : rgb_ref_d2,
+                      'white_level'   : white_level}
+
+
+        return batch_dict        
+
+    def get_multiview_item(self, idx):
         # Read target data:
         eval_gain = self.args.eval_gain[idx // len(self.render_rgb_files)]
         idx = idx % len(self.render_rgb_files)

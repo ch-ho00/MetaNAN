@@ -25,14 +25,7 @@ from nan.utils.general_utils import img_HWC2CHW
 from nan.utils.io_utils import print_link, colorize
 # from pytorch_msssim import ms_ssim
 from nan.ssim_l1_loss import MS_SSIM_L1_LOSS
-
-def tv_loss_2d(img):
-    tv_h = ((img[:,:,1:,:] - img[:,:,:-1,:]).pow(2)).sum() / img.shape[-2]
-    tv_w = ((img[:,:,:,1:] - img[:,:,:,:-1]).pow(2)).sum() / img.shape[-1]
-
-    return tv_h + tv_w
-
-ALPHA = 0.99997
+from runpy import run_path
 
 
 class Trainer:
@@ -66,17 +59,12 @@ class Trainer:
         self.val_loader_iterator = iter(cycle(self.val_loader))
 
         # Create NAN scheme
-        self.model = NANScheme.create(args)
-        self.last_weights_path = None
-
-        # Create ray render object
-        self.ray_render = RayRender(model=self.model, args=args, device=self.device)
-
-        # Create criterion
-        self.criterion = NANLoss(args)
-        self.ssim_alpha = args.ssim_alpha
-        self.ssim_l1_loss = MS_SSIM_L1_LOSS(alpha=args.ssim_alpha)
-
+        ## 
+        restormer_params = {'inp_channels':3, 'out_channels':3, 'dim':48, 'num_blocks':[4,6,6,8], 'num_refinement_blocks':4, 'heads':[1,2,4,8], 'ffn_expansion_factor':2.66, 'bias':False, 'LayerNorm_type':'WithBias', 'dual_pixel_task':False}
+        restormer_params['LayerNorm_type'] =  'BiasFree'
+        load_arch = run_path(os.path.join('degae', 'restormer', 'models', 'archs', 'restormer_arch.py'))
+        self.model = load_arch['Restormer'](**restormer_params)
+        import pdb; pdb.set_trace()
         # tb_dir will contain tensorboard files and later evaluation results
         tb_dir = LOG_DIR / args.expname
         if args.local_rank == 0:
@@ -107,7 +95,7 @@ class Trainer:
             yaml.safe_dump(contents, f, default_flow_style=None)
 
     def train(self):
-        global_step = self.model.start_step + 1
+        global_step = 0 #self.model.start_step + 1
         epoch = 0  # epoch is not consistent when loading ckpt, it affects train_sampler when distributed and prints
 
         while global_step < self.args.n_iters + 1:
@@ -118,11 +106,10 @@ class Trainer:
                     self.train_sampler.set_epoch(epoch)
 
                 # core optimization loop
-                ray_batch_out, ray_batch_in = self.training_loop(train_data, global_step)
-                dt = time.time() - time0
+                output = self.training_loop(train_data, global_step)
 
                 # Logging and saving
-                self.logging(train_data, ray_batch_in, ray_batch_out, dt, global_step, epoch)
+                self.logging(train_data, global_step, epoch)
 
                 global_step += 1
                 if global_step > self.model.start_step + self.args.n_iters + 1:
@@ -145,145 +132,10 @@ class Trainer:
                                  rgb_path: list(B)}
         :return:
         """
-        # Create object that generate and sample rays
-        ray_sampler = RaySampler(train_data, self.device)
-        N_rand = int(1.0 * self.args.N_rand * self.args.num_source_views / train_data['src_rgbs'][0].shape[0])
 
-        # Sample subset (batch) of rays for the training loop
-        ray_batch = ray_sampler.random_ray_batch(N_rand,
-                                                 sample_mode=self.args.sample_mode,
-                                                 center_ratio=self.args.center_ratio,
-                                                 clean=self.args.sup_clean)
-        # Calculate the feature maps of all views.
-        # This step is seperated because in evaluation time we want to do it once for each image.
-        org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
-        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs,
-                                                                sigma_estimate=ray_sampler.sigma_estimate.to(self.device))
+        return 
 
-        reconst_signal = None
-        denoise_signal = None
-        if self.model.args.auto_encoder:
-            proc_src_rgbs, reconst_signal, denoise_signal = proc_src_rgbs
-        
-        # Render the rgb values of the pixels that were sampled
-        batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                                 org_src_rgbs=org_src_rgbs,
-                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device),
-                                                 reconst_signal=reconst_signal,
-                                                 denoise_signal=denoise_signal)
-
-        # compute loss
-        self.model.optimizer.zero_grad()
-        loss = self.criterion(batch_out['coarse'], ray_batch, self.scalars_to_log)
-
-        if batch_out['fine'] is not None:
-            loss += self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
-
-
-        if self.model.args.annealing_loss:
-            factor = ALPHA ** global_step
-        else:
-            factor = 1 
-
-
-        if self.model.args.transform_tar_feat:
-
-            decoded_coarse_tar = self.model.decode_tar_feat_fc(batch_out['coarse'].transformer_tar_feat)
-            decoded_fine_tar = self.model.decode_tar_feat_fc(batch_out['fine'].transformer_tar_feat)
-
-            coarse_tar_err = torch.abs(batch_out['coarse'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_coarse_tar)
-            coarse_tar_err = torch.mean(coarse_tar_err * batch_out['coarse'].proj_mask[:,:,None,None].float())
-
-            fine_tar_err = torch.abs(batch_out['fine'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_fine_tar)
-            fine_tar_err = torch.mean(fine_tar_err * batch_out['fine'].proj_mask[:,:,None,None].float())
-
-            loss += self.model.args.lambda_reconst_loss * (coarse_tar_err + fine_tar_err) * factor
-            self.scalars_to_log['train/decode_tar_feat/l1_loss_fine'] = self.model.args.lambda_reconst_loss * fine_tar_err.item() * factor
-            self.scalars_to_log['train/decode_tar_feat/l1_loss_coarse'] = self.model.args.lambda_reconst_loss * coarse_tar_err.item() * factor 
-
-        if self.model.args.transform_src_feat:
-
-            decoded_coarse_src = self.model.decode_src_feat_fc(batch_out['coarse'].transformer_src_feat)
-            decoded_fine_tar = self.model.decode_src_feat_fc(batch_out['fine'].transformer_src_feat)
-
-            coarse_src_err = torch.abs(batch_out['coarse'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_coarse_src)
-            coarse_src_err = torch.mean(coarse_src_err * batch_out['coarse'].proj_mask[:,:,None,None].float())
-
-            fine_src_err = torch.abs(batch_out['fine'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_fine_tar)
-            fine_src_err = torch.mean(fine_src_err * batch_out['fine'].proj_mask[:,:,None,None].float())
-
-            loss += self.model.args.lambda_reconst_loss * (coarse_src_err + fine_src_err) * factor
-            self.scalars_to_log['train/decode_src_feat/l1_loss_fine'] = self.model.args.lambda_reconst_loss * fine_src_err.item() * factor 
-            self.scalars_to_log['train/decode_src_feat/l1_loss_coarse'] = self.model.args.lambda_reconst_loss * coarse_src_err.item() * factor
-
-            
-
-
-        if self.model.args.auto_encoder:
-
-            if self.model.args.lambda_reconst_loss > 0:
-                reconst_loss = 0
-                reconst_ssim_loss = 0
-                for signal in reconst_signal:
-                    if self.ssim_alpha > 0:
-                        ssim_tmp, l1_tmp = self.ssim_l1_loss(org_src_rgbs[0].permute(0,3,1,2), signal, raw_signal=True, white_level=ray_batch['white_level'])
-                        # reconst_ssim_loss += ssim_tmp
-                        reconst_loss += l1_tmp                        
-                    else:
-                        reconst_loss += signal.permute(0,2,3,1) - org_src_rgbs[0]                
-
-                if self.ssim_alpha == 0:
-                    reconst_loss = torch.mean(torch.abs(reconst_loss)) * factor
-                loss += self.model.args.lambda_reconst_loss * (reconst_loss + reconst_ssim_loss) 
-                self.scalars_to_log['train/reconst/total_loss'] = self.model.args.lambda_reconst_loss * (reconst_loss + reconst_ssim_loss).item()
-                self.scalars_to_log['train/reconst/l1_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
-                # if self.ssim_alpha > 0:
-                #     self.scalars_to_log['train/reconst/ssim_loss'] = self.model.args.lambda_reconst_loss * reconst_ssim_loss.item()
-
-            if self.model.args.lambda_denoise_loss > 0:
-                denoise_loss = 0
-                denoise_ssim_loss = 0 
-                for signal in denoise_signal:
-                    if self.ssim_alpha > 0:
-                        ssim_tmp, l1_tmp = self.ssim_l1_loss(train_data['src_rgbs_clean'][0,:1].permute(0,3,1,2).to(signal.device), signal[:1], raw_signal=True, white_level=ray_batch['white_level'])
-                        denoise_ssim_loss += ssim_tmp
-                        denoise_loss += l1_tmp
-                    else:
-                        denoise_loss += signal[:1].permute(0,2,3,1) - train_data['src_rgbs_clean'][0,:1].to(signal.device)
-                
-                if self.ssim_alpha == 0:
-                    denoise_loss = torch.mean(torch.abs(denoise_loss)) * factor
-
-                loss += self.model.args.lambda_denoise_loss * (denoise_loss + denoise_ssim_loss) 
-                self.scalars_to_log['train/denoise/total_loss'] = self.model.args.lambda_denoise_loss * (denoise_loss + denoise_ssim_loss).item()
-                self.scalars_to_log['train/denoise/l1_loss'] = self.model.args.lambda_denoise_loss * denoise_loss.item()
-                if self.ssim_alpha > 0:
-                    self.scalars_to_log['train/denoise/ssim_loss'] = self.model.args.lambda_denoise_loss * denoise_ssim_loss.item()
-
-            if self.model.args.lambda_tv_loss > 0: 
-                tv_loss = 0
-                if self.model.args.lambda_reconst_loss > 0:
-                    for signal in reconst_signal:
-                        tv_loss += tv_loss_2d(signal)
-                if self.model.args.lambda_denoise_loss > 0:
-                    for signal in denoise_signal:
-                        tv_loss += tv_loss_2d(signal)
-                tv_loss = tv_loss * factor
-                loss += self.model.args.lambda_tv_loss * tv_loss 
-                self.scalars_to_log['train/tv_loss'] = self.model.args.lambda_tv_loss * tv_loss.item()
-            self.scalars_to_log['train/lambda_factor'] =  factor
-
-        loss.backward()
-        self.scalars_to_log['loss'] = loss.item()
-        self.model.optimizer.step()
-        self.model.scheduler.step()
-
-        self.scalars_to_log['lr_features'] = self.model.scheduler.get_last_lr()[0]
-        self.scalars_to_log['lr_mlp'] = self.model.scheduler.get_last_lr()[1]
-
-        return batch_out, ray_batch
-
-    def logging(self, train_data, ray_batch_in, ray_batch_out, dt, global_step, epoch, max_keep=3):
+    def logging(self, train_data, global_step, epoch, max_keep=3):
         if self.args.local_rank == 0:
             # log iteration values
             if global_step % self.args.i_tb == 0 or global_step < 10:
@@ -303,7 +155,7 @@ class Trainer:
             if global_step % self.args.i_img == 0 or global_step == self.model.start_step + 1:
                 self.log_images(train_data, global_step)
 
-    def log_iteration(self, ray_batch_out, ray_batch_in, dt, global_step, epoch):
+    def log_iteration(self, global_step, epoch):
         # write mse and psnr stats
         mse_error = l2_loss(de_linearize(ray_batch_out['coarse'].rgb, ray_batch_in['white_level']),
                             de_linearize(ray_batch_in['rgb'], ray_batch_in['white_level'])).item()
