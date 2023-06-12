@@ -102,6 +102,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--lambda_perceptual', type=float, default=0)
         parser.add_argument('--lambda_embed', type=float, default=0)
         parser.add_argument('--lambda_content', type=float, default=0)
+        parser.add_argument('--rand_noise', default=False, action="store_true")
         
         ## 
         parser.add_argument('--ssim_alpha', type=float, default=0)

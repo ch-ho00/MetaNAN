@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : srgan_generator_encoder_1e-1_1_1e-1 #degae_test 
+expname                     : srgan_generator_encoder_woRandomNoise_1e-2_1_1e-1 #degae_test 
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -25,9 +25,10 @@ degae_training              : True
 degrep_ckpt                 : './ckpts/SRGAN_x4-ImageNet-8c4a7569.pth.tar'
 condition_decode            : True
 img_size                    : 128
-lambda_perceptual           : 0.1
+lambda_perceptual           : 0.01
 lambda_embed                : 1
 lambda_content              : 0.1
+rand_noise                  : False
 
 ### TESTING
 chunk_size                  : 2048 # can be bigger depend on the gpu memory
@@ -39,7 +40,7 @@ inv_uniform                 : True
 white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 500
+i_img                       : 2000
 i_print                     : 1
 i_tb                        : 100
 i_weights                   : 5000

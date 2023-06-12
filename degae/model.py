@@ -24,7 +24,7 @@ class DegAE(nn.Module):
                     win_size=8, mlp_ratio=4., token_projection='linear', token_mlp='leff', modulator=True, shift_flag=False).to(self.device)
 
         self.degrep_extractor = DegFeatureExtractor(args.degrep_ckpt).to(self.device)
-        self.decoder = DegAE_decoder().to(self.device)
+        self.decoder = DegAE_decoder(rand_noise=args.rand_noise).to(self.device)
         self.optimizer, self.scheduler = self.create_optimizer()
 
 
