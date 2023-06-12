@@ -51,11 +51,11 @@ class DegAE(nn.Module):
     
     def forward(self, batch_data):
 
-        img_embed = self.encoder(batch_data['noisy_rgb'])
+        img_embed = self.encoder(batch_data['noisy_rgb'])                                           # (B, 64, H, W)
         noise_vec_ref = None
         if self.args.condition_decode:        
-            noise_vec_ref = self.degrep_extractor(batch_data['ref_rgb'], batch_data['white_level'])        
+            noise_vec_ref = self.degrep_extractor(batch_data['ref_rgb'], batch_data['white_level']) # (B, 512)
 
-        reconst_signal = self.decoder(img_embed, noise_vec_ref)
+        reconst_signal = self.decoder(img_embed, noise_vec_ref)                                     # (B, 3, H, W)
 
         return reconst_signal

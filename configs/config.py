@@ -99,6 +99,9 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument("--batch_size", type=int, default=0)
         parser.add_argument("--img_size", type=int, default=128)
         parser.add_argument("--visualize_dir_prefix", type=str, default='./degrad_ae')
+        parser.add_argument('--lambda_perceptual', type=float, default=0)
+        parser.add_argument('--lambda_embed', type=float, default=0)
+        parser.add_argument('--lambda_content', type=float, default=0)
         
         ## 
         parser.add_argument('--ssim_alpha', type=float, default=0)

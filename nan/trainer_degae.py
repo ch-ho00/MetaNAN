@@ -48,7 +48,7 @@ class Trainer:
         self.save_ymls(args, sys.argv[1:], self.exp_out_dir)
 
         # create training dataset
-        args.eval_gain = [20,16,8]
+        args.eval_gain = [20,16,8,4,2,1]
         self.train_dataset, self.train_sampler = create_training_dataset(args)
         # currently only support batch_size=1 (i.e., one set of target and source views) for each GPU node
         # please use distributed parallel on multiple GPUs to train multiple target views per batch
@@ -123,7 +123,8 @@ class Trainer:
                 self.model.decoder.eval()
 
                 # Logging and saving
-                self.logging(train_data, global_step, epoch)
+                with torch.no_grad():
+                    self.logging(train_data, global_step, epoch)
 
                 global_step += 1
             epoch += 1
@@ -155,7 +156,7 @@ class Trainer:
         loss = 0
         
         # loss1
-        content_loss = reconstruction_loss(reconst_signal, train_data['target_rgb'], self.device) * 0.1
+        content_loss = reconstruction_loss(reconst_signal, train_data['target_rgb'], self.device) * self.args.lambda_content
         loss += content_loss 
 
         
@@ -165,7 +166,7 @@ class Trainer:
         delin_norm_tar = (delin_tar.clamp(0,1) - self.vgg_mean.reshape(1,-1,1,1)) / self.vgg_std.reshape(1,-1,1,1)
         vgg_feat_pred = self.vgg_loss.vgg(delin_norm_pred)
         vgg_feat_tar = self.vgg_loss.vgg(delin_norm_tar)
-        perceptual_loss = F.mse_loss(vgg_feat_pred, vgg_feat_tar, reduction='mean')  * 1e-2
+        perceptual_loss = F.mse_loss(vgg_feat_pred, vgg_feat_tar, reduction='mean')  * self.args.lambda_perceptual
         loss += perceptual_loss
 
         # loss3        
@@ -173,7 +174,7 @@ class Trainer:
         if self.args.condition_decode:        
             noise_vec_tar = self.model.degrep_extractor(train_data['target_rgb'], train_data['white_level'])
             noise_vec_pred = self.model.degrep_extractor(reconst_signal, train_data['white_level'])
-            embed_loss = F.mse_loss(noise_vec_tar, noise_vec_pred)
+            embed_loss = F.mse_loss(noise_vec_tar, noise_vec_pred) * self.args.lambda_embed
             loss += embed_loss
 
         loss.backward()
@@ -218,7 +219,7 @@ class Trainer:
                 self.log_images(train_data, global_step)
 
 
-    def log_view_to_tb(self, global_step, batch_data, prefix='', fn=''):
+    def log_view_to_tb(self, global_step, batch_data, prefix='', idx=0, visualize=False):
         reconst_signal = self.model(batch_data)
 
         delin_pred = de_linearize(reconst_signal, batch_data['white_level']).clamp(0,1)
@@ -227,24 +228,41 @@ class Trainer:
         delin_clean = de_linearize(batch_data['clean_rgb'], batch_data['white_level']).clamp(0,1)
         delin_noisy = de_linearize(batch_data['noisy_rgb'], batch_data['white_level']).clamp(0,1)
 
-        Path(f'{self.args.visualize_dir_prefix}_{self.args.img_size}').mkdir(exist_ok=True, parents=True)
-        plt.imsave(f'{self.args.visualize_dir_prefix}_{self.args.img_size}/reconst_{fn}_{global_step}.png', delin_pred[0].detach().cpu().permute(1,2,0).numpy())
-        plt.imsave(f'{self.args.visualize_dir_prefix}_{self.args.img_size}/tar_{fn}_{global_step}.png', delin_tar[0].detach().cpu().permute(1,2,0).numpy())
-        plt.imsave(f'{self.args.visualize_dir_prefix}_{self.args.img_size}/ref_{fn}_{global_step}.png', delin_ref[0].detach().cpu().permute(1,2,0).numpy())
-        plt.imsave(f'{self.args.visualize_dir_prefix}_{self.args.img_size}/clean_{fn}_{global_step}.png', delin_clean[0].detach().cpu().permute(1,2,0).numpy())
-        plt.imsave(f'{self.args.visualize_dir_prefix}_{self.args.img_size}/noisy_{fn}_{global_step}.png', delin_noisy[0].detach().cpu().permute(1,2,0).numpy())
+        if 'eval_gain' in batch_data.keys():
+            eval_gain = batch_data['eval_gain']
+        else:
+            eval_gain = 0
+        
+        if visualize:
+            self.writer.add_image(prefix + f'target_rgb_gain{eval_gain}_{idx}', delin_tar[0].detach().cpu(), global_step)
+            self.writer.add_image(prefix + f'reconst_rgb_gain{eval_gain}_{idx}', delin_pred[0].detach().cpu(), global_step)
+            self.writer.add_image(prefix + f'input_rgb_gain{eval_gain}_{idx}', delin_noisy[0].detach().cpu(), global_step)
 
+
+        l2_loss = F.mse_loss(delin_tar, delin_pred, reduction='mean')
+        psnr = mse2psnr(l2_loss.detach().cpu())        
+        return psnr
 
     def log_images(self, train_data, global_step):
         print('Logging a random validation view...')
+        val_result = {}
         for val_idx in range(len(self.val_dataset)):
-            if val_idx %  50 != 0:
+            curr_idx = val_idx % len(self.val_dataset.render_rgb_files)
+            if curr_idx > 5 and curr_idx < len(self.val_dataset.render_rgb_files) - 5:
                 continue            
             val_data = self.val_dataset[val_idx]
             val_data = {k : val_data[k][None].to(self.device) if isinstance(val_data[k], torch.Tensor) else val_data[k] for k in val_data.keys()}
-            self.log_view_to_tb(global_step, val_data, prefix='val/', fn=f"{global_step}_{val_idx}")
+            val_psnr = self.log_view_to_tb(global_step, val_data, prefix='val/', idx=curr_idx , visualize=curr_idx == 0 or curr_idx == len(self.val_dataset.render_rgb_files)-1)
+            eval_gain = val_data['eval_gain']
+            if eval_gain not in val_result.keys():
+                val_result[eval_gain] = [val_psnr]
+            else:
+                val_result[eval_gain] += [val_psnr]
             torch.cuda.empty_cache()
 
-        self.log_view_to_tb(global_step, train_data, prefix=f'train', fn=f'{global_step}')
+        for gain_level in val_result.keys():
+            self.writer.add_scalar(f'val/psnr_gain{gain_level}', np.mean(val_result[gain_level]), global_step)
+            
+        self.log_view_to_tb(global_step, train_data, prefix=f'train/', visualize=True)
 
 

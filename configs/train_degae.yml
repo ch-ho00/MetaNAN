@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : srgan_generator_injection_v2 #degae_test 
+expname                     : srgan_generator_encoder_1e-1_1_1e-1 #degae_test 
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -25,7 +25,9 @@ degae_training              : True
 degrep_ckpt                 : './ckpts/SRGAN_x4-ImageNet-8c4a7569.pth.tar'
 condition_decode            : True
 img_size                    : 128
-visualize_dir_prefix        : './degrad_ae_v2'
+lambda_perceptual           : 0.1
+lambda_embed                : 1
+lambda_content              : 0.1
 
 ### TESTING
 chunk_size                  : 2048 # can be bigger depend on the gpu memory

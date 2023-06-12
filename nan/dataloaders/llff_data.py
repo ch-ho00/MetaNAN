@@ -60,7 +60,7 @@ class COLMAPDataset(NoiseDataset, ABC):
 
     def __len__(self):
         if self.args.degae_training:
-            return 100 if self.mode is Mode.train else len(self.render_rgb_files)
+            return 1000 if self.mode is Mode.train else len(self.render_rgb_files) * len(self.args.eval_gain)
         else:
             return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files) * len(self.args.eval_gain)
 
@@ -80,8 +80,12 @@ class COLMAPDataset(NoiseDataset, ABC):
 
         # if self.mode is Mode.train:
         side = self.args.img_size
-        crop_h = np.random.randint(low=0, high=768 - side)
-        crop_w =  np.random.randint(low=0, high=1024 - side)
+        if self.mode in [Mode.train]: #, Mode.validation]:
+            crop_h = np.random.randint(low=0, high=768 - side)
+            crop_w =  np.random.randint(low=0, high=1024 - side)
+        else:
+            crop_h = 768 // 2
+            crop_w = 1024 // 2
         rgb = rgb[crop_h:crop_h+side, crop_w:crop_w+side]
 
         idx_ref = idx
@@ -129,6 +133,8 @@ class COLMAPDataset(NoiseDataset, ABC):
                       'target_rgb' : rgb_d2.permute(2,0,1),
                       'ref_rgb' : rgb_ref_d2.permute(2,0,1),
                       'white_level'   : white_level}
+        if self.mode is not Mode.train:
+            batch_dict['eval_gain'] = eval_gain
 
 
         return batch_dict        
