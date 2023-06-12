@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : test #degae_test 
+expname                     : test_wo_cond_512 #degae_test 
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -11,17 +11,19 @@ eval_scenes                 : [fern, trex, leaves, horns] #[fern, orchids, flowe
 ### TRAINING
 n_iters                     : 255000
 N_rand                      : 512
-lrate_feature               : 0.001
+lrate_feature               : 0.0002
 lrate_mlp                   : 0.0005
 lrate_decay_factor          : 0.5
 lrate_decay_steps           : 50000
 losses                      : [l2, l1, l1_grad, ssim]
 losses_weights              : [0,  1,  0,       0]
 workers                     : 0
-
+batch_size                  : 2
 
 ## 
 degae_training              : True
+degrep_ckpt                 : './ckpts/Discriminator_x4-ImageNet-22ca3e6c.pth.tar' #'./ckpts/SRGAN_x4-ImageNet-8c4a7569.pth.tar'
+condition_decode            : True
 
 ### TESTING
 chunk_size                  : 2048 # can be bigger depend on the gpu memory
@@ -33,9 +35,9 @@ inv_uniform                 : True
 white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 3000
-i_print                     : 100
-i_tb                        : 20
+i_img                       : 500
+i_print                     : 1
+i_tb                        : 100
 i_weights                   : 5000
 
 ### additional

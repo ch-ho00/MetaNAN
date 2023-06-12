@@ -921,7 +921,7 @@ class LeWinTransformerBlock(nn.Module):
         return f"dim={self.dim}, input_resolution={self.input_resolution}, num_heads={self.num_heads}, " \
                f"win_size={self.win_size}, shift_size={self.shift_size}, mlp_ratio={self.mlp_ratio},modulator={self.modulator}"
 
-    def forward(self, x, mask=None, img_wh=None):
+    def forward(self, x, mask=None, img_wh=None, print_=False):
         B, L, C = x.shape
         if img_wh == None:
             H = int(math.sqrt(L))
@@ -968,8 +968,11 @@ class LeWinTransformerBlock(nn.Module):
             x = shortcut + x_cross
     
         shortcut = x
+        x_prev = x
         x = self.norm1(x)
         x = x.view(B, H, W, C)
+        if x.isnan().sum() > 0:
+            import pdb; pdb.set_trace()
 
         # cyclic shift
         if self.shift_size > 0:
@@ -1003,7 +1006,10 @@ class LeWinTransformerBlock(nn.Module):
 
         # FFN
         x = shortcut + self.drop_path(x)
+        x_prev = x
         x = x + self.drop_path(self.mlp(self.norm2(x), img_wh=img_wh))
+        if x.isnan().sum() > 0:
+            import pdb; pdb.set_trace()
         del attn_mask
         return x
 
@@ -1070,12 +1076,12 @@ class BasicUformerLayer(nn.Module):
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"    
 
-    def forward(self, x, mask=None, img_wh=None):
+    def forward(self, x, mask=None, img_wh=None, print_=False):
         for blk in self.blocks:
             if self.use_checkpoint:
                 x = checkpoint.checkpoint(blk, x)
             else:
-                x = blk(x,mask, img_wh=img_wh)
+                x = blk(x,mask, img_wh=img_wh, print_=print_)
         return x
 
     def flops(self):
@@ -1117,7 +1123,7 @@ class Uformer(nn.Module):
 
         # Input/Output
         self.input_proj = InputProj(in_channel=dd_in, out_channel=embed_dim, kernel_size=3, stride=1, act_layer=nn.LeakyReLU)
-        self.output_proj = OutputProj(in_channel=2*embed_dim, out_channel=in_chans, kernel_size=3, stride=1)
+        self.output_proj = OutputProj(in_channel=2*embed_dim, out_channel=64, kernel_size=3, stride=1)
         
         # Encoder
         self.encoderlayer_0 = BasicUformerLayer(dim=embed_dim,
@@ -1305,22 +1311,33 @@ class Uformer(nn.Module):
         up0 = self.upsample_0(conv4, img_wh=[dim // 2**4 for dim in self.img_wh])
         deconv0 = torch.cat([up0,conv3],-1)
         deconv0 = self.decoderlayer_0(deconv0,mask=mask, img_wh=[dim // 2**3 for dim in self.img_wh])
+        if deconv0.isnan().sum() > 0:
+            import pdb; pdb.set_trace()
         
         up1 = self.upsample_1(deconv0, img_wh=[dim // 2**3 for dim in self.img_wh])
         deconv1 = torch.cat([up1,conv2],-1)
         deconv1 = self.decoderlayer_1(deconv1,mask=mask, img_wh=[dim // 2**2 for dim in self.img_wh])
+        if deconv1.isnan().sum() > 0:
+            import pdb; pdb.set_trace()
 
         up2 = self.upsample_2(deconv1, img_wh=[dim // 2**2 for dim in self.img_wh])
         deconv2 = torch.cat([up2,conv1],-1)
         deconv2 = self.decoderlayer_2(deconv2,mask=mask, img_wh=[dim // 2 for dim in self.img_wh])
+        if deconv2.isnan().sum() > 0:
+            import pdb; pdb.set_trace()
 
         up3 = self.upsample_3(deconv2, img_wh=[dim // 2 for dim in self.img_wh])
         deconv3 = torch.cat([up3,conv0],-1)
-        deconv3 = self.decoderlayer_3(deconv3,mask=mask, img_wh=self.img_wh)
+        deconv3 = self.decoderlayer_3(deconv3,mask=mask, img_wh=self.img_wh, print_=True)
+        if deconv3.isnan().sum() > 0:
+            import pdb; pdb.set_trace()
 
         # Output Projection
         y = self.output_proj(deconv3, img_wh=self.img_wh)
-        return x + y if self.dd_in ==3 else y
+        if y.isnan().sum() > 0:
+            import pdb; pdb.set_trace()
+        return y 
+        # return x + y if self.dd_in ==3 else y
 
     def flops(self):
         flops = 0

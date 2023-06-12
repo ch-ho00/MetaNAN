@@ -49,18 +49,20 @@ class COLMAPDataset(NoiseDataset, ABC):
         self.depth_range = self.render_depth_range[0]
 
     def get_i_test(self, N):
-        return np.arange(N)[::self.args.llffhold]
+        return np.arange(N)[::self.args.llffhold] if not self.args.degae_training else  np.array([j for j in np.arange(int(N))]) 
 
-    @staticmethod
-    def get_i_train(N, i_test, mode):
-        return np.array([j for j in np.arange(int(N)) if j not in i_test])
+    def get_i_train(self, N, i_test, mode):
+        return np.array([j for j in np.arange(int(N)) if j not in i_test]) if not self.args.degae_training else  np.array([j for j in np.arange(int(N))]) 
 
     @staticmethod
     def load_scene(scene_path, factor):
         return load_llff_data(scene_path, load_imgs=False, factor=factor)
 
     def __len__(self):
-        return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files) * len(self.args.eval_gain)
+        if self.args.degae_training:
+            return 100 if self.mode is Mode.train else len(self.render_rgb_files)
+        else:
+            return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files) * len(self.args.eval_gain)
 
     def __getitem__(self, idx):
         if self.args.degae_training:
@@ -76,12 +78,23 @@ class COLMAPDataset(NoiseDataset, ABC):
         # image (H, W, 3)
         rgb = self.read_image(rgb_file)
 
+        # if self.mode is Mode.train:
+        side = 512
+        crop_h = np.random.randint(low=0, high=768 - side)
+        crop_w =  np.random.randint(low=0, high=1024 - side)
+        rgb = rgb[crop_h:crop_h+side, crop_w:crop_w+side]
+
         idx_ref = idx
         while idx == idx_ref:
             idx_ref = random.choice(list(range(len(self.render_rgb_files))))        
         rgb_file_ref: Path = self.render_rgb_files[idx_ref]
         # image (H, W, 3)
         rgb_ref = self.read_image(rgb_file_ref)
+
+        # if self.mode is Mode.train:
+        crop_h = np.random.randint(low=0, high=768 - side)
+        crop_w =  np.random.randint(low=0, high=1024 -side)
+        rgb_ref = rgb_ref[crop_h:crop_h+side, crop_w:crop_w+side]
 
         if self.mode in [Mode.train]: #, Mode.validation]:
             white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
@@ -107,15 +120,14 @@ class COLMAPDataset(NoiseDataset, ABC):
             if random.random() > 0.25 or clean_d1:
                 rgbs_d2, _ = self.add_noise(rgbs)        
             else:
-                rgbs = rgbs_d2
+                rgbs_d2 = rgbs
         else:
             rgbs_d2 = rgbs
         rgb_d2, rgb_ref_d2 = rgbs_d2[0], rgbs_d2[1]
-
-        batch_dict = {'noisy_rgb' : rgb_d1,
-                      'clean_rgb' : rgb,
-                      'target_rgb' : rgb_d2,
-                      'ref_rgb' : rgb_ref_d2,
+        batch_dict = {'noisy_rgb' : rgb_d1.permute(2,0,1),
+                      'clean_rgb' : rgb.permute(2,0,1),
+                      'target_rgb' : rgb_d2.permute(2,0,1),
+                      'ref_rgb' : rgb_ref_d2.permute(2,0,1),
                       'white_level'   : white_level}
 
 

@@ -15,7 +15,7 @@ from nan.dataloaders import dataset_dict
 from nan.dataloaders.basic_dataset import de_linearize, Mode
 from nan.dataloaders.create_training_dataset import create_training_dataset
 from nan.dataloaders.data_utils import cycle
-from nan.losses import l2_loss
+from nan.losses import l2_loss, VGG
 from nan.model import NANScheme
 from nan.render_image import render_single_image
 from nan.render_ray import RayRender
@@ -27,6 +27,13 @@ from nan.utils.io_utils import print_link, colorize
 from nan.ssim_l1_loss import MS_SSIM_L1_LOSS
 from runpy import run_path
 
+from nan.content_loss import reconstruction_loss
+from degae.uformer.model import Uformer
+from degae.srgan.vgg import DegFeatureExtractor
+from degae.decoder import DegAE_decoder
+import matplotlib.pyplot as plt
+from pytorch_msssim import ssim
+import torch.nn.functional as F
 
 class Trainer:
     def __init__(self, args):
@@ -46,7 +53,7 @@ class Trainer:
         self.train_dataset, self.train_sampler = create_training_dataset(args)
         # currently only support batch_size=1 (i.e., one set of target and source views) for each GPU node
         # please use distributed parallel on multiple GPUs to train multiple target views per batch
-        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=1,
+        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=2, # args.batch_size
                                                         worker_init_fn=lambda _: np.random.seed(),
                                                         num_workers=args.workers,
                                                         pin_memory=True,
@@ -60,11 +67,18 @@ class Trainer:
 
         # Create NAN scheme
         ## 
-        restormer_params = {'inp_channels':3, 'out_channels':3, 'dim':48, 'num_blocks':[4,6,6,8], 'num_refinement_blocks':4, 'heads':[1,2,4,8], 'ffn_expansion_factor':2.66, 'bias':False, 'LayerNorm_type':'WithBias', 'dual_pixel_task':False}
-        restormer_params['LayerNorm_type'] =  'BiasFree'
-        load_arch = run_path(os.path.join('degae', 'restormer', 'models', 'archs', 'restormer_arch.py'))
-        self.model = load_arch['Restormer'](**restormer_params)
-        import pdb; pdb.set_trace()
+        depths=[2, 2, 2, 2, 2, 2, 2, 2, 2]
+        img_wh = [512, 512] #[1024, 768]
+        self.encoder = Uformer(img_wh=img_wh, embed_dim=16, depths=depths,
+                    win_size=8, mlp_ratio=4., token_projection='linear', token_mlp='leff', modulator=True, shift_flag=False).to(self.device)
+
+        self.degrep_extractor = DegFeatureExtractor(args.degrep_ckpt).to(self.device)
+        self.decoder = DegAE_decoder().to(self.device)
+        self.vgg_loss = VGG().to(self.device)
+        self.optimizer, self.scheduler = self.create_optimizer()
+        self.vgg_mean = torch.Tensor([0.485, 0.456, 0.406]).to(self.device)
+        self.vgg_std =  torch.Tensor([0.229, 0.224, 0.225]).to(self.device)
+
         # tb_dir will contain tensorboard files and later evaluation results
         tb_dir = LOG_DIR / args.expname
         if args.local_rank == 0:
@@ -72,6 +86,22 @@ class Trainer:
             print_link(tb_dir, 'saving tensorboard files to')
         # dictionary to store scalars to log in tb
         self.scalars_to_log = {}
+
+
+    def create_optimizer(self):
+        params_list = [{'params': self.encoder.parameters(), 'lr': self.args.lrate_feature},
+                       {'params': self.degrep_extractor.degrep_conv.parameters(),  'lr': self.args.lrate_feature},
+                       {'params': self.degrep_extractor.degrep_fc.parameters(),  'lr': self.args.lrate_feature},
+                       {'params': self.decoder.parameters(),  'lr': self.args.lrate_feature},                       
+                       ]
+                    #    {'params': self.degrep_extractor.vgg.parameters(),  'lr': self.args.lrate_feature},
+        optimizer = torch.optim.Adam(params_list)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
+                                                    step_size=self.args.lrate_decay_steps,
+                                                    gamma=self.args.lrate_decay_factor)
+
+        return optimizer, scheduler
+
 
     @staticmethod
     def save_ymls(args, additional_args, out_folder):
@@ -105,15 +135,21 @@ class Trainer:
                 if self.args.distributed:
                     self.train_sampler.set_epoch(epoch)
 
+                self.encoder.train()
+                self.degrep_extractor.train()
+                self.decoder.train()
+
                 # core optimization loop
-                output = self.training_loop(train_data, global_step)
+                self.training_loop(train_data, global_step)
+
+                self.encoder.eval()
+                self.degrep_extractor.eval()
+                self.decoder.eval()
 
                 # Logging and saving
                 self.logging(train_data, global_step, epoch)
 
                 global_step += 1
-                if global_step > self.model.start_step + self.args.n_iters + 1:
-                    break
             epoch += 1
         return self.last_weights_path
 
@@ -132,135 +168,121 @@ class Trainer:
                                  rgb_path: list(B)}
         :return:
         """
+        for k in train_data.keys():
+            train_data[k] = train_data[k].to(self.device)
+        img_embed = self.encoder(train_data['noisy_rgb'])
+        noise_vec_ref = None
+        if self.args.condition_decode:        
+            noise_vec_ref = self.degrep_extractor(train_data['ref_rgb'], train_data['white_level'][0])
+        
+        reconst_signal = self.decoder(img_embed, noise_vec_ref)
+        self.optimizer.zero_grad()
+        loss = 0
+        loss_dict = {}
+        
+        # loss1
+        content_loss = reconstruction_loss(reconst_signal, train_data['target_rgb'], self.device) * 0.1
+        loss += content_loss 
 
-        return 
+        
+        # loss2
+        delin_pred = de_linearize(reconst_signal, train_data['white_level'][0])
+        delin_tar = de_linearize(train_data['target_rgb'], train_data['white_level'][0])
+
+
+        perceptual_loss = torch.zeros_like(content_loss)
+        delin_norm_pred = (delin_pred.clamp(0,1) - self.vgg_mean.reshape(1,-1,1,1)) / self.vgg_std.reshape(1,-1,1,1)
+        delin_norm_tar = (delin_tar.clamp(0,1) - self.vgg_mean.reshape(1,-1,1,1)) / self.vgg_std.reshape(1,-1,1,1)
+        vgg_feat_pred = self.vgg_loss.vgg(delin_norm_pred)
+        vgg_feat_tar = self.vgg_loss.vgg(delin_norm_tar)
+        perceptual_loss = F.mse_loss(vgg_feat_pred, vgg_feat_tar, reduction='mean')  * 1e-2
+        loss += perceptual_loss
+        # ssim_loss = 1 - ssim( , data_range=1, size_average=True) # return a scalar
+
+        # loss3        
+        embed_loss = torch.zeros_like(content_loss)
+        if self.args.condition_decode:        
+            noise_vec_tar = self.degrep_extractor(train_data['target_rgb'], train_data['white_level'][0])
+            noise_vec_pred = self.degrep_extractor(reconst_signal, train_data['white_level'][0])
+            embed_loss = F.mse_loss(noise_vec_tar, noise_vec_pred)
+            loss += embed_loss
+
+        loss.backward()
+        torch.nn.utils.clip_grad_norm(self.encoder.parameters(), 1)
+        self.optimizer.step()
+        self.scheduler.step()
+
+        l2_loss = torch.mean((delin_pred.clamp(0,1) - delin_tar.clamp(0,1)) ** 2)
+
+        self.scalars_to_log['train/content_loss'] = content_loss
+        self.scalars_to_log['train/embed_loss'] = embed_loss
+        self.scalars_to_log['train/perceptual_loss'] = perceptual_loss
+        self.scalars_to_log['train/l2_loss'] = l2_loss
+        self.scalars_to_log['train/psnr'] = mse2psnr(l2_loss.detach().cpu())
+
+        print(round(loss.item(),4), round(perceptual_loss.item(),4), round(content_loss.item(),4), round(embed_loss.item(),4), mse2psnr(l2_loss.detach().cpu())) # 
 
     def logging(self, train_data, global_step, epoch, max_keep=3):
         if self.args.local_rank == 0:
             # log iteration values
             if global_step % self.args.i_tb == 0 or global_step < 10:
-                self.log_iteration(ray_batch_out, ray_batch_in, dt, global_step, epoch)
+                # write mse and psnr stats
+                logstr = f"{self.args.expname} Epoch: {epoch}  step: {global_step} "
+                for k in self.scalars_to_log.keys():
+                    logstr += f" {k}: {self.scalars_to_log[k]:.6f}"
+                    self.writer.add_scalar(k, self.scalars_to_log[k], global_step)
+
+                if global_step % self.args.i_print == 0:
+                    print(logstr)
 
             # save weights
-            if global_step % self.args.i_weights == 0:
-                print(f"Saving checkpoints at {global_step} to {self.exp_out_dir}...")
-                self.last_weights_path = self.exp_out_dir / f"model_{global_step:06d}.pth"
-                self.model.save_model(self.last_weights_path)
-                files = sorted(self.exp_out_dir.glob("*.pth"), key=os.path.getctime)
-                rm_files = files[0:max(0, len(files) - max_keep)]
-                for f in rm_files:
-                    f.unlink()
+            # if global_step % self.args.i_weights == 0:
+            #     print(f"Saving checkpoints at {global_step} to {self.exp_out_dir}...")
+            #     self.last_weights_path = self.exp_out_dir / f"model_{global_step:06d}.pth"
+            #     self.model.save_model(self.last_weights_path)
+            #     files = sorted(self.exp_out_dir.glob("*.pth"), key=os.path.getctime)
+            #     rm_files = files[0:max(0, len(files) - max_keep)]
+            #     for f in rm_files:
+            #         f.unlink()
 
             # log images of training and validation
-            if global_step % self.args.i_img == 0 or global_step == self.model.start_step + 1:
+            if global_step % self.args.i_img == 0: #or global_step == self.model.start_step + 1:
                 self.log_images(train_data, global_step)
 
-    def log_iteration(self, global_step, epoch):
-        # write mse and psnr stats
-        mse_error = l2_loss(de_linearize(ray_batch_out['coarse'].rgb, ray_batch_in['white_level']),
-                            de_linearize(ray_batch_in['rgb'], ray_batch_in['white_level'])).item()
-        self.scalars_to_log['train/coarse-loss'] = mse_error
-        self.scalars_to_log['train/coarse-psnr-training-batch'] = mse2psnr(mse_error)
-        if ray_batch_out['fine'] is not None:
-            mse_error = l2_loss(de_linearize(ray_batch_out['fine'].rgb, ray_batch_in['white_level']),
-                                de_linearize(ray_batch_in['rgb'], ray_batch_in['white_level'])).item()
-            self.scalars_to_log['train/fine-loss'] = mse_error
-            self.scalars_to_log['train/fine-psnr-training-batch'] = mse2psnr(mse_error)
 
-        logstr = f"{self.args.expname} Epoch: {epoch}  step: {global_step} "
-        for k in self.scalars_to_log.keys():
-            logstr += f" {k}: {self.scalars_to_log[k]:.6f}"
-            self.writer.add_scalar(k, self.scalars_to_log[k], global_step)
-        if global_step % self.args.i_print == 0:
-            print(logstr)
-            print(f"each iter time {dt:.05f} seconds")
-
-    def log_view_to_tb(self, global_step, ray_sampler, gt_img, render_stride=1, prefix='', postfix=''):
-        self.model.switch_to_eval()
-        with torch.no_grad():
-            ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args)
-
-        average_im = ray_sampler.src_rgbs.cpu()[0,0]
-
-        if self.args.render_stride != 1:
-            gt_img = gt_img[::render_stride, ::render_stride]
-            average_im = average_im[::render_stride, ::render_stride]
-            reconst_signal = None
-            if self.args.auto_encoder:
-                if self.args.lambda_reconst_loss > 0 :
-                    reconst_signal = ret['reconst_signal'][-1][...,::render_stride, ::render_stride].detach().cpu()
-                    reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
-                elif self.args.lambda_denoise_loss > 0 :
-                    reconst_signal = ret['denoised_signal'][-1][...,::render_stride, ::render_stride].detach().cpu()
-                    reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
-                
-        rgb_gt = img_HWC2CHW(gt_img)
-        average_im = img_HWC2CHW(average_im)
-
-        rgb_pred = img_HWC2CHW(ret['coarse'].rgb.detach().cpu())
+    def log_view_to_tb(self, global_step, batch_data, prefix='', fn=''):
+        img_embed = self.encoder(batch_data['noisy_rgb'])
+        noise_vec = None
+        if self.args.condition_decode:        
+            noise_vec = self.degrep_extractor(batch_data['ref_rgb'], batch_data['white_level'][0])
         
-        h_max = max(rgb_gt.shape[-2], rgb_pred.shape[-2], average_im.shape[-2])
-        w_max = max(rgb_gt.shape[-1], rgb_pred.shape[-1], average_im.shape[-1])
-        rgb_im = torch.zeros(3, h_max, 3 * w_max)
-        rgb_im[:, :average_im.shape[-2], :average_im.shape[-1]] = average_im
-        rgb_im[:, :rgb_gt.shape[-2], w_max:w_max + rgb_gt.shape[-1]] = rgb_gt
-        rgb_im[:, :rgb_pred.shape[-2], 2 * w_max:2 * w_max + rgb_pred.shape[-1]] = rgb_pred
+        reconst_signal = self.decoder(img_embed, noise_vec)
+        delin_pred = de_linearize(reconst_signal, batch_data['white_level'][0]).clamp(0,1)
+        delin_tar = de_linearize(batch_data['target_rgb'], batch_data['white_level'][0]).clamp(0,1)
+        delin_ref = de_linearize(batch_data['ref_rgb'], batch_data['white_level'][0]).clamp(0,1)
+        delin_clean = de_linearize(batch_data['clean_rgb'], batch_data['white_level'][0]).clamp(0,1)
+        delin_noisy = de_linearize(batch_data['noisy_rgb'], batch_data['white_level'][0]).clamp(0,1)
 
-        depth_im = ret['coarse'].depth.detach().cpu()
-        acc_map = torch.sum(ret['coarse'].weights, dim=-1).detach().cpu()
+        # import pdb; pdb.set_trace()
+        # self.writer.add_image(prefix + "reconst_" + fn , delin_pred[0], global_step)
+        # self.writer.add_image(prefix + "gt_" + fn , delin_tar[0], global_step)
+        plt.imsave(f'./degrad_ae_128/reconst_{fn}_{global_step}.png', delin_pred[0].detach().cpu().permute(1,2,0).numpy())
+        plt.imsave(f'./degrad_ae_128/tar_{fn}_{global_step}.png', delin_tar[0].detach().cpu().permute(1,2,0).numpy())
+        plt.imsave(f'./degrad_ae_128/ref_{fn}_{global_step}.png', delin_ref[0].detach().cpu().permute(1,2,0).numpy())
+        plt.imsave(f'./degrad_ae_128/clean_{fn}_{global_step}.png', delin_clean[0].detach().cpu().permute(1,2,0).numpy())
+        plt.imsave(f'./degrad_ae_128/noisy_{fn}_{global_step}.png', delin_noisy[0].detach().cpu().permute(1,2,0).numpy())
 
-        if ret['fine'] is None:
-            depth_im = img_HWC2CHW(colorize(depth_im, cmap_name='jet', append_cbar=True))
-            acc_map = img_HWC2CHW(colorize(acc_map, range=(0., 1.), cmap_name='jet', append_cbar=False))
-        else:
-            rgb_fine = img_HWC2CHW(ret['fine'].rgb.detach().cpu())
-            rgb_fine_ = torch.zeros(3, h_max, w_max)
-            rgb_fine_[:, :rgb_fine.shape[-2], :rgb_fine.shape[-1]] = rgb_fine
-            rgb_im = torch.cat((rgb_im, rgb_fine_), dim=-1)
-            # rgb_im = rgb_im
-            rgb_im = de_linearize(rgb_im, ray_sampler.white_level).clamp(min=0., max=1.)
-            depth_im = torch.cat((depth_im, ret['fine'].depth.detach().cpu()), dim=-1)
-            depth_im = img_HWC2CHW(colorize(depth_im, cmap_name='jet', append_cbar=True))
-            acc_map = torch.cat((acc_map, torch.sum(ret['fine'].weights, dim=-1).detach().cpu()), dim=-1)
-            acc_map = img_HWC2CHW(colorize(acc_map, range=(0., 1.), cmap_name='jet', append_cbar=False))
-
-        # write the pred/gt rgb images and depths
-        self.writer.add_image(prefix + 'rgb_gt-coarse-fine' + postfix, rgb_im, global_step)
-        self.writer.add_image(prefix + 'depth_gt-coarse-fine'+ postfix, depth_im, global_step)
-        self.writer.add_image(prefix + 'acc-coarse-fine'+ postfix, acc_map, global_step)
-        if reconst_signal != None:
-            reconst_signal = reconst_signal.permute(1,2,0,3).reshape(3,reconst_signal.shape[-2], -1)
-            self.writer.add_image(prefix + 'reconst_signal'+ postfix, reconst_signal, global_step)
-
-        # write scalar
-        pred_rgb = ret['fine'].rgb if ret['fine'] is not None else ret['coarse'].rgb
-        psnr_curr_img = img2psnr(de_linearize(pred_rgb.detach().cpu(), ray_sampler.white_level),
-                                 de_linearize(gt_img, ray_sampler.white_level))
-        self.writer.add_scalar(prefix + 'psnr_image' + postfix, psnr_curr_img, global_step)
-        self.model.switch_to_train()
 
     def log_images(self, train_data, global_step):
         print('Logging a random validation view...')
         for val_idx in range(len(self.val_dataset)):
-            if val_idx % len(self.val_dataset.render_rgb_files) not in [0, (len(self.val_dataset.render_rgb_files) - 1) // 2, len(self.val_dataset.render_rgb_files) - 1]:
+            if val_idx %  100 != 0:
                 continue            
-            elif global_step == 1 and val_idx > 0:
-                break
             val_data = self.val_dataset[val_idx]
-            val_data = {k : val_data[k][None] if isinstance(val_data[k], torch.Tensor) else val_data[k] for k in val_data.keys()}
-            tmp_ray_sampler = RaySampler(val_data, self.device, render_stride=self.args.render_stride)
-            H, W = tmp_ray_sampler.H, tmp_ray_sampler.W
-            gt_img = tmp_ray_sampler.rgb_clean.reshape(H, W, 3)
-            iter_ = [0, (len(self.val_dataset.render_rgb_files) - 1) // 2, len(self.val_dataset.render_rgb_files) - 1].index(val_idx % len(self.val_dataset.render_rgb_files))
-            eval_gain = val_data['eval_gain']
-            self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_gain{eval_gain}_iter{iter_}")
+            val_data = {k : val_data[k][None].to(self.device) if isinstance(val_data[k], torch.Tensor) else val_data[k] for k in val_data.keys()}
+            self.log_view_to_tb(global_step, val_data, prefix='val/', fn=f"{global_step}_{val_idx}")
             torch.cuda.empty_cache()
 
-        print('Logging current training view...')
-        tmp_ray_train_sampler = RaySampler(train_data, self.device,
-                                           render_stride=self.args.render_stride)
-        H, W = tmp_ray_train_sampler.H, tmp_ray_train_sampler.W
-        gt_img = tmp_ray_train_sampler.rgb_clean.reshape(H, W, 3)
-        self.log_view_to_tb(global_step, tmp_ray_train_sampler, gt_img, render_stride=self.args.render_stride, prefix='train/')
+        self.log_view_to_tb(global_step, train_data, prefix=f'train', fn=f'{global_step}')
 
 

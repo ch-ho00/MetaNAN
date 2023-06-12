@@ -96,6 +96,8 @@ class BurstDataset(Dataset, ABC):
         for i, scene_path in enumerate(self.scenes_dirs):
             self.add_single_scene(i, scene_path)
 
+        print(f"Loaded img file = {len(self.render_rgb_files)}")
+        
     def pick_scenes(self, scenes):
         if len(scenes) > 0:
             if isinstance(scenes, str):
