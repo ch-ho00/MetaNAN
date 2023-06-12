@@ -39,11 +39,25 @@ def de_linearize(rgb, wl=1.):
     @param wl:
     @return:
     """
-    rgb = rgb / wl
-    srgb = torch.where(rgb > t, (1 + a) * torch.clamp(rgb, min=t) ** (1 / gamma) - a, k0 * rgb)
+    if isinstance(wl, torch.Tensor):
+        if wl.ndim > 1:
+            assert wl.shape[0] == rgb.shape[0]
+            srgb = []
+            for signal, level in zip(rgb, wl):
+                signal = signal / level
+                srgb_ = torch.where(signal > t, (1 + a) * torch.clamp(signal, min=t) ** (1 / gamma) - a, k0 * signal)
 
-    k1 = (1 + a) * (1 / gamma)
-    srgb = torch.where(rgb > 1, k1 * rgb - k1 + 1, srgb)
+                k1 = (1 + a) * (1 / gamma)
+                srgb_ = torch.where(signal > 1, k1 * signal - k1 + 1, srgb_)
+                srgb.append(srgb_)
+
+            srgb = torch.stack(srgb)                
+    else:
+        rgb = rgb / wl
+        srgb = torch.where(rgb > t, (1 + a) * torch.clamp(rgb, min=t) ** (1 / gamma) - a, k0 * rgb)
+
+        k1 = (1 + a) * (1 / gamma)
+        srgb = torch.where(rgb > 1, k1 * rgb - k1 + 1, srgb)
     return srgb
 
 

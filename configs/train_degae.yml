@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : test_wo_cond_512 #degae_test 
+expname                     : test_512 #degae_test 
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -24,6 +24,8 @@ batch_size                  : 2
 degae_training              : True
 degrep_ckpt                 : './ckpts/Discriminator_x4-ImageNet-22ca3e6c.pth.tar' #'./ckpts/SRGAN_x4-ImageNet-8c4a7569.pth.tar'
 condition_decode            : True
+img_size                    : 512
+visualize_dir_prefix        : './degrad_ae'
 
 ### TESTING
 chunk_size                  : 2048 # can be bigger depend on the gpu memory

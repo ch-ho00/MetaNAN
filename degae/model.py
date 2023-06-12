@@ -1,0 +1,50 @@
+import torch
+import torch.nn as nn 
+
+from degae.uformer.model import Uformer
+from degae.srgan.vgg import DegFeatureExtractor
+from degae.decoder import DegAE_decoder
+
+
+class DegAE(nn.Module):
+
+    def __init__(self, args):    
+        super().__init__()
+
+        self.args = args 
+        self.device = torch.device(f"cuda:{args.local_rank}")
+        
+        depths=[2, 2, 2, 2, 2, 2, 2, 2, 2]
+        img_wh = [self.args.img_size, self.args.img_size] #[1024, 768]
+        self.encoder = Uformer(img_wh=img_wh, embed_dim=16, depths=depths,
+                    win_size=8, mlp_ratio=4., token_projection='linear', token_mlp='leff', modulator=True, shift_flag=False).to(self.device)
+
+        self.degrep_extractor = DegFeatureExtractor(args.degrep_ckpt).to(self.device)
+        self.decoder = DegAE_decoder().to(self.device)
+        self.optimizer, self.scheduler = self.create_optimizer()
+
+
+    def create_optimizer(self):
+        params_list = [{'params': self.encoder.parameters(), 'lr': self.args.lrate_feature},
+                       {'params': self.degrep_extractor.degrep_conv.parameters(),  'lr': self.args.lrate_feature},
+                       {'params': self.degrep_extractor.degrep_fc.parameters(),  'lr': self.args.lrate_feature},
+                       {'params': self.decoder.parameters(),  'lr': self.args.lrate_feature},                       
+                       ]
+                    #    {'params': self.degrep_extractor.vgg.parameters(),  'lr': self.args.lrate_feature},
+        optimizer = torch.optim.Adam(params_list)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
+                                                    step_size=self.args.lrate_decay_steps,
+                                                    gamma=self.args.lrate_decay_factor)
+
+        return optimizer, scheduler
+    
+    def forward(self, batch_data):
+
+        img_embed = self.encoder(batch_data['noisy_rgb'])
+        noise_vec_ref = None
+        if self.args.condition_decode:        
+            noise_vec_ref = self.degrep_extractor(batch_data['ref_rgb'], batch_data['white_level'])        
+
+        reconst_signal = self.decoder(img_embed, noise_vec_ref)
+
+        return reconst_signal

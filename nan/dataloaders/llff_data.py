@@ -79,7 +79,7 @@ class COLMAPDataset(NoiseDataset, ABC):
         rgb = self.read_image(rgb_file)
 
         # if self.mode is Mode.train:
-        side = 512
+        side = self.args.img_size
         crop_h = np.random.randint(low=0, high=768 - side)
         crop_w =  np.random.randint(low=0, high=1024 - side)
         rgb = rgb[crop_h:crop_h+side, crop_w:crop_w+side]

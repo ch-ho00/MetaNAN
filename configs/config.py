@@ -97,6 +97,8 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument("--degrep_ckpt", type=str, default=None)
         parser.add_argument('--condition_decode', default=False, action="store_true")
         parser.add_argument("--batch_size", type=int, default=0)
+        parser.add_argument("--img_size", type=int, default=128)
+        parser.add_argument("--visualize_dir_prefix", type=str, default='./degrad_ae')
         
         ## 
         parser.add_argument('--ssim_alpha', type=float, default=0)
