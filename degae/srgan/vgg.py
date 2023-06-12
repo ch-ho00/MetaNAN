@@ -15,28 +15,28 @@ class DegFeatureExtractor(nn.Module):
             self, vgg_ckpt
     ) -> None:
         super(DegFeatureExtractor, self).__init__()
-        self.vgg = DiscriminatorForVGG(in_channels=3, out_channels=1, channels=64)
-        model_weights_path = vgg_ckpt
-        checkpoint = torch.load(model_weights_path, map_location=lambda storage, loc: storage)
-        self.vgg.load_state_dict(checkpoint["state_dict"])
-        # self.srgan = SRResNet(in_channels=3,
-        #                       out_channels=3,
-        #                       channels=64,
-        #                       num_rcb=16,
-        #                       upscale=4)
+        # self.vgg = DiscriminatorForVGG(in_channels=3, out_channels=1, channels=64)
         # model_weights_path = vgg_ckpt
         # checkpoint = torch.load(model_weights_path, map_location=lambda storage, loc: storage)
-        # self.srgan.load_state_dict(checkpoint["state_dict"])
-        # print(self.srgan(torch.randn(1,3,100,100)).shape)
+        # self.vgg.load_state_dict(checkpoint["state_dict"])
         # self.degrep_conv = nn.Sequential(
-        #     nn.Conv2d(3, 128, kernel_size=3, stride=2, padding=1),
-        #     nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
-        #     nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),
+        #     nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
+        #     nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
+        #     nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
         # ) 
+
+        self.srgan = SRResNet(in_channels=3,
+                              out_channels=3,
+                              channels=64,
+                              num_rcb=16,
+                              upscale=4)
+        model_weights_path = vgg_ckpt
+        checkpoint = torch.load(model_weights_path, map_location=lambda storage, loc: storage)
+        self.srgan.load_state_dict(checkpoint["state_dict"])
         self.degrep_conv = nn.Sequential(
-            nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
-            nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
-            nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(3, 128, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),
         ) 
 
         self.degrep_fc = nn.Sequential(
@@ -49,8 +49,8 @@ class DegFeatureExtractor(nn.Module):
         ) 
     def forward(self, x, white_level) -> Tensor:
         x = de_linearize(x, white_level).clamp(0,1)
-        x = self.vgg(x)
-        # x = self.srgan(x)
+        # x = self.vgg(x)
+        x = self.srgan(x)
         x = self.degrep_conv(x)
         x = F.adaptive_avg_pool2d(x, (1, 1))
         x = self.degrep_fc(x.reshape(-1,512))

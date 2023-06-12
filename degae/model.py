@@ -6,6 +6,10 @@ from degae.srgan.vgg import DegFeatureExtractor
 from degae.decoder import DegAE_decoder
 
 
+def de_parallel(model):
+    return model.module if hasattr(model, 'module') else model
+
+
 class DegAE(nn.Module):
 
     def __init__(self, args):    
@@ -37,6 +41,13 @@ class DegAE(nn.Module):
                                                     gamma=self.args.lrate_decay_factor)
 
         return optimizer, scheduler
+
+    def save_model(self, filename):
+        to_save = {'optimizer'  : self.optimizer.state_dict(),
+                   'scheduler'  : self.scheduler.state_dict(),
+                   'model' : de_parallel(self).state_dict()}
+        torch.save(to_save, filename)
+        
     
     def forward(self, batch_data):
 

@@ -204,14 +204,14 @@ class Trainer:
                     print(logstr)
 
             # save weights
-            # if global_step % self.args.i_weights == 0:
-            #     print(f"Saving checkpoints at {global_step} to {self.exp_out_dir}...")
-            #     self.last_weights_path = self.exp_out_dir / f"model_{global_step:06d}.pth"
-            #     self.model.save_model(self.last_weights_path)
-            #     files = sorted(self.exp_out_dir.glob("*.pth"), key=os.path.getctime)
-            #     rm_files = files[0:max(0, len(files) - max_keep)]
-            #     for f in rm_files:
-            #         f.unlink()
+            if global_step % self.args.i_weights == 0:
+                print(f"Saving checkpoints at {global_step} to {self.exp_out_dir}...")
+                self.last_weights_path = self.exp_out_dir / f"model_{global_step:06d}.pth"
+                self.model.save_model(self.last_weights_path)
+                files = sorted(self.exp_out_dir.glob("*.pth"), key=os.path.getctime)
+                rm_files = files[0:max(0, len(files) - max_keep)]
+                for f in rm_files:
+                    f.unlink()
 
             # log images of training and validation
             if global_step % self.args.i_img == 0: #or global_step == self.model.start_step + 1:

@@ -36,8 +36,8 @@ class BasicBlock(nn.Module):
         out = self.bn1(out)
         out = self.relu(out)
 
-        if scale != None:
-            out = out * scale.view(-1, out.shape[1], 1, 1) + shift.view(-1, out.shape[1], 1, 1)
+        # if scale != None:
+        #     out = out * scale.view(-1, out.shape[1], 1, 1) + shift.view(-1, out.shape[1], 1, 1)
 
         out = self.conv2(out)
         out = self.bn2(out)
@@ -81,36 +81,40 @@ class DegAE_decoder(nn.Module):
     def forward(self, x, degrade_vec=None):
 
         scale1, shift1 = None, None 
+        x = self.block1(x) #, scale1, shift1)
         if degrade_vec != None:
             scale1 = self.cond_scale1(degrade_vec)
             shift1 = self.cond_shift1(degrade_vec)    
+            x = x * scale1.view(-1, self.img_feat_dim, 1, 1) + shift1.view(-1, self.img_feat_dim, 1, 1)
             # x = x + (self.weight1 * torch.randn(64)).reshape(1,-1,1,1)
-        x = self.block1(x, scale1, shift1)
+        # x = self.block1(x, scale1, shift1)
         
         scale2, shift2 = None, None 
+        x = self.block2(x)
         if degrade_vec != None:
             scale2 = self.cond_scale2(degrade_vec)
             shift2 = self.cond_shift2(degrade_vec)
-            # x = x * scale2.view(-1, self.img_feat_dim, 1, 1) + shift2.view(-1, self.img_feat_dim, 1, 1)
+            x = x * scale2.view(-1, self.img_feat_dim, 1, 1) + shift2.view(-1, self.img_feat_dim, 1, 1)
             # x = x + (self.weight2 * torch.randn(64)).reshape(1,-1,1,1)
-        x = self.block2(x, scale2, shift2)
+        # x = self.block2(x, scale2, shift2)
 
         scale3, shift3 = None, None 
+        x = self.block3(x)
         if degrade_vec != None:
             scale3 = self.cond_scale3(degrade_vec)
             shift3 = self.cond_shift3(degrade_vec)
-            # x = x * scale3.view(-1, self.img_feat_dim, 1, 1) + shift3.view(-1, self.img_feat_dim, 1, 1)
+            x = x * scale3.view(-1, self.img_feat_dim, 1, 1) + shift3.view(-1, self.img_feat_dim, 1, 1)
             # x = x + (self.weight3 * torch.randn(64)).reshape(1,-1,1,1)
-        x = self.block3(x, scale3, shift3)
+        # x = self.block3(x, scale3, shift3)
         
 
         scale4, shift4 = None, None 
+        x = self.block4(x)
         if degrade_vec != None:
             scale4 = self.cond_scale4(degrade_vec)
             shift4 = self.cond_shift4(degrade_vec)
-            # x = x * scale4.view(-1, 3, 1, 1) + shift4.view(-1, 3, 1, 1)
-
-        x = self.block4(x, scale4, shift4)
+            x = x * scale4.view(-1, self.img_feat_dim, 1, 1) + shift4.view(-1, self.img_feat_dim, 1, 1)
+        # x = self.block4(x, scale4, shift4)
         x = self.final_conv(x)
 
         if x.isnan().sum() > 0:
