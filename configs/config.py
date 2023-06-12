@@ -103,7 +103,17 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--lambda_embed', type=float, default=0)
         parser.add_argument('--lambda_content', type=float, default=0)
         parser.add_argument('--rand_noise', default=False, action="store_true")
-        
+
+        parser.add_argument("--blur_kernel_size", type=int, default=128)
+        parser.add_argument('--sinc_prob', type=float, default=0)
+        parser.add_argument("--kernel_list", nargs='+', type=str, default=[])
+        parser.add_argument("--kernel_prob", nargs='+', type=float, default=[])
+        parser.add_argument("--blur_sigma", nargs='+', type=float, default=[])
+        parser.add_argument("--betag_range", nargs='+', type=float, default=[])
+        parser.add_argument("--betap_range", nargs='+', type=float, default=[])
+        parser.add_argument("--jpeg_range", nargs='+', type=float, default=[])
+        parser.add_argument('--final_sinc_prob', type=float, default=0)
+
         ## 
         parser.add_argument('--ssim_alpha', type=float, default=0)
         parser.add_argument('--lambda_tv_loss', type=float, default=0)

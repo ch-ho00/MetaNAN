@@ -22,13 +22,18 @@ from pathlib import Path
 import imageio
 import numpy as np
 import torch
-import random
+import random, math
 
 from configs.local_setting import LOG_DIR
 from nan.dataloaders.basic_dataset import NoiseDataset, re_linearize
 from nan.dataloaders.data_utils import random_crop, get_nearest_pose_ids, random_flip, to_uint
 from nan.dataloaders.llff_data_utils import load_llff_data, batch_parse_llff_poses
 from nan.dataloaders.basic_dataset import Mode
+
+
+from basicsr.utils import DiffJPEG
+from basicsr.utils.img_process_util import filter2D
+from basicsr.data.degradations import circular_lowpass_kernel, random_mixed_kernels
 
 
 class COLMAPDataset(NoiseDataset, ABC):
@@ -47,6 +52,24 @@ class COLMAPDataset(NoiseDataset, ABC):
         self.src_rgb_files = []
         super().__init__(args, mode, scenes=scenes, random_crop=random_crop, **kwargs)
         self.depth_range = self.render_depth_range[0]
+
+        # blur settings for the first degradation
+        self.blur_kernel_size = args.blur_kernel_size
+        self.kernel_list = args.kernel_list
+        self.kernel_prob = args.kernel_prob  # a list for each kernel probability
+        self.blur_sigma = args.blur_sigma
+        self.betag_range = args.betag_range  # betag used in generalized Gaussian blur kernels
+        self.betap_range = args.betap_range  # betap used in plateau blur kernels
+        self.sinc_prob = args.sinc_prob  # the probability for sinc filters
+        self.jpeg_range = args.jpeg_range
+        
+        # a final sinc filter
+        self.final_sinc_prob = args.final_sinc_prob
+        self.kernel_range = [2 * v + 1 for v in range(3, 11)]  # kernel size ranges from 7 to 21
+        # TODO: kernel range is now hard-coded, should be in the configure file
+        self.pulse_tensor = torch.zeros(21, 21).float()  # convolving with pulse tensor brings no blurry effect
+        self.pulse_tensor[10, 10] = 1
+        self.jpeger = DiffJPEG(differentiable=False)  # simulate JPEG compression artifacts        
 
     def get_i_test(self, N):
         return np.arange(N)[::self.args.llffhold] if not self.args.degae_training else  np.array([j for j in np.arange(int(N))]) 
@@ -70,6 +93,56 @@ class COLMAPDataset(NoiseDataset, ABC):
         else:
             return self.get_multiview_item(idx)
 
+    def apply_blur_kernel(self, rgb, final_sinc=False):
+
+        kernel_size = random.choice(self.kernel_range)
+        if not final_sinc:
+            if np.random.uniform() < self.args.sinc_prob:
+                # this sinc filter setting is for kernels ranging from [7, 21]
+                if kernel_size < 13:
+                    omega_c = np.random.uniform(np.pi / 3, np.pi)
+                else:
+                    omega_c = np.random.uniform(np.pi / 5, np.pi)
+                kernel = circular_lowpass_kernel(omega_c, kernel_size, pad_to=False)
+            else:
+                kernel = random_mixed_kernels(
+                    self.kernel_list,
+                    self.kernel_prob,
+                    kernel_size,
+                    self.blur_sigma,
+                    self.blur_sigma, [-math.pi, math.pi],
+                    self.betag_range,
+                    self.betap_range,
+                    noise_range=None)
+
+            # pad kernel
+            pad_size = (21 - kernel_size) // 2
+            kernel = np.pad(kernel, ((pad_size, pad_size), (pad_size, pad_size)))
+            kernel = kernel.astype(np.float32)
+            out = filter2D(rgb, torch.from_numpy(kernel[None].repeat(rgb.shape[0], 0)))
+
+        else:
+            # ------------------------------------- the final sinc kernel ------------------------------------- #
+            if np.random.uniform() < self.args.final_sinc_prob:
+                kernel_size = random.choice(self.kernel_range)
+                omega_c = np.random.uniform(np.pi / 3, np.pi)
+                sinc_kernel = circular_lowpass_kernel(omega_c, kernel_size, pad_to=21)
+                sinc_kernel = sinc_kernel.astype(np.float32)
+                sinc_kernel = torch.FloatTensor(sinc_kernel)
+            else:
+                sinc_kernel = self.pulse_tensor
+            out = filter2D(rgb, sinc_kernel[None].repeat(rgb.shape[0], 1, 1))
+
+        return out
+    
+    def apply_jpeg_compression(self, rgb):
+        # JPEG compression
+        jpeg_p = rgb.new_zeros(rgb.size(0)).uniform_(*self.args.jpeg_range)
+        rgb = torch.clamp(rgb, 0, 1)  # clamp to [0, 1], otherwise JPEGer will result in unpleasant artifacts
+        out = self.jpeger(rgb, quality=jpeg_p)
+        
+        return out 
+    
     def get_singleview_item(self, idx):
         # Read target data:
         eval_gain = self.args.eval_gain[idx // len(self.render_rgb_files)]
@@ -78,64 +151,84 @@ class COLMAPDataset(NoiseDataset, ABC):
         # image (H, W, 3)
         rgb = self.read_image(rgb_file)
 
-        # if self.mode is Mode.train:
         side = self.args.img_size
-        if self.mode in [Mode.train]: #, Mode.validation]:
+        if self.mode in [Mode.train]:
             crop_h = np.random.randint(low=0, high=768 - side)
             crop_w =  np.random.randint(low=0, high=1024 - side)
         else:
             crop_h = 768 // 2
             crop_w = 1024 // 2
-        rgb = rgb[crop_h:crop_h+side, crop_w:crop_w+side]
+        rgb = rgb[crop_h:crop_h+side, crop_w:crop_w+side].transpose((2,0,1))[None]
 
         idx_ref = idx
         while idx == idx_ref:
             idx_ref = random.choice(list(range(len(self.render_rgb_files))))        
         rgb_file_ref: Path = self.render_rgb_files[idx_ref]
-        # image (H, W, 3)
         rgb_ref = self.read_image(rgb_file_ref)
 
-        # if self.mode is Mode.train:
         crop_h = np.random.randint(low=0, high=768 - side)
         crop_w =  np.random.randint(low=0, high=1024 -side)
-        rgb_ref = rgb_ref[crop_h:crop_h+side, crop_w:crop_w+side]
+        rgb_ref = rgb_ref[crop_h:crop_h+side, crop_w:crop_w+side].transpose((2,0,1))[None]
 
-        if self.mode in [Mode.train]: #, Mode.validation]:
+        if self.mode in [Mode.train]:
+            if random.random() < 0.5:
+                rgb = np.flip(rgb, axis=-1).copy()
+            if random.random() < 0.5:
+                rgb = np.flip(rgb, axis=-2).copy()
+
+            if random.random() < 0.5:
+                rgb_ref = np.flip(rgb_ref, axis=-1).copy()
+            if random.random() < 0.5:
+                rgb_ref = np.flip(rgb_ref, axis=-2).copy()
+
             white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
         else:
             white_level = torch.Tensor([1])
 
         # d1
-        rgb = re_linearize(torch.from_numpy(rgb[..., :3]), white_level)
+        rgb_d1 = self.apply_blur_kernel(torch.from_numpy(rgb), final_sinc=False).clamp(0,1)
+        rgb_d1 = re_linearize(rgb_d1, white_level)
         clean_d1 = False
         if self.mode is Mode.train:
             if random.random() > 0.25:
-                rgb_d1 , _ = self.add_noise(rgb)
+                rgb_d1 , _ = self.add_noise(rgb_d1)
             else:
-                rgb_d1 = rgb
                 clean_d1 = True        
+            
+            # if random.random() < self.final_sinc_prob:
+            #     rgb_d1 = self.apply_blur_kernel(rgb_d1, final_sinc=True)
+                
         else:
-            rgb_d1, _ = self.add_noise_level(rgb, eval_gain)                        
+            rgb_d1, _ = self.add_noise_level(rgb_d1, eval_gain)                        
 
         # d2
-        rgb_ref = re_linearize(torch.from_numpy(rgb_ref[..., :3]), white_level)
-        rgbs = torch.stack([rgb, rgb_ref])
+        d2_rgbs = np.concatenate([rgb, rgb_ref], axis=0)
+        d2_rgbs = torch.from_numpy(d2_rgbs)
         if self.mode is Mode.train:
+            d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=False).clamp(0,1)
+            d2_rgbs = re_linearize(d2_rgbs, white_level)
             if random.random() > 0.25 or clean_d1:
-                rgbs_d2, _ = self.add_noise(rgbs)        
-            else:
-                rgbs_d2 = rgbs
+                d2_rgbs, _ = self.add_noise(d2_rgbs)        
+
+            # if random.random() < self.final_sinc_prob:
+            #     d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=True)
         else:
-            rgbs_d2 = rgbs
-        rgb_d2, rgb_ref_d2 = rgbs_d2[0], rgbs_d2[1]
-        batch_dict = {'noisy_rgb' : rgb_d1.permute(2,0,1),
-                      'clean_rgb' : rgb.permute(2,0,1),
-                      'target_rgb' : rgb_d2.permute(2,0,1),
-                      'ref_rgb' : rgb_ref_d2.permute(2,0,1),
-                      'white_level'   : white_level}
+            d2_rgbs = re_linearize(d2_rgbs[:, :3], white_level)
+
+        rgb_d2, rgb_ref_d2 = d2_rgbs[0], d2_rgbs[1]
+        batch_dict = {
+                      'noisy_rgb'       : rgb_d1.squeeze(),
+                      'clean_rgb'       : torch.from_numpy(rgb).squeeze(),
+                      'target_rgb'      : rgb_d2.squeeze(),
+                      'ref_rgb'         : rgb_ref_d2.squeeze(),
+                      'white_level'     : white_level
+        }
+
+        if rgb_d1.isnan().sum() + torch.from_numpy(rgb).isnan().sum() + rgb_d2.isnan().sum() + rgb_ref_d2.isnan().sum() > 0:
+            import pdb; pdb.set_trace()
+
         if self.mode is not Mode.train:
             batch_dict['eval_gain'] = eval_gain
-
 
         return batch_dict        
 

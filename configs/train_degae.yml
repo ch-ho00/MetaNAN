@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : srgan_generator_encoder_woRandomNoise_1e-2_1_1e-1 #degae_test 
+expname                     : srgan_generator_wBlurDegrade_wRandomNoise_1e-3_1_1e-1 #degae_test 
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -25,10 +25,20 @@ degae_training              : True
 degrep_ckpt                 : './ckpts/SRGAN_x4-ImageNet-8c4a7569.pth.tar'
 condition_decode            : True
 img_size                    : 128
-lambda_perceptual           : 0.01
+lambda_perceptual           : 0.001
 lambda_embed                : 1
 lambda_content              : 0.1
-rand_noise                  : False
+rand_noise                  : True
+#
+blur_kernel_size            : 21
+kernel_list                 : [iso, aniso, generalized_iso, generalized_aniso, plateau_iso, plateau_aniso]
+kernel_prob                 : [0.45, 0.25, 0.12, 0.03, 0.12, 0.03]
+sinc_prob                   : 0.1
+blur_sigma                  : [0.2, 3]
+betag_range                 : [0.5, 4]
+betap_range                 : [1, 2]
+jpeg_range                  : [30, 95]
+final_sinc_prob             : 0.8
 
 ### TESTING
 chunk_size                  : 2048 # can be bigger depend on the gpu memory
