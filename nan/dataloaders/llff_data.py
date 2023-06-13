@@ -62,6 +62,7 @@ class COLMAPDataset(NoiseDataset, ABC):
         self.betap_range = args.betap_range  # betap used in plateau blur kernels
         self.sinc_prob = args.sinc_prob  # the probability for sinc filters
         self.jpeg_range = args.jpeg_range
+        self.blur_degrade = args.blur_degrade
         
         # a final sinc filter
         self.final_sinc_prob = args.final_sinc_prob
@@ -186,10 +187,14 @@ class COLMAPDataset(NoiseDataset, ABC):
             white_level = torch.Tensor([1])
 
         # d1
-        rgb_d1 = self.apply_blur_kernel(torch.from_numpy(rgb), final_sinc=False).clamp(0,1)
-        rgb_d1 = re_linearize(rgb_d1, white_level)
-        clean_d1 = False
         if self.mode is Mode.train:
+            if self.blur_degrade:
+                rgb_d1 = self.apply_blur_kernel(torch.from_numpy(rgb), final_sinc=False).clamp(0,1)
+            else:
+                rgb_d1 = rgb 
+            rgb_d1 = re_linearize(rgb_d1, white_level)
+            clean_d1 = False
+
             if random.random() > 0.25:
                 rgb_d1 , _ = self.add_noise(rgb_d1)
             else:
@@ -199,13 +204,15 @@ class COLMAPDataset(NoiseDataset, ABC):
             #     rgb_d1 = self.apply_blur_kernel(rgb_d1, final_sinc=True)
                 
         else:
+            rgb_d1 = re_linearize(rgb, white_level)
             rgb_d1, _ = self.add_noise_level(rgb_d1, eval_gain)                        
 
         # d2
         d2_rgbs = np.concatenate([rgb, rgb_ref], axis=0)
         d2_rgbs = torch.from_numpy(d2_rgbs)
         if self.mode is Mode.train:
-            d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=False).clamp(0,1)
+            if self.blur_degrade:
+                d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=False).clamp(0,1)
             d2_rgbs = re_linearize(d2_rgbs, white_level)
             if random.random() > 0.25 or clean_d1:
                 d2_rgbs, _ = self.add_noise(d2_rgbs)        

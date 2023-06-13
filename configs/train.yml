@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : test #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 

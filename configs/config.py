@@ -113,12 +113,16 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument("--betap_range", nargs='+', type=float, default=[])
         parser.add_argument("--jpeg_range", nargs='+', type=float, default=[])
         parser.add_argument('--final_sinc_prob', type=float, default=0)
+        parser.add_argument('--blur_degrade', default=False, action="store_true")
 
         ## 
         parser.add_argument('--ssim_alpha', type=float, default=0)
         parser.add_argument('--lambda_tv_loss', type=float, default=0)
         parser.add_argument('--lambda_denoise_loss', type=float, default=0)
         parser.add_argument('--lambda_reconst_loss', type=float, default=0)
+        
+        parser.add_argument("--degae_feat_ckpt", type=str, default='./degrad_ae')
+        parser.add_argument('--degae_feat', default=False, action="store_true")
         parser.add_argument('--auto_encoder', default=False, action="store_true")
         parser.add_argument('--meta_module', default=False, action="store_true")
         parser.add_argument('--patch_kernel', default=False, action="store_true")    
