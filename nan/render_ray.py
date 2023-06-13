@@ -290,25 +290,38 @@ class RayRender:
                  features maps: dict {'coarse': (N, C, H', W'), 'fine': (N, C, H', W')}
         """
         conv1_weights = None
-        if self.model.args.meta_module:
-            sigma_estimate = sigma_estimate[0].permute(0,3,1,2)
-            noise_vector = self.model.noise_conv(sigma_estimate)
-            noise_vector = noise_vector.reshape(noise_vector.shape[0], -1)
-            conv1_weights = self.model.weight_generator(noise_vector)
-
-
+        orig_rgbs = src_rgbs
         if self.model.pre_net is not None:
             src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
-            featmaps = self.model.feature_net(src_rgbs, conv1_weights, reconstruct=self.model.args.denoise_vol or self.model.args.reconst_vol)
-            src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
-        else:
-            featmaps = self.model.feature_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))
 
-        if self.model.args.auto_encoder:
-            reconst_signal = [featmaps['reconst_signal_coarse'], featmaps['reconst_signal_fine']] if self.model.args.per_level_render else [featmaps['reconst_signal']]
-            denoise_signal = [featmaps['denoised_signal_coarse'], featmaps['denoised_signal_fine']] if self.model.args.per_level_render else [featmaps['denoised_signal']]
-            output = [src_rgbs, reconst_signal, denoise_signal]
+        if not self.model.args.degae_feat:
+            if self.model.args.meta_module:
+                sigma_estimate = sigma_estimate[0].permute(0,3,1,2)
+                noise_vector = self.model.noise_conv(sigma_estimate)
+                noise_vector = noise_vector.reshape(noise_vector.shape[0], -1)
+                conv1_weights = self.model.weight_generator(noise_vector)
+
+
+            if self.model.pre_net is not None:
+                featmaps = self.model.feature_net(src_rgbs, conv1_weights, reconstruct=self.model.args.denoise_vol or self.model.args.reconst_vol)
+                src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
+            else:
+                featmaps = self.model.feature_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))
+
+            if self.model.args.auto_encoder:
+                reconst_signal = [featmaps['reconst_signal_coarse'], featmaps['reconst_signal_fine']] if self.model.args.per_level_render else [featmaps['reconst_signal']]
+                denoise_signal = [featmaps['denoised_signal_coarse'], featmaps['denoised_signal_fine']] if self.model.args.per_level_render else [featmaps['denoised_signal']]
+                output = [src_rgbs, reconst_signal, denoise_signal]
+            else:
+                output = src_rgbs
         else:
-            output = src_rgbs
+            with torch.no_grad():
+                degfeat = self.model.degae.encoder(orig_rgbs[0].permute(0,3,1,2), img_wh=torch.Tensor([orig_rgbs.shape[-2], orig_rgbs.shape[-3]]).int().to(orig_rgbs.device))    
+            degfeat = self.model.feature_conv(degfeat)
+            output = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
+            featmaps = {
+                'coarse' : degfeat[:,:self.model.args.coarse_feat_dim],
+                'fine'   : degfeat[:,self.model.args.coarse_feat_dim:]
+            }
         
         return output , featmaps

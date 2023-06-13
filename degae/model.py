@@ -12,7 +12,7 @@ def de_parallel(model):
 
 class DegAE(nn.Module):
 
-    def __init__(self, args):    
+    def __init__(self, args, train_scratch=False):    
         super().__init__()
 
         self.args = args 
@@ -23,7 +23,7 @@ class DegAE(nn.Module):
         self.encoder = Uformer(img_wh=img_wh, embed_dim=16, depths=depths,
                     win_size=8, mlp_ratio=4., token_projection='linear', token_mlp='leff', modulator=True, shift_flag=False).to(self.device)
 
-        self.degrep_extractor = DegFeatureExtractor(args.degrep_ckpt).to(self.device)
+        self.degrep_extractor = DegFeatureExtractor(args.degrep_ckpt, train_scratch=train_scratch).to(self.device)
         self.decoder = DegAE_decoder(rand_noise=args.rand_noise).to(self.device)
         self.optimizer, self.scheduler = self.create_optimizer()
 

@@ -93,6 +93,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                             help='number of data loading workers (default: 8)')
 
+        ## DegAE pretraining related
         parser.add_argument('--degae_training', default=False, action="store_true")
         parser.add_argument("--degrep_ckpt", type=str, default=None)
         parser.add_argument('--condition_decode', default=False, action="store_true")
@@ -115,14 +116,15 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--final_sinc_prob', type=float, default=0)
         parser.add_argument('--blur_degrade', default=False, action="store_true")
 
-        ## 
+        ## DegAE to NAN 
+        parser.add_argument("--degae_feat_ckpt", type=str, default=None)
+        parser.add_argument('--degae_feat', default=False, action="store_true")
+
+        ## Plain AE to NAN
         parser.add_argument('--ssim_alpha', type=float, default=0)
         parser.add_argument('--lambda_tv_loss', type=float, default=0)
         parser.add_argument('--lambda_denoise_loss', type=float, default=0)
-        parser.add_argument('--lambda_reconst_loss', type=float, default=0)
-        
-        parser.add_argument("--degae_feat_ckpt", type=str, default='./degrad_ae')
-        parser.add_argument('--degae_feat', default=False, action="store_true")
+        parser.add_argument('--lambda_reconst_loss', type=float, default=0)        
         parser.add_argument('--auto_encoder', default=False, action="store_true")
         parser.add_argument('--meta_module', default=False, action="store_true")
         parser.add_argument('--patch_kernel', default=False, action="store_true")    

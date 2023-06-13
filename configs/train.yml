@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : test #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : degAE_feat_NAN #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -19,6 +19,8 @@ losses                      : [l2, l1, l1_grad, ssim]
 losses_weights              : [0,  1,  0,       0]
 workers                     : 0
 
+degae_feat                  : True
+degae_feat_ckpt             : /disk1/chanho/3d/MetaNAN/out/srgan_generator_256x256_wBlurDegrade_wRandomNoise_1e-4_1_1e-1__NAN/model_045000.pth
 
 ## AutoEncoder Module
 auto_encoder                : False
@@ -26,7 +28,7 @@ meta_module                 : False
 patch_kernel                : False
 annealing_loss              : False
 lambda_denoise_loss         : 0.0
-lambda_reconst_loss         : 0.02
+lambda_reconst_loss         : 0.0
 lambda_tv_loss              : 0.0
 ssim_alpha                  : 0.0
 reconst_vol                 : False
@@ -36,7 +38,7 @@ frozen_prenet               : False
 decode_trans_feat           : False
 decode_pre_feat             : False
 transform_tar_feat          : False
-transform_src_feat          : True
+transform_src_feat          : False
 
 ### TESTING
 chunk_size                  : 2048 # can be bigger depend on the gpu memory

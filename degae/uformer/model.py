@@ -928,7 +928,6 @@ class LeWinTransformerBlock(nn.Module):
             W = int(math.sqrt(L))
         else:
             W, H = img_wh
-        
         ## input mask
         if mask != None:
             input_mask = F.interpolate(mask, size=(H,W)).permute(0,2,3,1)
@@ -1290,52 +1289,44 @@ class Uformer(nn.Module):
     def extra_repr(self) -> str:
         return f"embed_dim={self.embed_dim}, token_projection={self.token_projection}, token_mlp={self.mlp},win_size={self.win_size}"
 
-    def forward(self, x, mask=None):
+    def forward(self, x, mask=None, img_wh=None):
+        if img_wh == None:
+            img_wh = self.img_wh
         # Input Projection
         y = self.input_proj(x)
         y = self.pos_drop(y)
         #Encoder
-        conv0 = self.encoderlayer_0(y,mask=mask, img_wh=self.img_wh)
-        pool0 = self.dowsample_0(conv0, img_wh=self.img_wh)
-        conv1 = self.encoderlayer_1(pool0,mask=mask, img_wh=[dim // 2 for dim in self.img_wh])
-        pool1 = self.dowsample_1(conv1, img_wh=[dim // 2 for dim in self.img_wh])
-        conv2 = self.encoderlayer_2(pool1,mask=mask, img_wh=[dim // 2**2 for dim in self.img_wh])
-        pool2 = self.dowsample_2(conv2, img_wh=[dim // 2**2 for dim in self.img_wh])
-        conv3 = self.encoderlayer_3(pool2,mask=mask, img_wh=[dim // 2**3 for dim in self.img_wh] )
-        pool3 = self.dowsample_3(conv3, img_wh=[dim // 2**3 for dim in self.img_wh])
+        conv0 = self.encoderlayer_0(y,mask=mask, img_wh=img_wh)
+        pool0 = self.dowsample_0(conv0, img_wh=img_wh)
+        conv1 = self.encoderlayer_1(pool0,mask=mask, img_wh=[dim // 2 for dim in img_wh])
+        pool1 = self.dowsample_1(conv1, img_wh=[dim // 2 for dim in img_wh])
+        conv2 = self.encoderlayer_2(pool1,mask=mask, img_wh=[dim // 2**2 for dim in img_wh])
+        pool2 = self.dowsample_2(conv2, img_wh=[dim // 2**2 for dim in img_wh])
+        conv3 = self.encoderlayer_3(pool2,mask=mask, img_wh=[dim // 2**3 for dim in img_wh] )
+        pool3 = self.dowsample_3(conv3, img_wh=[dim // 2**3 for dim in img_wh])
 
         # Bottleneck
-        conv4 = self.conv(pool3, mask=mask, img_wh=[dim // 2**4 for dim in self.img_wh])
+        conv4 = self.conv(pool3, mask=mask, img_wh=[dim // 2**4 for dim in img_wh])
 
         #Decoder
-        up0 = self.upsample_0(conv4, img_wh=[dim // 2**4 for dim in self.img_wh])
+        up0 = self.upsample_0(conv4, img_wh=[dim // 2**4 for dim in img_wh])
         deconv0 = torch.cat([up0,conv3],-1)
-        deconv0 = self.decoderlayer_0(deconv0,mask=mask, img_wh=[dim // 2**3 for dim in self.img_wh])
-        if deconv0.isnan().sum() > 0:
-            import pdb; pdb.set_trace()
+        deconv0 = self.decoderlayer_0(deconv0,mask=mask, img_wh=[dim // 2**3 for dim in img_wh])
         
-        up1 = self.upsample_1(deconv0, img_wh=[dim // 2**3 for dim in self.img_wh])
+        up1 = self.upsample_1(deconv0, img_wh=[dim // 2**3 for dim in img_wh])
         deconv1 = torch.cat([up1,conv2],-1)
-        deconv1 = self.decoderlayer_1(deconv1,mask=mask, img_wh=[dim // 2**2 for dim in self.img_wh])
-        if deconv1.isnan().sum() > 0:
-            import pdb; pdb.set_trace()
+        deconv1 = self.decoderlayer_1(deconv1,mask=mask, img_wh=[dim // 2**2 for dim in img_wh])
 
-        up2 = self.upsample_2(deconv1, img_wh=[dim // 2**2 for dim in self.img_wh])
+        up2 = self.upsample_2(deconv1, img_wh=[dim // 2**2 for dim in img_wh])
         deconv2 = torch.cat([up2,conv1],-1)
-        deconv2 = self.decoderlayer_2(deconv2,mask=mask, img_wh=[dim // 2 for dim in self.img_wh])
-        if deconv2.isnan().sum() > 0:
-            import pdb; pdb.set_trace()
+        deconv2 = self.decoderlayer_2(deconv2,mask=mask, img_wh=[dim // 2 for dim in img_wh])
 
-        up3 = self.upsample_3(deconv2, img_wh=[dim // 2 for dim in self.img_wh])
+        up3 = self.upsample_3(deconv2, img_wh=[dim // 2 for dim in img_wh])
         deconv3 = torch.cat([up3,conv0],-1)
-        deconv3 = self.decoderlayer_3(deconv3,mask=mask, img_wh=self.img_wh, print_=True)
-        if deconv3.isnan().sum() > 0:
-            import pdb; pdb.set_trace()
+        deconv3 = self.decoderlayer_3(deconv3,mask=mask, img_wh=img_wh, print_=True)
 
         # Output Projection
-        y = self.output_proj(deconv3, img_wh=self.img_wh)
-        if y.isnan().sum() > 0:
-            import pdb; pdb.set_trace()
+        y = self.output_proj(deconv3, img_wh=img_wh)
         return y 
         # return x + y if self.dd_in ==3 else y
 

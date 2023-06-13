@@ -39,9 +39,11 @@ def de_linearize(rgb, wl=1.):
     @param wl:
     @return:
     """
+    completed = False
     if isinstance(wl, torch.Tensor):
-        if wl.ndim > 1:
+        if wl.ndim > 1 and wl.ndim == 4:
             assert wl.shape[0] == rgb.shape[0]
+            completed = True
             srgb = []
             for signal, level in zip(rgb, wl):
                 signal = signal / level
@@ -52,7 +54,7 @@ def de_linearize(rgb, wl=1.):
                 srgb.append(srgb_)
 
             srgb = torch.stack(srgb)                
-    else:
+    if not completed:
         rgb = rgb / wl
         srgb = torch.where(rgb > t, (1 + a) * torch.clamp(rgb, min=t) ** (1 / gamma) - a, k0 * rgb)
 

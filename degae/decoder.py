@@ -46,7 +46,10 @@ class BasicBlock(nn.Module):
         out = self.bn2(out)
 
         if self.downsample is not None:
-            identity = self.downsample(x)
+            if isinstance(self.downsample, float):
+                identity = F.interpolate(x, scale_factor=self.downsample)
+            else:
+                identity = self.downsample(x)
 
         out += identity
         out = self.relu(out)

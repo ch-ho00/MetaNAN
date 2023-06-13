@@ -28,7 +28,8 @@ from configs.local_setting import OUT_DIR
 from nan.feature_network import ResUNet
 from nan.nan_mlp import NanMLP
 from nan.utils.io_utils import get_latest_file, print_link
-
+from degae.model import DegAE
+from degae.decoder import BasicBlock
 
 def de_parallel(model):
     return model.module if hasattr(model, 'module') else model
@@ -140,16 +141,32 @@ class NANScheme(nn.Module):
         device = torch.device(f'cuda:{args.local_rank}')
 
         # create feature extraction network
-        self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
-                                   fine_out_ch=args.fine_feat_dim,
-                                   coarse_only=args.coarse_only,
-                                   auto_encoder=args.auto_encoder,
-                                   per_level_render=args.per_level_render,
-                                   meta_module=args.meta_module).to(device)
+        self.degae_feat = args.degae_feat
+        if args.degae_feat:
+            assert args.degae_feat_ckpt != None
+            self.degae = DegAE(args, train_scratch=False)
+            checkpoint = torch.load(args.degae_feat_ckpt, map_location=lambda storage, loc: storage)
+            self.degae.load_state_dict(checkpoint["model"])
+            
+            for param in self.degae.parameters():
+                param.requires_grad = False
+            
+            self.feature_conv = nn.Sequential(
+                BasicBlock(64, 64, stride=2, downsample=0.5, rand_noise=False),
+                BasicBlock(64, 64, stride=2, downsample=0.5, rand_noise=False),
+            ).to(device)
+            # print(self.feature_conv(self.degae.encoder(torch.randn(1,3,768,1024).cuda(), img_wh=torch.Tensor([1024, 768]).int())).shape)
+        else:
+            self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
+                                    fine_out_ch=args.fine_feat_dim,
+                                    coarse_only=args.coarse_only,
+                                    auto_encoder=args.auto_encoder,
+                                    per_level_render=args.per_level_render,
+                                    meta_module=args.meta_module).to(device)
 
-        if args.meta_module:
-            self.noise_conv = NoiseLevelConv().to(device)
-            self.weight_generator = ConvWeightGenerator(in_dim=self.noise_conv.out_dim * (self.noise_conv.out_size ** 2), out_dim=self.feature_net.conv1_kdim).to(device)
+            if args.meta_module:
+                self.noise_conv = NoiseLevelConv().to(device)
+                self.weight_generator = ConvWeightGenerator(in_dim=self.noise_conv.out_dim * (self.noise_conv.out_size ** 2), out_dim=self.feature_net.conv1_kdim).to(device)
 
         # create coarse NAN mlps
         self.net_coarse = self.nan_factory('coarse', device)
@@ -186,8 +203,12 @@ class NANScheme(nn.Module):
         self.start_step = self.load_from_ckpt(out_folder)
 
     def create_optimizer(self):
-        params_list = [{'params': self.feature_net.parameters(), 'lr': self.args.lrate_feature},
-                       {'params': self.net_coarse.parameters(),  'lr': self.args.lrate_mlp}]
+        if self.args.degae_feat:
+            params_list = [{'params': self.feature_conv.parameters(), 'lr': self.args.lrate_feature}]        
+        else:
+            params_list = [{'params': self.feature_net.parameters(), 'lr': self.args.lrate_feature},
+                        {'params': self.net_coarse.parameters(),  'lr': self.args.lrate_mlp}]
+
         if self.net_fine is not None:
             params_list.append({'params': self.net_fine.parameters(), 'lr': self.args.lrate_mlp})
 
@@ -208,7 +229,11 @@ class NANScheme(nn.Module):
 
     def switch_to_eval(self):
         self.net_coarse.eval()
-        self.feature_net.eval()
+        if self.args.degae_feat:
+            self.feature_conv.eval()        
+        else:
+            self.feature_net.eval()
+
         if self.net_fine is not None:
             self.net_fine.eval()
 
@@ -222,7 +247,11 @@ class NANScheme(nn.Module):
 
     def switch_to_train(self):
         self.net_coarse.train()
-        self.feature_net.train()
+        if self.args.degae_feat:
+            self.feature_conv.train()        
+        else:
+            self.feature_net.train()
+
         if self.net_fine is not None:
             self.net_fine.train()
 

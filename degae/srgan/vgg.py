@@ -12,7 +12,7 @@ from .srgan import SRResNet
 
 class DegFeatureExtractor(nn.Module):
     def __init__(
-            self, vgg_ckpt
+            self, vgg_ckpt, train_scratch=True
     ) -> None:
         super(DegFeatureExtractor, self).__init__()
         # self.vgg = DiscriminatorForVGG(in_channels=3, out_channels=1, channels=64)
@@ -30,9 +30,10 @@ class DegFeatureExtractor(nn.Module):
                               channels=64,
                               num_rcb=16,
                               upscale=4)
-        model_weights_path = vgg_ckpt
-        checkpoint = torch.load(model_weights_path, map_location=lambda storage, loc: storage)
-        self.srgan.load_state_dict(checkpoint["state_dict"])
+        if train_scratch:
+            model_weights_path = vgg_ckpt
+            checkpoint = torch.load(model_weights_path, map_location=lambda storage, loc: storage)
+            self.srgan.load_state_dict(checkpoint["state_dict"])
         self.degrep_conv = nn.Sequential(
             nn.Conv2d(3, 128, kernel_size=3, stride=2, padding=1),
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
