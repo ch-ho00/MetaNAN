@@ -159,11 +159,19 @@ class NANScheme(nn.Module):
             '''
 
                 # BasicBlock(64, 64, stride=1, downsample=None, rand_noise=False),
-            self.feature_conv = nn.Sequential(
-                nn.Conv2d(64, self.args.fine_feat_dim + self.args.coarse_feat_dim, 1, 1, 0),
-                BasicBlock(self.args.fine_feat_dim + self.args.coarse_feat_dim, self.args.fine_feat_dim + self.args.coarse_feat_dim, stride=2, downsample=0.5, rand_noise=False),
-                BasicBlock(self.args.fine_feat_dim + self.args.coarse_feat_dim, self.args.fine_feat_dim + self.args.coarse_feat_dim, stride=1, downsample=None, rand_noise=False),
-            ).to(device)
+            down_dim_ = self.args.fine_feat_dim + self.args.coarse_feat_dim
+            # self.feature_conv_1 = nn.Conv2d(64, down_dim_, 3, 2, 1).to(device)
+            self.feature_conv_2 = BasicBlock(down_dim_, down_dim_, stride=1, downsample=None, rand_noise=False).to(device)
+            self.feature_conv_3 = BasicBlock(down_dim_, down_dim_, stride=1, downsample=None, rand_noise=False).to(device)
+
+            '''
+            if self.args.meta_module:
+                self.down_fc = nn.Linear(512, down_dim_, bias=True).to(device)
+                self.cond_scale1 = nn.Linear(down_dim_, down_dim_, bias=True).to(device)
+                self.cond_shift1 = nn.Linear(down_dim_, down_dim_, bias=True).to(device)
+                self.cond_scale2 = nn.Linear(512, down_dim_, bias=True).to(device)
+                self.cond_shift2 = nn.Linear(512, down_dim_, bias=True).to(device)
+            '''
             # print(self.feature_conv(self.degae.encoder(torch.randn(1,3,768,1024).cuda(), img_wh=torch.Tensor([1024, 768]).int())).shape)
         else:
             self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
@@ -213,10 +221,25 @@ class NANScheme(nn.Module):
 
     def create_optimizer(self):
         if self.args.degae_feat:
-            params_list = [{'params': self.feature_conv.parameters(), 'lr': self.args.lrate_feature}]        
+            params_list = [{'params': self.feature_conv_2.parameters(), 'lr': self.args.lrate_feature},
+                           {'params': self.feature_conv_3.parameters(), 'lr': self.args.lrate_feature}]        
+            '''
+            {'params': self.feature_conv_1.parameters(), 'lr': self.args.lrate_feature},
+                           
+            if self.args.meta_module:
+                params_list += [
+                                {'params' : self.cond_scale2.parameters(), 'lr':self.args.lrate_feature},
+                                {'params' : self.cond_shift2.parameters(), 'lr':self.args.lrate_feature}]
+                                # {'params' : self.cond_shift1.parameters(), 'lr':self.args.lrate_feature},
+                                # {'params' : self.cond_scale1.parameters(), 'lr':self.args.lrate_feature},
+                                # {'params' : self.down_fc.parameters(), 'lr' : self.args.lrate_feature}]
+            '''
         else:
             params_list = [{'params': self.feature_net.parameters(), 'lr': self.args.lrate_feature},
                         {'params': self.net_coarse.parameters(),  'lr': self.args.lrate_mlp}]
+            if self.args.meta_module:
+                params_list.append({'params': self.noise_conv.parameters(), 'lr': self.args.lrate_feature})
+                params_list.append({'params': self.weight_generator.parameters(), 'lr': self.args.lrate_feature})
 
         if self.net_fine is not None:
             params_list.append({'params': self.net_fine.parameters(), 'lr': self.args.lrate_mlp})
@@ -225,9 +248,6 @@ class NANScheme(nn.Module):
             if self.args.pre_net:
                 params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
 
-        if self.args.meta_module:
-            params_list.append({'params': self.noise_conv.parameters(), 'lr': self.args.lrate_feature})
-            params_list.append({'params': self.weight_generator.parameters(), 'lr': self.args.lrate_feature})
 
         optimizer = torch.optim.Adam(params_list)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
@@ -239,9 +259,24 @@ class NANScheme(nn.Module):
     def switch_to_eval(self):
         self.net_coarse.eval()
         if self.args.degae_feat:
-            self.feature_conv.eval()        
+            # self.feature_conv_1.eval()        
+            self.feature_conv_2.eval()        
+            self.feature_conv_3.eval()        
+
+            '''
+            if self.args.meta_module:
+                # self.down_fc.eval()
+                # self.cond_scale1.eval()       
+                # self.cond_shift1.eval()       
+
+                self.cond_scale2.eval()       
+                self.cond_shift2.eval()       
+            '''
         else:
             self.feature_net.eval()
+            if self.args.meta_module:
+                self.noise_conv.eval()
+                self.weight_generator.eval()
 
         if self.net_fine is not None:
             self.net_fine.eval()
@@ -250,16 +285,28 @@ class NANScheme(nn.Module):
             if self.pre_net is not None:
                 self.pre_net.eval()
 
-        if self.args.meta_module:
-            self.noise_conv.eval()
-            self.weight_generator.eval()
 
     def switch_to_train(self):
         self.net_coarse.train()
         if self.args.degae_feat:
-            self.feature_conv.train()        
+            # self.feature_conv_1.train()        
+            self.feature_conv_2.train()        
+            self.feature_conv_3.train()        
+
+            '''
+            if self.args.meta_module:
+                # self.down_fc.train()
+                # self.cond_scale1.train()       
+                # self.cond_shift1.train()       
+                
+                self.cond_scale2.train()       
+                self.cond_shift2.train()       
+            '''
         else:
             self.feature_net.train()
+            if self.args.meta_module:
+                self.noise_conv.train()
+                self.weight_generator.train()
 
         if self.net_fine is not None:
             self.net_fine.train()
@@ -268,9 +315,6 @@ class NANScheme(nn.Module):
             if self.pre_net is not None:
                 self.pre_net.train()
 
-        if self.args.meta_module:
-            self.noise_conv.train()
-            self.weight_generator.train()
 
     def save_model(self, filename):
         to_save = {'optimizer'  : self.optimizer.state_dict(),

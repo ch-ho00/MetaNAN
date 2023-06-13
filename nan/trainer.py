@@ -157,8 +157,10 @@ class Trainer:
         # Calculate the feature maps of all views.
         # This step is seperated because in evaluation time we want to do it once for each image.
         org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
+        ref_rgb = train_data['ref_clean_rgb'] if 'ref_clean_rgb' in train_data.keys() else None
         proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs,
-                                                                sigma_estimate=ray_sampler.sigma_estimate.to(self.device))
+                                                                sigma_estimate=ray_sampler.sigma_estimate.to(self.device),
+                                                                white_level=ray_batch['white_level'], ref_rgb=ref_rgb)
 
         reconst_signal = None
         denoise_signal = None

@@ -109,7 +109,8 @@ class NanMLP(nn.Module):
                                     )
 
             input_channel = in_feat_ch + 3 + reconst_dim
-            self.views_attention = MultiHeadAttention(5, input_channel, 7, 8)
+            view_att_nhead = 3 if self.args.degae_feat else 5
+            self.views_attention = MultiHeadAttention(view_att_nhead, input_channel, 7, 8)
 
         self.vis_fc = nn.Sequential(nn.Linear(32, 32),
                                     self.activation_func,
@@ -128,7 +129,8 @@ class NanMLP(nn.Module):
                                          nn.Linear(64, 16),
                                          self.activation_func)
 
-        self.ray_attention = MultiHeadAttention(4, 16, 4, 4)
+        ray_att_nhead = 3 if self.args.degae_feat else 4
+        self.ray_attention = MultiHeadAttention(ray_att_nhead, 16, 4, 4)
         self.out_geometry_fc = nn.Sequential(nn.Linear(16, 16),
                                              self.activation_func,
                                              nn.Linear(16, 1),

@@ -283,7 +283,7 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs, sigma_estimate=None):
+    def calc_featmaps(self, src_rgbs, sigma_estimate=None, white_level=None, ref_rgb=None):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)
@@ -318,10 +318,29 @@ class RayRender:
         else:
             with torch.no_grad():
                 degfeat = self.model.degae.encoder(orig_rgbs[0].permute(0,3,1,2), img_wh=torch.Tensor([orig_rgbs.shape[-2], orig_rgbs.shape[-3]]).int().to(orig_rgbs.device))    
-                degfeat = F.interpolate(degfeat, scale_factor=0.5, mode='bilinear')
+                degfeat = F.interpolate(degfeat, scale_factor=0.25, mode='bilinear')
+
+                scale1, scale2, shift1, shift2 = None, None, None, None
+                if self.model.args.meta_module:
+                    assert ref_rgb != None
+                    noise_vec = self.model.degae.degrep_extractor(ref_rgb.permute(0,3,1,2).to(orig_rgbs.device), white_level.to(orig_rgbs.device))
+                    scale1 = self.model.degae.decoder.cond_scale1(noise_vec)
+                    shift1 = self.model.degae.decoder.cond_shift1(noise_vec)
+                    scale2 = self.model.degae.decoder.cond_scale2(noise_vec)
+                    shift2 = self.model.degae.decoder.cond_shift2(noise_vec)
                 torch.cuda.empty_cache()
 
-            feat = self.model.feature_conv(degfeat)
+            '''
+            if self.model.args.meta_module:
+                # noise_vec = self.model.down_fc(noise_vec)
+                # scale1 = self.model.cond_scale1(noise_vec)
+                scale2 = self.model.cond_scale2(noise_vec)
+                # shift1 = self.model.cond_shift1(noise_vec)
+                shift2 = self.model.cond_shift2(noise_vec)                    
+            '''
+            # degfeat = self.model.feature_conv_1(degfeat)
+            degfeat = self.model.feature_conv_2(degfeat, scale1, shift1)
+            feat = self.model.feature_conv_3(degfeat, scale2, shift2)
             output = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
             featmaps = {
                 'coarse' : feat[:,:self.model.args.coarse_feat_dim],

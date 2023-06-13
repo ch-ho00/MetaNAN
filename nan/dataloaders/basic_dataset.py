@@ -41,7 +41,7 @@ def de_linearize(rgb, wl=1.):
     """
     completed = False
     if isinstance(wl, torch.Tensor):
-        if wl.ndim > 1 and wl.ndim == 4:
+        if wl.ndim > 1 and rgb.ndim == 4:
             assert wl.shape[0] == rgb.shape[0]
             completed = True
             srgb = []
@@ -271,7 +271,7 @@ class NoiseDataset(BurstDataset, ABC):
         return noise_rgb, sigma_estimate
 
     def create_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs_clean, src_cameras, depth_range,
-                                gt_depth=None, eval_gain=1):
+                                gt_depth=None, eval_gain=1, ref_rgb=None):
         if self.mode in [Mode.train]: #, Mode.validation]:
             white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
         else:
@@ -290,7 +290,7 @@ class NoiseDataset(BurstDataset, ABC):
             src_rgbs, sigma_est = self.add_noise(src_rgbs_clean)
         else:
             src_rgbs, sigma_est = self.add_noise_level(src_rgbs_clean, eval_gain)
-
+                      
         batch_dict = {'camera'        : torch.from_numpy(camera),
                       'rgb_path'      : str(rgb_file),
                       'src_rgbs_clean': src_rgbs_clean,
@@ -300,6 +300,10 @@ class NoiseDataset(BurstDataset, ABC):
                       'sigma_estimate': sigma_est,
                       'white_level'   : white_level,
                       'eval_gain' : eval_gain}
+
+        if self.args.degae_feat and self.args.meta_module:
+            ref_rgb = re_linearize(ref_rgb, white_level)
+            batch_dict['ref_clean_rgb'] = ref_rgb
 
         if rgb_clean is not None:
             batch_dict['rgb_clean'] = rgb_clean

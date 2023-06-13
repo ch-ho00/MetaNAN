@@ -66,6 +66,7 @@ class RaySampler:
         self.src_rgbs                       = data['src_rgbs'] if 'src_rgbs' in data.keys() else None
         self.rgb_clean                      = data['rgb_clean'] if 'rgb_clean' in data.keys() else None
         self.src_rgbs_clean                 = data['src_rgbs_clean'] if 'src_rgbs_clean' in data.keys() else None
+        self.ref_rgb                        = data['ref_clean_rgb'] if 'ref_clean_rgb' in data.keys() else None
 
         self.sigma_estimate                 = data['sigma_estimate'] if 'sigma_estimate' in data.keys() else None
 

@@ -18,7 +18,7 @@ def conv1x1(in_planes, out_planes, stride=1):
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None, rand_noise=False):
+    def __init__(self, inplanes, planes, stride=1, downsample=None, rand_noise=True):
         super().__init__()
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv3x3(inplanes, planes, stride)
