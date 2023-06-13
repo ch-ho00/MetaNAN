@@ -15,6 +15,7 @@ from typing import Dict
 
 import torch
 from collections import OrderedDict
+import torch.nn.functional as F
 
 from nan.model import NANScheme
 from nan.projection import Projector
@@ -317,11 +318,15 @@ class RayRender:
         else:
             with torch.no_grad():
                 degfeat = self.model.degae.encoder(orig_rgbs[0].permute(0,3,1,2), img_wh=torch.Tensor([orig_rgbs.shape[-2], orig_rgbs.shape[-3]]).int().to(orig_rgbs.device))    
-            degfeat = self.model.feature_conv(degfeat)
+                degfeat = F.interpolate(degfeat, scale_factor=0.5, mode='bilinear')
+                torch.cuda.empty_cache()
+
+            feat = self.model.feature_conv(degfeat)
             output = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
             featmaps = {
-                'coarse' : degfeat[:,:self.model.args.coarse_feat_dim],
-                'fine'   : degfeat[:,self.model.args.coarse_feat_dim:]
+                'coarse' : feat[:,:self.model.args.coarse_feat_dim],
+                'fine'   : feat[:,self.model.args.coarse_feat_dim:]
             }
+            del degfeat
         
         return output , featmaps

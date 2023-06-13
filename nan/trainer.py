@@ -173,6 +173,7 @@ class Trainer:
                                                  denoise_signal=denoise_signal)
 
         # compute loss
+        torch.cuda.empty_cache()
         self.model.optimizer.zero_grad()
         loss = self.criterion(batch_out['coarse'], ray_batch, self.scalars_to_log)
 

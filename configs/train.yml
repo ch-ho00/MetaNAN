@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : degAE_feat_NAN #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : degAE_feat #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -21,6 +21,8 @@ workers                     : 0
 
 degae_feat                  : True
 degae_feat_ckpt             : /disk1/chanho/3d/MetaNAN/out/srgan_generator_256x256_wBlurDegrade_wRandomNoise_1e-4_1_1e-1__NAN/model_045000.pth
+coarse_feat_dim             : 24
+fine_feat_dim               : 24
 
 ## AutoEncoder Module
 auto_encoder                : False

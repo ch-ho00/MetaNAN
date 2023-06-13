@@ -47,7 +47,7 @@ class BasicBlock(nn.Module):
 
         if self.downsample is not None:
             if isinstance(self.downsample, float):
-                identity = F.interpolate(x, scale_factor=self.downsample)
+                identity = F.interpolate(x, scale_factor=self.downsample, mode='bilinear')
             else:
                 identity = self.downsample(x)
 

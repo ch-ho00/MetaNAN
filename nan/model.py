@@ -150,10 +150,19 @@ class NANScheme(nn.Module):
             
             for param in self.degae.parameters():
                 param.requires_grad = False
-            
+
+            '''
             self.feature_conv = nn.Sequential(
-                BasicBlock(64, 64, stride=2, downsample=0.5, rand_noise=False),
-                BasicBlock(64, 64, stride=2, downsample=0.5, rand_noise=False),
+                BasicBlock(self.args.fine_feat_dim + self.args.coarse_feat_dim, self.args.fine_feat_dim + self.args.coarse_feat_dim, stride=2, downsample=0.5, rand_noise=False),
+                BasicBlock(self.args.fine_feat_dim + self.args.coarse_feat_dim, self.args.fine_feat_dim + self.args.coarse_feat_dim, stride=2, downsample=0.5, rand_noise=False),
+            ).to(device)
+            '''
+
+                # BasicBlock(64, 64, stride=1, downsample=None, rand_noise=False),
+            self.feature_conv = nn.Sequential(
+                nn.Conv2d(64, self.args.fine_feat_dim + self.args.coarse_feat_dim, 1, 1, 0),
+                BasicBlock(self.args.fine_feat_dim + self.args.coarse_feat_dim, self.args.fine_feat_dim + self.args.coarse_feat_dim, stride=2, downsample=0.5, rand_noise=False),
+                BasicBlock(self.args.fine_feat_dim + self.args.coarse_feat_dim, self.args.fine_feat_dim + self.args.coarse_feat_dim, stride=1, downsample=None, rand_noise=False),
             ).to(device)
             # print(self.feature_conv(self.degae.encoder(torch.randn(1,3,768,1024).cuda(), img_wh=torch.Tensor([1024, 768]).int())).shape)
         else:
