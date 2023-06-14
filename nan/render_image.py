@@ -46,7 +46,10 @@ def render_single_image(ray_sampler: RaySampler,
     """
     device = torch.device(f'cuda:{args.local_rank}')
     ray_render = RayRender(model=model, args=args, device=device, save_pixel=save_pixel)
-    src_rgbs, featmaps = ray_render.calc_featmaps(ray_sampler.src_rgbs.to(device), sigma_estimate=ray_sampler.sigma_estimate.to(device), white_level=ray_sampler.white_level, ref_rgb=ray_sampler.ref_rgb)
+    src_rgbs, featmaps = ray_render.calc_featmaps(ray_sampler.src_rgbs.to(device), 
+                                                  sigma_estimate=ray_sampler.sigma_estimate.to(device) if ray_sampler.sigma_estimate != None else None, 
+                                                  white_level=ray_sampler.white_level, 
+                                                  ref_rgb=ray_sampler.ref_rgb)
 
     all_ret = OrderedDict([('coarse', RaysOutput.empty_ret()),
                            ('fine', None)])
@@ -69,7 +72,7 @@ def render_single_image(ray_sampler: RaySampler,
                                             proc_src_rgbs=src_rgbs,
                                             featmaps=featmaps,
                                             org_src_rgbs=ray_sampler.src_rgbs.to(device),
-                                            sigma_estimate=ray_sampler.sigma_estimate.to(device),
+                                            sigma_estimate=ray_sampler.sigma_estimate.to(device) if ray_sampler.sigma_estimate != None else None,
                                             reconst_signal=reconst_signal,
                                             denoise_signal=denoise_signal)
         all_ret['coarse'].append(ret['coarse'])

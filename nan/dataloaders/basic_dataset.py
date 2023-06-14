@@ -11,6 +11,7 @@ from enum import Enum
 import numpy as np
 from torchvision import transforms as T
 from PIL import Image
+import os
 
 
 class Mode(Enum):
@@ -101,16 +102,46 @@ class BurstDataset(Dataset, ABC):
         self.mode = mode
         self.num_source_views = args.num_source_views
         self.random_crop = random_crop
-        self.scenes_dirs = self.pick_scenes(scenes)
 
-        if len(self.scenes_dirs) == 1:
-            print(f"loading {self.scenes_dirs[0].stem} scenes for {mode}")
+        if self.args.train_dataset == 'deblur':
+            self.noise2folder = {
+                'cam_motion' : 'real_camera_motion_blur',
+                'defocus' : 'real_defocus_blur',
+            }
+            self.noise_types = list(self.noise2folder.keys())
+            self.scene_holdout = {}
+            self.scene2noisetype = {}
+            cnt = 0
+            for noise_type in self.noise_types:
+                print(f" ########## Loading {noise_type} #######")
+                dataset = self.noise2folder[noise_type]
+                data_root = os.path.join(DATA_DIR, self.dir_name, dataset)
+
+                scenes = os.listdir(data_root)
+                scenes.sort()
+                n_train_scenes = int(len(scenes) * 0.8) 
+                tmp_scenes = scenes[:n_train_scenes] if self.mode == Mode.train else scenes[n_train_scenes:]
+                for scene in tmp_scenes:
+                    self.scene2noisetype[scene] = noise_type    
+                    scene_root = os.path.join(data_root, scene)
+
+                    files = os.listdir(scene_root)
+                    holdout_fn = [f for f in files if 'hold' in f][0]
+                    holdout = int(holdout_fn.split("=")[-1])
+                    self.scene_holdout[scene] = holdout
+                    self.add_single_scene(cnt, Path(scene_root), holdout)
+                    cnt += 1
+
         else:
-            print(f"loading {len(self.scenes_dirs)} scenes for {mode}")
-        print(f"num of source views {self.num_source_views}")
+            self.scenes_dirs = self.pick_scenes(scenes)
+            if len(self.scenes_dirs) == 1:
+                print(f"loading {self.scenes_dirs[0].stem} scenes for {mode}")
+            else:
+                print(f"loading {len(self.scenes_dirs)} scenes for {mode}")
+            print(f"num of source views {self.num_source_views}")
 
-        for i, scene_path in enumerate(self.scenes_dirs):
-            self.add_single_scene(i, scene_path)
+            for i, scene_path in enumerate(self.scenes_dirs):
+                self.add_single_scene(i, scene_path)
 
         print(f"Loaded img file = {len(self.render_rgb_files)}")
         
@@ -192,23 +223,11 @@ class NoiseDataset(BurstDataset, ABC):
                 self.d_read = np.diff(self.log_sig_read)[0]
                 self.d_shot = np.diff(self.log_sig_shot)[0]
 
-                # gain_log = np.log2(self.args.eval_gain)
-
-                # sig_read = 10 ** (log_sig_read[0] + d_read * gain_log)
-                # sig_shot = 10 ** (log_sig_shot[0] + d_shot * gain_log)
-
-                # print(f"Loading {mode} set for gain {self.args.eval_gain}. "  
-                #       f"Max std {self.get_std(1, sig_read, sig_shot)}")
-
-            # def get_noise_params_test():
-            #     return sig_read, sig_shot
-
-            # self.get_noise_params = get_noise_params_test
         self.depth_range = None
 
     def choose_views(self, possible_views, num_views, target_view):
         if self.mode == Mode.train:
-            chosen_ids = np.random.choice(possible_views, min(num_views, len(possible_views)), replace=False)
+            chosen_ids = np.random.choice(possible_views, min(num_views, len(possible_views)), replace=False).tolist()
         else:
             chosen_ids = possible_views[:min(num_views, len(possible_views))]
 
@@ -241,11 +260,6 @@ class NoiseDataset(BurstDataset, ABC):
         gain_read = gain_shot = np.log2(gain_level)
         sig_read = 10 ** (self.log_sig_read[0] + self.d_read * gain_read)
         sig_shot = 10 ** (self.log_sig_shot[0] + self.d_shot * gain_shot)
-
-        # self.log_sig_read[0], self.d_read
-        # (-2.165236260368697, 0.36172783601759284) = 5.06
-        # self.log_sig_shot[0],self.d_shot
-        # (-1.2839898550226507, 0.1808639180087963) = 2.333
 
         return sig_read, sig_shot
 
@@ -313,6 +327,46 @@ class NoiseDataset(BurstDataset, ABC):
             batch_dict['gt_depth'] = gt_depth
 
         return batch_dict
+
+    def create_deblur_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
+                                gt_depth=None, eval_gain=1, ref_rgb=None):
+        if self.mode in [Mode.train]: #, Mode.validation]:
+            white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
+        else:
+            white_level = torch.Tensor([1])
+
+        if rgb_clean is not None:
+            rgb_clean = re_linearize(torch.from_numpy(rgb_clean[..., :3]), white_level)
+            # if self.mode is Mode.train:
+            #     rgb, _ = self.add_noise(rgb_clean)        
+            # else:
+            #     rgb, _ = self.add_noise_level(rgb_clean, eval_gain)                        
+        else:
+            rgb = None
+        src_rgbs = re_linearize(torch.from_numpy(src_rgbs[..., :3]), white_level)
+
+        # if self.mode is Mode.train:
+        #     src_rgbs, sigma_est = self.add_noise(src_rgbs_clean)
+        # else:
+        #     src_rgbs, sigma_est = self.add_noise_level(src_rgbs_clean, eval_gain)
+                      
+        batch_dict = {'camera'        : torch.from_numpy(camera),
+                      'rgb_path'      : str(rgb_file),
+                      'src_rgbs'      : src_rgbs,
+                      'src_cameras'   : torch.from_numpy(src_cameras),
+                      'depth_range'   : depth_range,
+                      'white_level'   : white_level,
+                      'eval_gain'     : eval_gain}
+
+        if self.args.degae_feat and self.args.meta_module:
+            ref_rgb = re_linearize(ref_rgb, white_level)
+            batch_dict['ref_clean_rgb'] = ref_rgb
+
+        if rgb_clean is not None:
+            batch_dict['rgb_clean'] = rgb_clean
+
+        return batch_dict
+
 
 
 if __name__ == '__main__':

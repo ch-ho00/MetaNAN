@@ -36,8 +36,8 @@ from basicsr.utils.img_process_util import filter2D
 from basicsr.data.degradations import circular_lowpass_kernel, random_mixed_kernels
 
 
-class COLMAPDataset(NoiseDataset, ABC):
-    name = 'colmap'
+class DeblurDataset(NoiseDataset, ABC):
+    name = 'deblur'
 
     def __init__(self, args, mode, scenes=(), random_crop=True, **kwargs):
         self.render_rgb_files = []
@@ -53,195 +53,25 @@ class COLMAPDataset(NoiseDataset, ABC):
         super().__init__(args, mode, scenes=scenes, random_crop=random_crop, **kwargs)
         self.depth_range = self.render_depth_range[0]
 
-        # blur settings for the first degradation
-        self.blur_kernel_size = args.blur_kernel_size
-        self.kernel_list = args.kernel_list
-        self.kernel_prob = args.kernel_prob  # a list for each kernel probability
-        self.blur_sigma = args.blur_sigma
-        self.betag_range = args.betag_range  # betag used in generalized Gaussian blur kernels
-        self.betap_range = args.betap_range  # betap used in plateau blur kernels
-        self.sinc_prob = args.sinc_prob  # the probability for sinc filters
-        self.jpeg_range = args.jpeg_range
-        self.blur_degrade = args.blur_degrade
-        
-        # a final sinc filter
-        self.final_sinc_prob = args.final_sinc_prob
-        self.kernel_range = [2 * v + 1 for v in range(3, 11)]  # kernel size ranges from 7 to 21
-        # TODO: kernel range is now hard-coded, should be in the configure file
-        self.pulse_tensor = torch.zeros(21, 21).float()  # convolving with pulse tensor brings no blurry effect
-        self.pulse_tensor[10, 10] = 1
-        self.jpeger = DiffJPEG(differentiable=False)  # simulate JPEG compression artifacts        
+    def get_i_test(self, N, holdout):
+        return np.arange(N)[::holdout]
 
-    def get_i_test(self, N):
-        return np.arange(N)[::self.args.llffhold] if not self.args.degae_training else  np.array([j for j in np.arange(int(N))]) 
-
-    def get_i_train(self, N, i_test, mode):
-        return np.array([j for j in np.arange(int(N)) if j not in i_test]) if not self.args.degae_training else  np.array([j for j in np.arange(int(N))]) 
+    def get_i_train(self, N, i_test):
+        return np.array([j for j in np.arange(int(N)) if j not in i_test]) 
 
     @staticmethod
     def load_scene(scene_path, factor):
         return load_llff_data(scene_path, load_imgs=False, factor=factor)
 
     def __len__(self):
-        if self.args.degae_training:
-            return 1000 if self.mode is Mode.train else len(self.render_rgb_files) * len(self.args.eval_gain)
-        else:
-            return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files) * len(self.args.eval_gain)
+        return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files)
 
     def __getitem__(self, idx):
-        if self.args.degae_training:
-            return self.get_singleview_item(idx)            
-        else:
-            return self.get_multiview_item(idx)
-
-    def apply_blur_kernel(self, rgb, final_sinc=False):
-
-        kernel_size = random.choice(self.kernel_range)
-        if not final_sinc:
-            if np.random.uniform() < self.args.sinc_prob:
-                # this sinc filter setting is for kernels ranging from [7, 21]
-                if kernel_size < 13:
-                    omega_c = np.random.uniform(np.pi / 3, np.pi)
-                else:
-                    omega_c = np.random.uniform(np.pi / 5, np.pi)
-                kernel = circular_lowpass_kernel(omega_c, kernel_size, pad_to=False)
-            else:
-                kernel = random_mixed_kernels(
-                    self.kernel_list,
-                    self.kernel_prob,
-                    kernel_size,
-                    self.blur_sigma,
-                    self.blur_sigma, [-math.pi, math.pi],
-                    self.betag_range,
-                    self.betap_range,
-                    noise_range=None)
-
-            # pad kernel
-            pad_size = (21 - kernel_size) // 2
-            kernel = np.pad(kernel, ((pad_size, pad_size), (pad_size, pad_size)))
-            kernel = kernel.astype(np.float32)
-            out = filter2D(rgb, torch.from_numpy(kernel[None].repeat(rgb.shape[0], 0)))
-
-        else:
-            # ------------------------------------- the final sinc kernel ------------------------------------- #
-            if np.random.uniform() < self.args.final_sinc_prob:
-                kernel_size = random.choice(self.kernel_range)
-                omega_c = np.random.uniform(np.pi / 3, np.pi)
-                sinc_kernel = circular_lowpass_kernel(omega_c, kernel_size, pad_to=21)
-                sinc_kernel = sinc_kernel.astype(np.float32)
-                sinc_kernel = torch.FloatTensor(sinc_kernel)
-            else:
-                sinc_kernel = self.pulse_tensor
-            out = filter2D(rgb, sinc_kernel[None].repeat(rgb.shape[0], 1, 1))
-
-        return out
-    
-    def apply_jpeg_compression(self, rgb):
-        # JPEG compression
-        jpeg_p = rgb.new_zeros(rgb.size(0)).uniform_(*self.args.jpeg_range)
-        rgb = torch.clamp(rgb, 0, 1)  # clamp to [0, 1], otherwise JPEGer will result in unpleasant artifacts
-        out = self.jpeger(rgb, quality=jpeg_p)
-        
-        return out 
-    
-    def get_singleview_item(self, idx):
-        # Read target data:
-        eval_gain = self.args.eval_gain[idx // len(self.render_rgb_files)]
-        idx = idx % len(self.render_rgb_files)
-        rgb_file: Path = self.render_rgb_files[idx]
-        # image (H, W, 3)
-        rgb = self.read_image(rgb_file)
-
-        side = self.args.img_size
-        if self.mode in [Mode.train]:
-            crop_h = np.random.randint(low=0, high=768 - side)
-            crop_w =  np.random.randint(low=0, high=1024 - side)
-        else:
-            crop_h = 768 // 2
-            crop_w = 1024 // 2
-        rgb = rgb[crop_h:crop_h+side, crop_w:crop_w+side].transpose((2,0,1))[None]
-
-        idx_ref = idx
-        while idx == idx_ref:
-            idx_ref = random.choice(list(range(len(self.render_rgb_files))))        
-        rgb_file_ref: Path = self.render_rgb_files[idx_ref]
-        rgb_ref = self.read_image(rgb_file_ref)
-
-        crop_h = np.random.randint(low=0, high=768 - side)
-        crop_w =  np.random.randint(low=0, high=1024 -side)
-        rgb_ref = rgb_ref[crop_h:crop_h+side, crop_w:crop_w+side].transpose((2,0,1))[None]
-
-        if self.mode in [Mode.train]:
-            if random.random() < 0.5:
-                rgb = np.flip(rgb, axis=-1).copy()
-            if random.random() < 0.5:
-                rgb = np.flip(rgb, axis=-2).copy()
-
-            if random.random() < 0.5:
-                rgb_ref = np.flip(rgb_ref, axis=-1).copy()
-            if random.random() < 0.5:
-                rgb_ref = np.flip(rgb_ref, axis=-2).copy()
-
-            white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
-        else:
-            white_level = torch.Tensor([1])
-
-        # d1
-        if self.mode is Mode.train:
-            if self.blur_degrade:
-                rgb_d1 = self.apply_blur_kernel(torch.from_numpy(rgb), final_sinc=False).clamp(0,1)
-            else:
-                rgb_d1 = rgb 
-            rgb_d1 = re_linearize(rgb_d1, white_level)
-            clean_d1 = False
-
-            if random.random() > 0.25:
-                rgb_d1 , _ = self.add_noise(rgb_d1)
-            else:
-                clean_d1 = True        
-            
-            # if random.random() < self.final_sinc_prob:
-            #     rgb_d1 = self.apply_blur_kernel(rgb_d1, final_sinc=True)
-                
-        else:
-            rgb_d1 = re_linearize(rgb, white_level)
-            rgb_d1, _ = self.add_noise_level(rgb_d1, eval_gain)                        
-
-        # d2
-        d2_rgbs = np.concatenate([rgb, rgb_ref], axis=0)
-        d2_rgbs = torch.from_numpy(d2_rgbs)
-        if self.mode is Mode.train:
-            if self.blur_degrade:
-                d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=False).clamp(0,1)
-            d2_rgbs = re_linearize(d2_rgbs, white_level)
-            if random.random() > 0.25 or clean_d1:
-                d2_rgbs, _ = self.add_noise(d2_rgbs)        
-
-            # if random.random() < self.final_sinc_prob:
-            #     d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=True)
-        else:
-            d2_rgbs = re_linearize(d2_rgbs[:, :3], white_level)
-
-        rgb_d2, rgb_ref_d2 = d2_rgbs[0], d2_rgbs[1]
-        batch_dict = {
-                      'noisy_rgb'       : rgb_d1.squeeze(),
-                      'clean_rgb'       : torch.from_numpy(rgb).squeeze(),
-                      'target_rgb'      : rgb_d2.squeeze(),
-                      'ref_rgb'         : rgb_ref_d2.squeeze(),
-                      'white_level'     : white_level
-        }
-
-        if rgb_d1.isnan().sum() + torch.from_numpy(rgb).isnan().sum() + rgb_d2.isnan().sum() + rgb_ref_d2.isnan().sum() > 0:
-            import pdb; pdb.set_trace()
-
-        if self.mode is not Mode.train:
-            batch_dict['eval_gain'] = eval_gain
-
-        return batch_dict        
+        return self.get_multiview_item(idx)
 
     def get_multiview_item(self, idx):
         # Read target data:
-        eval_gain = self.args.eval_gain[idx // len(self.render_rgb_files)]
+        eval_gain = -1 # self.args.eval_gain[idx // len(self.render_rgb_files)]
         idx = idx % len(self.render_rgb_files)
         rgb_file: Path = self.render_rgb_files[idx]
         
@@ -285,12 +115,10 @@ class COLMAPDataset(NoiseDataset, ABC):
         src_cameras = []
         for src_id in nearest_pose_ids:
             if src_id is None:
-                # print(self.render_rgb_files[idx])
                 src_rgb = self.read_image(self.render_rgb_files[idx])
                 train_pose = self.render_poses[idx]
                 train_intrinsics_ = self.render_intrinsics[idx]
             else:
-                # print(train_rgb_files[src_id])
                 src_rgb = self.read_image(train_rgb_files[src_id])
                 train_pose = train_poses[src_id]
                 train_intrinsics_ = train_intrinsics[src_id]
@@ -310,11 +138,10 @@ class COLMAPDataset(NoiseDataset, ABC):
         if self.args.degae_feat and self.args.meta_module:
             ref_idx = idx
             ref_set_id = self.render_train_set_ids[ref_idx] # scene number
-            # choose from another scene
             while ref_set_id == train_set_id:
                 ref_idx = random.choice(list(range(len(self.render_rgb_files))))
-                ref_set_id = self.render_train_set_ids[ref_idx] # scene number
-            
+                ref_set_id = self.render_train_set_ids[ref_idx] # scene number 
+
             ref_rgb_files = self.src_rgb_files[ref_set_id] # N optional src files in the scene
             ref_img_file = random.choice(ref_rgb_files)
             ref_rgb = self.read_image(ref_img_file)
@@ -333,7 +160,7 @@ class COLMAPDataset(NoiseDataset, ABC):
             gt_depth = 0
 
         depth_range = self.final_depth_range(depth_range)
-        return self.create_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain, ref_rgb=ref_rgb)
+        return self.create_deblur_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain, ref_rgb=ref_rgb)
 
     def get_nearest_pose_ids(self, render_pose, depth_range, train_poses, subsample_factor, id_render):
         return get_nearest_pose_ids(render_pose,
@@ -342,24 +169,20 @@ class COLMAPDataset(NoiseDataset, ABC):
                                     tar_id=id_render,
                                     angular_dist_method='dist')
 
-    def add_single_scene(self, i, scene_path):
-        _, poses, bds, render_poses, i_test, rgb_files = self.load_scene(scene_path, self.args.factor)
+    def add_single_scene(self, i, scene_path, holdout):
+        _, poses, bds, render_poses, i_test, rgb_files = self.load_scene(scene_path, None)
         near_depth = bds.min()
         far_depth = bds.max()
         intrinsics, c2w_mats = batch_parse_llff_poses(poses, hw=[768,1024])
 
-        i_test = self.get_i_test(poses.shape[0])
-        i_train = self.get_i_train(poses.shape[0], i_test, self.mode)
-
-        if self.mode is Mode.train:
-            i_render = i_train
-        else:
-            i_render = i_test
+        i_clean = self.get_i_test(poses.shape[0], holdout)
+        i_blurry = self.get_i_train(poses.shape[0], i_clean)
+        i_render = i_clean
 
         # Source images
-        self.src_intrinsics.append(intrinsics[i_train])
-        self.src_poses.append(c2w_mats[i_train])
-        self.src_rgb_files.append([rgb_files[i] for i in i_train])
+        self.src_intrinsics.append(intrinsics[i_blurry])
+        self.src_poses.append(c2w_mats[i_blurry])
+        self.src_rgb_files.append([rgb_files[i] for i in i_blurry])
 
         # Target images
         num_render = len(i_render)
@@ -371,9 +194,9 @@ class COLMAPDataset(NoiseDataset, ABC):
         self.render_ids.extend(i_render)
 
 
-class DeblurTestDataset(COLMAPDataset):
-    name = 'llff_test'
-    dir_name = 'nerf_llff_data'
+class DeblurTestDataset(DeblurDataset):
+    name = 'deblur_test'
+    dir_name = 'deblurnerf_dataset'
     num_select_high = 2
     min_nearest_pose = 28
 
@@ -395,21 +218,15 @@ class DeblurTestDataset(COLMAPDataset):
         return torch.tensor([depth_range[0] * 0.9, depth_range[1] * 1.6])
 
 
-class DeblurDataset(LLFFTestDataset):
-    name = 'llff'
-    dir_name = 'real_iconic_noface'
+class DeblurTrainDataset(DeblurTestDataset):
+    name = 'deblur'
+    dir_name = 'deblurnerf_dataset'
     num_select_high = 3
     min_nearest_pose = 20
 
     def __len__(self):
         return len(self.render_rgb_files)
 
-    @staticmethod
-    def get_i_train(N, i_test, mode):
-        if mode is Mode.train:
-            return np.array(np.arange(N))
-        else:
-            return super().get_i_train(N, i_test, mode)
 
 
 

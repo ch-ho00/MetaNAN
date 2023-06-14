@@ -77,6 +77,7 @@ class SAM(nn.Module):
         img = self.conv2(x) + x_img
         x2 = torch.sigmoid(self.conv3(img))
         x1 = x1*x2
+        del x2
         x1 = x1+x
         return x1, img
 
@@ -407,6 +408,7 @@ class ConvProjection(nn.Module):
         
         k = self.to_k(attn_kv)
         v = self.to_v(attn_kv)
+        del attn_kv
         k = rearrange(k, 'b (h d) l w -> b h (l w) d', h=h)
         v = rearrange(v, 'b (h d) l w -> b h (l w) d', h=h)
         return q,k,v    
@@ -506,6 +508,7 @@ class WindowAttention(nn.Module):
         relative_position_bias = repeat(relative_position_bias, 'nH l c -> nH l (c d)', d = ratio)
     
         attn = attn + relative_position_bias.unsqueeze(0)
+        del relative_position_bias
 
         if mask is not None:
             nW = mask.shape[0]
@@ -519,6 +522,8 @@ class WindowAttention(nn.Module):
         attn = self.attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
+        del attn
+
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
@@ -592,6 +597,7 @@ class Attention(nn.Module):
         attn = self.attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
+        del attn
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
@@ -933,6 +939,7 @@ class LeWinTransformerBlock(nn.Module):
             input_mask = F.interpolate(mask, size=(H,W)).permute(0,2,3,1)
             input_mask_windows = window_partition(input_mask, self.win_size) # nW, win_size, win_size, 1
             attn_mask = input_mask_windows.view(-1, self.win_size * self.win_size) # nW, win_size*win_size
+            del input_mask_windows
             attn_mask = attn_mask.unsqueeze(2)*attn_mask.unsqueeze(1) # nW, win_size*win_size, win_size*win_size
             attn_mask = attn_mask.masked_fill(attn_mask!=0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
         else:
@@ -954,24 +961,24 @@ class LeWinTransformerBlock(nn.Module):
                     shift_mask[:, h, w, :] = cnt
                     cnt += 1
             shift_mask_windows = window_partition(shift_mask, self.win_size)  # nW, win_size, win_size, 1
+            del shift_mask
+
             shift_mask_windows = shift_mask_windows.view(-1, self.win_size * self.win_size) # nW, win_size*win_size
             shift_attn_mask = shift_mask_windows.unsqueeze(1) - shift_mask_windows.unsqueeze(2) # nW, win_size*win_size, win_size*win_size
             shift_attn_mask = shift_attn_mask.masked_fill(shift_attn_mask != 0, float(-100.0)).masked_fill(shift_attn_mask == 0, float(0.0))
             attn_mask = attn_mask + shift_attn_mask if attn_mask is not None else shift_attn_mask
-
+            del shift_attn_mask
 
         if self.cross_modulator is not None:
             shortcut = x
             x_cross = self.norm_cross(x)
             x_cross = self.cross_attn(x, self.cross_modulator.weight)
             x = shortcut + x_cross
+            del x_cross, shortcut
     
         shortcut = x
-        x_prev = x
         x = self.norm1(x)
         x = x.view(B, H, W, C)
-        if x.isnan().sum() > 0:
-            import pdb; pdb.set_trace()
 
         # cyclic shift
         if self.shift_size > 0:
@@ -982,7 +989,7 @@ class LeWinTransformerBlock(nn.Module):
         # partition windows
         x_windows = window_partition(shifted_x, self.win_size)  # nW*B, win_size, win_size, C  N*C->C
         x_windows = x_windows.view(-1, self.win_size * self.win_size, C)  # nW*B, win_size*win_size, C
-
+        del shifted_x
         # with_modulator
         if self.modulator is not None:
             wmsa_in = self.with_pos_embed(x_windows,self.modulator.weight)
@@ -991,25 +998,24 @@ class LeWinTransformerBlock(nn.Module):
 
         # W-MSA/SW-MSA
         attn_windows = self.attn(wmsa_in, mask=attn_mask)  # nW*B, win_size*win_size, C
-
+        del wmsa_in, attn_mask, x_windows
         # merge windows
         attn_windows = attn_windows.view(-1, self.win_size, self.win_size, C)
         shifted_x = window_reverse(attn_windows, self.win_size, H, W)  # B H' W' C
+        del attn_windows
 
         # reverse cyclic shift
         if self.shift_size > 0:
             x = torch.roll(shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
         else:
             x = shifted_x
+        del shifted_x
         x = x.view(B, H * W, C)
 
         # FFN
         x = shortcut + self.drop_path(x)
-        x_prev = x
         x = x + self.drop_path(self.mlp(self.norm2(x), img_wh=img_wh))
-        if x.isnan().sum() > 0:
-            import pdb; pdb.set_trace()
-        del attn_mask
+
         return x
 
     def flops(self):

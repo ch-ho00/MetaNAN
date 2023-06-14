@@ -26,13 +26,6 @@ from nan.utils.io_utils import print_link, colorize
 # from pytorch_msssim import ms_ssim
 from nan.ssim_l1_loss import MS_SSIM_L1_LOSS
 
-def tv_loss_2d(img):
-    tv_h = ((img[:,:,1:,:] - img[:,:,:-1,:]).pow(2)).sum() / img.shape[-2]
-    tv_w = ((img[:,:,:,1:] - img[:,:,:,:-1]).pow(2)).sum() / img.shape[-1]
-
-    return tv_h + tv_w
-
-ALPHA = 0.99997
 
 
 class Trainer:
@@ -159,18 +152,16 @@ class Trainer:
         org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
         ref_rgb = train_data['ref_clean_rgb'] if 'ref_clean_rgb' in train_data.keys() else None
         proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs,
-                                                                sigma_estimate=ray_sampler.sigma_estimate.to(self.device),
+                                                                sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None,
                                                                 white_level=ray_batch['white_level'], ref_rgb=ref_rgb)
 
         reconst_signal = None
         denoise_signal = None
-        if self.model.args.auto_encoder:
-            proc_src_rgbs, reconst_signal, denoise_signal = proc_src_rgbs
         
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
                                                  org_src_rgbs=org_src_rgbs,
-                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device),
+                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None,
                                                  reconst_signal=reconst_signal,
                                                  denoise_signal=denoise_signal)
 
@@ -181,98 +172,6 @@ class Trainer:
 
         if batch_out['fine'] is not None:
             loss += self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
-
-
-        if self.model.args.annealing_loss:
-            factor = ALPHA ** global_step
-        else:
-            factor = 1 
-
-
-        if self.model.args.transform_tar_feat:
-
-            decoded_coarse_tar = self.model.decode_tar_feat_fc(batch_out['coarse'].transformer_tar_feat)
-            decoded_fine_tar = self.model.decode_tar_feat_fc(batch_out['fine'].transformer_tar_feat)
-
-            coarse_tar_err = torch.abs(batch_out['coarse'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_coarse_tar)
-            coarse_tar_err = torch.mean(coarse_tar_err * batch_out['coarse'].proj_mask[:,:,None,None].float())
-
-            fine_tar_err = torch.abs(batch_out['fine'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_fine_tar)
-            fine_tar_err = torch.mean(fine_tar_err * batch_out['fine'].proj_mask[:,:,None,None].float())
-
-            loss += self.model.args.lambda_reconst_loss * (coarse_tar_err + fine_tar_err) * factor
-            self.scalars_to_log['train/decode_tar_feat/l1_loss_fine'] = self.model.args.lambda_reconst_loss * fine_tar_err.item() * factor
-            self.scalars_to_log['train/decode_tar_feat/l1_loss_coarse'] = self.model.args.lambda_reconst_loss * coarse_tar_err.item() * factor 
-
-        if self.model.args.transform_src_feat:
-
-            decoded_coarse_src = self.model.decode_src_feat_fc(batch_out['coarse'].transformer_src_feat)
-            decoded_fine_tar = self.model.decode_src_feat_fc(batch_out['fine'].transformer_src_feat)
-
-            coarse_src_err = torch.abs(batch_out['coarse'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_coarse_src)
-            coarse_src_err = torch.mean(coarse_src_err * batch_out['coarse'].proj_mask[:,:,None,None].float())
-
-            fine_src_err = torch.abs(batch_out['fine'].proj_noisy_rgb[:,:,1:2,1:2] - decoded_fine_tar)
-            fine_src_err = torch.mean(fine_src_err * batch_out['fine'].proj_mask[:,:,None,None].float())
-
-            loss += self.model.args.lambda_reconst_loss * (coarse_src_err + fine_src_err) * factor
-            self.scalars_to_log['train/decode_src_feat/l1_loss_fine'] = self.model.args.lambda_reconst_loss * fine_src_err.item() * factor 
-            self.scalars_to_log['train/decode_src_feat/l1_loss_coarse'] = self.model.args.lambda_reconst_loss * coarse_src_err.item() * factor
-
-            
-        if self.model.args.auto_encoder:
-
-            if self.model.args.lambda_reconst_loss > 0:
-                reconst_loss = 0
-                reconst_ssim_loss = 0
-                for signal in reconst_signal:
-                    if self.ssim_alpha > 0:
-                        ssim_tmp, l1_tmp = self.ssim_l1_loss(org_src_rgbs[0].permute(0,3,1,2), signal, raw_signal=True, white_level=ray_batch['white_level'])
-                        # reconst_ssim_loss += ssim_tmp
-                        reconst_loss += l1_tmp                        
-                    else:
-                        reconst_loss += signal.permute(0,2,3,1) - org_src_rgbs[0]                
-
-                if self.ssim_alpha == 0:
-                    reconst_loss = torch.mean(torch.abs(reconst_loss)) * factor
-                loss += self.model.args.lambda_reconst_loss * (reconst_loss + reconst_ssim_loss) 
-                self.scalars_to_log['train/reconst/total_loss'] = self.model.args.lambda_reconst_loss * (reconst_loss + reconst_ssim_loss).item()
-                self.scalars_to_log['train/reconst/l1_loss'] = self.model.args.lambda_reconst_loss * reconst_loss.item()
-                # if self.ssim_alpha > 0:
-                #     self.scalars_to_log['train/reconst/ssim_loss'] = self.model.args.lambda_reconst_loss * reconst_ssim_loss.item()
-
-            if self.model.args.lambda_denoise_loss > 0:
-                denoise_loss = 0
-                denoise_ssim_loss = 0 
-                for signal in denoise_signal:
-                    if self.ssim_alpha > 0:
-                        ssim_tmp, l1_tmp = self.ssim_l1_loss(train_data['src_rgbs_clean'][0,:1].permute(0,3,1,2).to(signal.device), signal[:1], raw_signal=True, white_level=ray_batch['white_level'])
-                        denoise_ssim_loss += ssim_tmp
-                        denoise_loss += l1_tmp
-                    else:
-                        denoise_loss += signal[:1].permute(0,2,3,1) - train_data['src_rgbs_clean'][0,:1].to(signal.device)
-                
-                if self.ssim_alpha == 0:
-                    denoise_loss = torch.mean(torch.abs(denoise_loss)) * factor
-
-                loss += self.model.args.lambda_denoise_loss * (denoise_loss + denoise_ssim_loss) 
-                self.scalars_to_log['train/denoise/total_loss'] = self.model.args.lambda_denoise_loss * (denoise_loss + denoise_ssim_loss).item()
-                self.scalars_to_log['train/denoise/l1_loss'] = self.model.args.lambda_denoise_loss * denoise_loss.item()
-                if self.ssim_alpha > 0:
-                    self.scalars_to_log['train/denoise/ssim_loss'] = self.model.args.lambda_denoise_loss * denoise_ssim_loss.item()
-
-            if self.model.args.lambda_tv_loss > 0: 
-                tv_loss = 0
-                if self.model.args.lambda_reconst_loss > 0:
-                    for signal in reconst_signal:
-                        tv_loss += tv_loss_2d(signal)
-                if self.model.args.lambda_denoise_loss > 0:
-                    for signal in denoise_signal:
-                        tv_loss += tv_loss_2d(signal)
-                tv_loss = tv_loss * factor
-                loss += self.model.args.lambda_tv_loss * tv_loss 
-                self.scalars_to_log['train/tv_loss'] = self.model.args.lambda_tv_loss * tv_loss.item()
-            self.scalars_to_log['train/lambda_factor'] =  factor
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
@@ -336,13 +235,6 @@ class Trainer:
             gt_img = gt_img[::render_stride, ::render_stride]
             average_im = average_im[::render_stride, ::render_stride]
             reconst_signal = None
-            if self.args.auto_encoder:
-                if self.args.lambda_reconst_loss > 0 :
-                    reconst_signal = ret['reconst_signal'][-1][...,::render_stride, ::render_stride].detach().cpu()
-                    reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
-                elif self.args.lambda_denoise_loss > 0 :
-                    reconst_signal = ret['denoised_signal'][-1][...,::render_stride, ::render_stride].detach().cpu()
-                    reconst_signal = de_linearize(reconst_signal, ray_sampler.white_level).clamp(min=0.,max=1.)
                 
         rgb_gt = img_HWC2CHW(gt_img)
         average_im = img_HWC2CHW(average_im)

@@ -152,10 +152,10 @@ class NANScheme(nn.Module):
                 param.requires_grad = False
 
             dim_ = self.args.fine_feat_dim + self.args.coarse_feat_dim
-            self.feature_conv_0 = BasicBlock(dim_, dim_, stride=2, downsample=0.5, rand_noise=False).to(device)
-            self.feature_conv_1 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=False).to(device)
-            self.feature_conv_2 = BasicBlock(dim_, dim_, stride=2, downsample=0.5, rand_noise=False).to(device)
-            self.feature_conv_3 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=False).to(device)
+            self.feature_conv_0 = BasicBlock(dim_, dim_, stride=2, downsample=0.5,  rand_noise=True).to(device)
+            self.feature_conv_1 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=True).to(device)
+            self.feature_conv_2 = BasicBlock(dim_, dim_, stride=2, downsample=0.5,  rand_noise=True).to(device)
+            self.feature_conv_3 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=True).to(device)
 
             if self.args.meta_module:
                 self.cond_scale1 = nn.Linear(512, dim_, bias=True).to(device)
