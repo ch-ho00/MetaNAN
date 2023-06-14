@@ -27,11 +27,13 @@ class BasicBlock(nn.Module):
         self.conv2 = conv3x3(planes, planes)
         self.bn2 = nn.BatchNorm2d(planes, track_running_stats=False, affine=True)
         self.downsample = downsample
+        self.down_conv = conv3x3(inplanes, planes, stride) if downsample else None
         self.stride = stride
         self.rand_noise = rand_noise
         self.weight = nn.Parameter(torch.randn(planes) * 0.01)
 
     def forward(self, x, scale=None, shift=None):
+        B = x.shape[0]
         identity = x
 
         out = self.conv1(x)
@@ -39,17 +41,14 @@ class BasicBlock(nn.Module):
         out = self.relu(out)
 
         if scale != None:
-            out = out * scale.view(-1, out.shape[1], 1, 1) + shift.view(-1, out.shape[1], 1, 1)
+            out = out * scale.view(B, out.shape[1], 1, 1) + shift.view(B, out.shape[1], 1, 1)
             if self.rand_noise:
                 out = out + (self.weight * torch.randn_like(self.weight)).reshape(1,-1,1,1)
         out = self.conv2(out)
         out = self.bn2(out)
 
         if self.downsample is not None:
-            if isinstance(self.downsample, float):
-                identity = F.interpolate(x, scale_factor=self.downsample, mode='bilinear')
-            else:
-                identity = self.downsample(x)
+            identity = self.down_conv(x)
 
         out += identity
         out = self.relu(out)

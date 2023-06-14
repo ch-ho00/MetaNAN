@@ -150,11 +150,12 @@ class NANScheme(nn.Module):
             
             for param in self.degae.parameters():
                 param.requires_grad = False
+            self.degae.eval()
 
             dim_ = self.args.fine_feat_dim + self.args.coarse_feat_dim
-            self.feature_conv_0 = BasicBlock(dim_, dim_, stride=2, downsample=0.5,  rand_noise=True).to(device)
+            self.feature_conv_0 = BasicBlock(dim_, dim_, stride=2, downsample=True,  rand_noise=True).to(device)
             self.feature_conv_1 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=True).to(device)
-            self.feature_conv_2 = BasicBlock(dim_, dim_, stride=2, downsample=0.5,  rand_noise=True).to(device)
+            self.feature_conv_2 = BasicBlock(dim_, dim_, stride=2, downsample=True,  rand_noise=True).to(device)
             self.feature_conv_3 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=True).to(device)
 
             if self.args.meta_module:

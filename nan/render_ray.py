@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from typing import Dict
-
 import torch
 from collections import OrderedDict
 import torch.nn.functional as F
@@ -319,8 +318,11 @@ class RayRender:
             with torch.no_grad():
                 degfeat = self.model.degae.encoder(orig_rgbs[0].permute(0,3,1,2), img_wh=torch.Tensor([orig_rgbs.shape[-2], orig_rgbs.shape[-3]]).int().to(orig_rgbs.device))    
                 if self.model.args.meta_module:
-                    assert ref_rgb != None
-                    noise_vec = self.model.degae.degrep_extractor(ref_rgb.permute(0,3,1,2).to(orig_rgbs.device), white_level.to(orig_rgbs.device))
+                    H, W = orig_rgbs.shape[2:4]
+                    start_h = 0 if H < 384 else (H - 384) // 2
+                    start_w = 0 if W < 384 else (W - 384) // 2
+                    input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384]
+                    noise_vec = self.model.degae.degrep_extractor(input_rgb.permute(0,3,1,2), white_level.to(orig_rgbs.device))
                 torch.cuda.empty_cache()
 
             scale1, scale2, scale3, scale4 = None, None, None, None
