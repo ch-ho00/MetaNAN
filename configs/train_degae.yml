@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : srgan_generator_128x128_wBlurDegrade_wRandomNoise_0_1e2_1e-1 #degae_test 
+expname                     : srgan_generator_128x128_discrim3k_wBlurDegrade_wRandomNoise_1e-3_1e1_1e0_5e-3 #degae_test 
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -23,11 +23,13 @@ batch_size                  : 2
 ## 
 degae_training              : True
 degrep_ckpt                 : './ckpts/SRGAN_x4-ImageNet-8c4a7569.pth.tar'
+
 condition_decode            : True
 img_size                    : 128
-lambda_perceptual           : 0.0
-lambda_embed                : 100
-lambda_content              : 0.1
+lambda_perceptual           : 0.001
+lambda_embed                : 10
+lambda_content              : 1
+lambda_adv                  : 0.005
 rand_noise                  : True
 #
 blur_degrade                : True

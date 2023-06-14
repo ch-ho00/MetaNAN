@@ -118,7 +118,9 @@ class CustomArgumentParser(configargparse.ArgumentParser):
 
         ## DegAE to NAN 
         parser.add_argument("--degae_feat_ckpt", type=str, default=None)
+        parser.add_argument("--discrim_ckpt", type=str, default=None)
         parser.add_argument('--degae_feat', default=False, action="store_true")
+        parser.add_argument('--lambda_adv', type=float, default=0)
 
         ## Plain AE to NAN
         parser.add_argument('--ssim_alpha', type=float, default=0)

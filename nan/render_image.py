@@ -75,8 +75,9 @@ def render_single_image(ray_sampler: RaySampler,
         all_ret['coarse'].append(ret['coarse'])
         if ret['fine'] is not None:
             all_ret['fine'].append(ret['fine'])
-        # torch.cuda.empty_cache()
-
+        torch.cuda.empty_cache()
+        del ret
+        
     # merge chunk results and reshape
     out_shape = torch.empty(ray_sampler.H, ray_sampler.W)[::args.render_stride, ::args.render_stride].shape
     all_ret['coarse'].merge(out_shape)

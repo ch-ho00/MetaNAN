@@ -95,6 +95,8 @@ class RaysOutput:
 
     def append(self, ret):
         for k, v in ret.__dict__.items():
+            if k not in ['rgb', 'depth']:
+                continue
             if k in ['proj_mask','proj_noisy_rgb','post_transform_feat', 'pre_transform_feat', 'transformer_src_feat', 'transformer_tar_feat']:
                 continue
             if v is None:

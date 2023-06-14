@@ -220,8 +220,6 @@ class Trainer:
             self.scalars_to_log['train/decode_src_feat/l1_loss_coarse'] = self.model.args.lambda_reconst_loss * coarse_src_err.item() * factor
 
             
-
-
         if self.model.args.auto_encoder:
 
             if self.model.args.lambda_reconst_loss > 0:
@@ -280,10 +278,11 @@ class Trainer:
         self.scalars_to_log['loss'] = loss.item()
         self.model.optimizer.step()
         self.model.scheduler.step()
+        self.model.optimizer.zero_grad()
 
         self.scalars_to_log['lr_features'] = self.model.scheduler.get_last_lr()[0]
         self.scalars_to_log['lr_mlp'] = self.model.scheduler.get_last_lr()[1]
-
+        del proc_src_rgbs, featmaps, ray_sampler
         return batch_out, ray_batch
 
     def logging(self, train_data, ray_batch_in, ray_batch_out, dt, global_step, epoch, max_keep=3):
@@ -358,7 +357,7 @@ class Trainer:
         rgb_im[:, :rgb_pred.shape[-2], 2 * w_max:2 * w_max + rgb_pred.shape[-1]] = rgb_pred
 
         depth_im = ret['coarse'].depth.detach().cpu()
-        acc_map = torch.sum(ret['coarse'].weights, dim=-1).detach().cpu()
+        # acc_map = torch.sum(ret['coarse'].weights, dim=-1).detach().cpu()
 
         if ret['fine'] is None:
             depth_im = img_HWC2CHW(colorize(depth_im, cmap_name='jet', append_cbar=True))
@@ -372,13 +371,13 @@ class Trainer:
             rgb_im = de_linearize(rgb_im, ray_sampler.white_level).clamp(min=0., max=1.)
             depth_im = torch.cat((depth_im, ret['fine'].depth.detach().cpu()), dim=-1)
             depth_im = img_HWC2CHW(colorize(depth_im, cmap_name='jet', append_cbar=True))
-            acc_map = torch.cat((acc_map, torch.sum(ret['fine'].weights, dim=-1).detach().cpu()), dim=-1)
-            acc_map = img_HWC2CHW(colorize(acc_map, range=(0., 1.), cmap_name='jet', append_cbar=False))
+            # acc_map = torch.cat((acc_map, torch.sum(ret['fine'].weights, dim=-1).detach().cpu()), dim=-1)
+            # acc_map = img_HWC2CHW(colorize(acc_map, range=(0., 1.), cmap_name='jet', append_cbar=False))
 
         # write the pred/gt rgb images and depths
         self.writer.add_image(prefix + 'rgb_gt-coarse-fine' + postfix, rgb_im, global_step)
         self.writer.add_image(prefix + 'depth_gt-coarse-fine'+ postfix, depth_im, global_step)
-        self.writer.add_image(prefix + 'acc-coarse-fine'+ postfix, acc_map, global_step)
+        # self.writer.add_image(prefix + 'acc-coarse-fine'+ postfix, acc_map, global_step)
         if reconst_signal != None:
             reconst_signal = reconst_signal.permute(1,2,0,3).reshape(3,reconst_signal.shape[-2], -1)
             self.writer.add_image(prefix + 'reconst_signal'+ postfix, reconst_signal, global_step)
@@ -389,14 +388,18 @@ class Trainer:
                                  de_linearize(gt_img, ray_sampler.white_level))
         self.writer.add_scalar(prefix + 'psnr_image' + postfix, psnr_curr_img, global_step)
         self.model.switch_to_train()
+        del pred_rgb, depth_im, rgb_im, ret
 
     def log_images(self, train_data, global_step):
         print('Logging a random validation view...')
+        cnt = 0
+        torch.cuda.empty_cache()
         for val_idx in range(len(self.val_dataset)):
             if val_idx % len(self.val_dataset.render_rgb_files) not in [0, (len(self.val_dataset.render_rgb_files) - 1) // 2, len(self.val_dataset.render_rgb_files) - 1]:
                 continue            
             elif global_step == 1 and val_idx > 0:
                 break
+            cnt += 1 
             val_data = self.val_dataset[val_idx]
             val_data = {k : val_data[k][None] if isinstance(val_data[k], torch.Tensor) else val_data[k] for k in val_data.keys()}
             tmp_ray_sampler = RaySampler(val_data, self.device, render_stride=self.args.render_stride)
@@ -405,7 +408,9 @@ class Trainer:
             iter_ = [0, (len(self.val_dataset.render_rgb_files) - 1) // 2, len(self.val_dataset.render_rgb_files) - 1].index(val_idx % len(self.val_dataset.render_rgb_files))
             eval_gain = val_data['eval_gain']
             self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_gain{eval_gain}_iter{iter_}")
+            del tmp_ray_sampler, val_data, gt_img 
             torch.cuda.empty_cache()
+            print("val image #",cnt)
 
         print('Logging current training view...')
         tmp_ray_train_sampler = RaySampler(train_data, self.device,
@@ -413,5 +418,8 @@ class Trainer:
         H, W = tmp_ray_train_sampler.H, tmp_ray_train_sampler.W
         gt_img = tmp_ray_train_sampler.rgb_clean.reshape(H, W, 3)
         self.log_view_to_tb(global_step, tmp_ray_train_sampler, gt_img, render_stride=self.args.render_stride, prefix='train/')
+        del tmp_ray_train_sampler 
+        torch.cuda.empty_cache()
+
 
 

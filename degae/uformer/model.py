@@ -1295,6 +1295,8 @@ class Uformer(nn.Module):
         # Input Projection
         y = self.input_proj(x)
         y = self.pos_drop(y)
+        
+        del x
         #Encoder
         conv0 = self.encoderlayer_0(y,mask=mask, img_wh=img_wh)
         pool0 = self.dowsample_0(conv0, img_wh=img_wh)
@@ -1312,21 +1314,30 @@ class Uformer(nn.Module):
         up0 = self.upsample_0(conv4, img_wh=[dim // 2**4 for dim in img_wh])
         deconv0 = torch.cat([up0,conv3],-1)
         deconv0 = self.decoderlayer_0(deconv0,mask=mask, img_wh=[dim // 2**3 for dim in img_wh])
-        
+        del up0, conv3, conv4
+                
         up1 = self.upsample_1(deconv0, img_wh=[dim // 2**3 for dim in img_wh])
         deconv1 = torch.cat([up1,conv2],-1)
         deconv1 = self.decoderlayer_1(deconv1,mask=mask, img_wh=[dim // 2**2 for dim in img_wh])
+
+        del up1, conv2, deconv0
 
         up2 = self.upsample_2(deconv1, img_wh=[dim // 2**2 for dim in img_wh])
         deconv2 = torch.cat([up2,conv1],-1)
         deconv2 = self.decoderlayer_2(deconv2,mask=mask, img_wh=[dim // 2 for dim in img_wh])
 
+        del up2, conv1, deconv1
+
         up3 = self.upsample_3(deconv2, img_wh=[dim // 2 for dim in img_wh])
         deconv3 = torch.cat([up3,conv0],-1)
         deconv3 = self.decoderlayer_3(deconv3,mask=mask, img_wh=img_wh, print_=True)
 
+        del up3, conv0, deconv2
         # Output Projection
         y = self.output_proj(deconv3, img_wh=img_wh)
+        del deconv3
+        torch.cuda.empty_cache()
+
         return y 
         # return x + y if self.dd_in ==3 else y
 

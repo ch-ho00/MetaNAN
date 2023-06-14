@@ -318,29 +318,29 @@ class RayRender:
         else:
             with torch.no_grad():
                 degfeat = self.model.degae.encoder(orig_rgbs[0].permute(0,3,1,2), img_wh=torch.Tensor([orig_rgbs.shape[-2], orig_rgbs.shape[-3]]).int().to(orig_rgbs.device))    
-                degfeat = F.interpolate(degfeat, scale_factor=0.25, mode='bilinear')
-
-                scale1, scale2, shift1, shift2 = None, None, None, None
                 if self.model.args.meta_module:
                     assert ref_rgb != None
                     noise_vec = self.model.degae.degrep_extractor(ref_rgb.permute(0,3,1,2).to(orig_rgbs.device), white_level.to(orig_rgbs.device))
-                    scale1 = self.model.degae.decoder.cond_scale1(noise_vec)
-                    shift1 = self.model.degae.decoder.cond_shift1(noise_vec)
-                    scale2 = self.model.degae.decoder.cond_scale2(noise_vec)
-                    shift2 = self.model.degae.decoder.cond_shift2(noise_vec)
                 torch.cuda.empty_cache()
 
-            '''
+            scale1, scale2, scale3, scale4 = None, None, None, None
+            shift1, shift2, shift3, shift4 = None, None, None, None
             if self.model.args.meta_module:
-                # noise_vec = self.model.down_fc(noise_vec)
-                # scale1 = self.model.cond_scale1(noise_vec)
+                scale1 = self.model.cond_scale1(noise_vec)
                 scale2 = self.model.cond_scale2(noise_vec)
-                # shift1 = self.model.cond_shift1(noise_vec)
+                scale3 = self.model.cond_scale3(noise_vec)
+                scale4 = self.model.cond_scale4(noise_vec)
+
+                shift1 = self.model.cond_shift1(noise_vec)
                 shift2 = self.model.cond_shift2(noise_vec)                    
-            '''
-            # degfeat = self.model.feature_conv_1(degfeat)
-            degfeat = self.model.feature_conv_2(degfeat, scale1, shift1)
-            feat = self.model.feature_conv_3(degfeat, scale2, shift2)
+                shift3 = self.model.cond_shift3(noise_vec)
+                shift4 = self.model.cond_shift4(noise_vec)
+
+            degfeat = self.model.feature_conv_0(degfeat, scale1, shift1) 
+            degfeat = self.model.feature_conv_1(degfeat, scale2, shift2) 
+            degfeat = self.model.feature_conv_2(degfeat, scale3, shift3)
+            feat    = self.model.feature_conv_3(degfeat, scale4, shift4)
+
             output = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
             featmaps = {
                 'coarse' : feat[:,:self.model.args.coarse_feat_dim],

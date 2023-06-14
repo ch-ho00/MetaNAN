@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch.nn as nn
 import yaml
 from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader
@@ -29,6 +30,7 @@ from runpy import run_path
 
 from nan.content_loss import reconstruction_loss
 from degae.model import DegAE
+from degae.esrgan.discriminator import DiscriminatorUNet
 import matplotlib.pyplot as plt
 from pytorch_msssim import ssim
 import torch.nn.functional as F
@@ -66,9 +68,21 @@ class Trainer:
 
         self.model = DegAE(args)
 
+        # For perceptual Loss
         self.vgg_loss = VGG().to(self.device)
         self.vgg_mean = torch.Tensor([0.485, 0.456, 0.406]).to(self.device)
         self.vgg_std =  torch.Tensor([0.229, 0.224, 0.225]).to(self.device)
+
+        # For adversarial Loss
+        if self.args.lambda_adv > 0:
+            self.discriminator = DiscriminatorUNet(in_channels=3, out_channels=1, channels=64).to(self.device)
+            self.adv_loss = nn.BCEWithLogitsLoss()
+            params_list = [{'params': self.discriminator.parameters(), 'lr': self.args.lrate_feature}]
+            self.d_optimizer = torch.optim.Adam(params_list)
+            self.d_scheduler = torch.optim.lr_scheduler.StepLR(self.d_optimizer,
+                                                        step_size=self.args.lrate_decay_steps,
+                                                        gamma=self.args.lrate_decay_factor)
+
 
         # tb_dir will contain tensorboard files and later evaluation results
         tb_dir = LOG_DIR / args.expname
@@ -161,33 +175,64 @@ class Trainer:
 
         
         # loss2
-        perceptual_loss = torch.zeros_like(content_loss)
-        delin_norm_pred = (delin_pred.clamp(0,1) - self.vgg_mean.reshape(1,-1,1,1)) / self.vgg_std.reshape(1,-1,1,1)
-        delin_norm_tar = (delin_tar.clamp(0,1) - self.vgg_mean.reshape(1,-1,1,1)) / self.vgg_std.reshape(1,-1,1,1)
-        vgg_feat_pred = self.vgg_loss.vgg(delin_norm_pred)
-        vgg_feat_tar = self.vgg_loss.vgg(delin_norm_tar)
-        perceptual_loss = F.mse_loss(vgg_feat_pred, vgg_feat_tar, reduction='mean')  * self.args.lambda_perceptual
-        loss += perceptual_loss
+        if self.args.lambda_perceptual > 0:
+            delin_norm_pred = (delin_pred.clamp(0,1) - self.vgg_mean.reshape(1,-1,1,1)) / self.vgg_std.reshape(1,-1,1,1)
+            delin_norm_tar = (delin_tar.clamp(0,1) - self.vgg_mean.reshape(1,-1,1,1)) / self.vgg_std.reshape(1,-1,1,1)
+            vgg_feat_pred = self.vgg_loss.vgg(delin_norm_pred)
+            vgg_feat_tar = self.vgg_loss.vgg(delin_norm_tar)
+            perceptual_loss = F.mse_loss(vgg_feat_pred, vgg_feat_tar, reduction='mean')  * self.args.lambda_perceptual
+            loss += perceptual_loss
+            self.scalars_to_log['train/perceptual_loss'] = perceptual_loss
 
         # loss3        
-        embed_loss = torch.zeros_like(content_loss)
         if self.args.condition_decode:        
             noise_vec_tar = self.model.degrep_extractor(train_data['target_rgb'], train_data['white_level'])
             noise_vec_pred = self.model.degrep_extractor(reconst_signal, train_data['white_level'])
             embed_loss = F.mse_loss(noise_vec_tar, noise_vec_pred) * self.args.lambda_embed
             loss += embed_loss
+            self.scalars_to_log['train/embed_loss'] = embed_loss
+
+        # loss4
+        real_label = torch.full([reconst_signal.shape[0], 1, reconst_signal.shape[-2], reconst_signal.shape[-1]], 1.0, dtype=torch.float, device=reconst_signal.device)
+        fake_label = torch.full([reconst_signal.shape[0], 1, reconst_signal.shape[-2], reconst_signal.shape[-1]], 0.0, dtype=torch.float, device=reconst_signal.device)
+        if self.args.lambda_adv > 0 and global_step > 3000:
+
+            for d_parameters in self.discriminator.parameters():
+                d_parameters.requires_grad = False
+
+            adversarial_loss = self.adv_loss(self.discriminator(delin_pred), real_label)
+            adversarial_loss = torch.mean(adversarial_loss) * self.args.lambda_adv
+            loss += adversarial_loss
+            self.scalars_to_log['train/adversarial_loss'] = adversarial_loss
 
         loss.backward()
         self.model.optimizer.step()
         self.model.scheduler.step()
 
         l2_loss = torch.mean((delin_pred.clamp(0,1) - delin_tar.clamp(0,1)) ** 2)
-
         self.scalars_to_log['train/content_loss'] = content_loss
-        self.scalars_to_log['train/embed_loss'] = embed_loss
-        self.scalars_to_log['train/perceptual_loss'] = perceptual_loss
         self.scalars_to_log['train/l2_loss'] = l2_loss
         self.scalars_to_log['train/psnr'] = mse2psnr(l2_loss.detach().cpu())
+
+
+        self.discriminator.zero_grad(set_to_none=True)
+
+        if self.args.lambda_adv > 0:
+            for d_parameters in self.discriminator.parameters():
+                d_parameters.requires_grad = True
+
+            self.d_optimizer.zero_grad()
+            gt_output = self.discriminator(delin_tar)
+            fake_output = self.discriminator(delin_pred.detach().clone())
+
+            d_loss_gt = self.adv_loss(gt_output, real_label)
+            d_loss_fake = self.adv_loss(fake_output, fake_label)
+
+            d_loss = torch.mean(d_loss_fake) + torch.mean(d_loss_gt)
+            d_loss.backward()
+            self.d_optimizer.step()
+            self.d_scheduler.step()
+            self.scalars_to_log['train/d_loss'] = d_loss
 
         # print(round(loss.item(),4), round(perceptual_loss.item(),4), round(content_loss.item(),4), round(embed_loss.item(),4), mse2psnr(l2_loss.detach().cpu())) # 
 

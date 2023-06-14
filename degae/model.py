@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn 
 
 from degae.uformer.model import Uformer
-from degae.srgan.vgg import DegFeatureExtractor
+from degae.srgan.degrade_extractor import DegFeatureExtractor
 from degae.decoder import DegAE_decoder
 
 
