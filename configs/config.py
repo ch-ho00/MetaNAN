@@ -96,7 +96,6 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         ## DegAE pretraining related
         parser.add_argument('--degae_training', default=False, action="store_true")
         parser.add_argument("--degrep_ckpt", type=str, default=None)
-        parser.add_argument('--condition_decode', default=False, action="store_true")
         parser.add_argument("--batch_size", type=int, default=0)
         parser.add_argument("--img_size", type=int, default=128)
         parser.add_argument("--visualize_dir_prefix", type=str, default='./degrad_ae')
@@ -120,6 +119,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument("--degae_feat_ckpt", type=str, default=None)
         parser.add_argument("--discrim_ckpt", type=str, default=None)
         parser.add_argument('--degae_feat', default=False, action="store_true")
+        parser.add_argument('--skip_condition', default=False, action="store_true")
         parser.add_argument('--lambda_adv', type=float, default=0)
 
         ## Plain AE to NAN

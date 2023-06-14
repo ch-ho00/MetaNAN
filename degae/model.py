@@ -23,8 +23,8 @@ class DegAE(nn.Module):
         self.encoder = Uformer(img_wh=img_wh, embed_dim=16, depths=depths,
                     win_size=8, mlp_ratio=4., token_projection='linear', token_mlp='leff', modulator=True, shift_flag=False).to(self.device)
 
-        self.degrep_extractor = DegFeatureExtractor(args.degrep_ckpt, train_scratch=train_scratch).to(self.device)
-        self.decoder = DegAE_decoder(rand_noise=args.rand_noise).to(self.device)
+        self.degrep_extractor = DegFeatureExtractor(ckpt_path=args.degrep_ckpt, train_scratch=train_scratch).to(self.device)
+        self.decoder = DegAE_decoder(rand_noise=args.rand_noise, skip_condition=args.skip_condition).to(self.device)
         self.optimizer, self.scheduler = self.create_optimizer()
 
 
@@ -53,7 +53,7 @@ class DegAE(nn.Module):
 
         img_embed = self.encoder(batch_data['noisy_rgb'])                                           # (B, 64, H, W)
         noise_vec_ref = None
-        if self.args.condition_decode:        
+        if not self.args.skip_condition:        
             noise_vec_ref = self.degrep_extractor(batch_data['ref_rgb'], batch_data['white_level']) # (B, 512)
 
         reconst_signal = self.decoder(img_embed, noise_vec_ref)                                     # (B, 3, H, W)

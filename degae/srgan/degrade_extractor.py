@@ -12,7 +12,7 @@ from .srgan import SRResNet
 
 class DegFeatureExtractor(nn.Module):
     def __init__(
-            self, vgg_ckpt, train_scratch=True
+            self, ckpt_path, train_scratch=True
     ) -> None:
         super(DegFeatureExtractor, self).__init__()
 
@@ -22,9 +22,15 @@ class DegFeatureExtractor(nn.Module):
                               num_rcb=16,
                               upscale=4)
         if train_scratch:
-            model_weights_path = vgg_ckpt
+            assert ckpt_path != None
+            model_weights_path = ckpt_path
             checkpoint = torch.load(model_weights_path, map_location=lambda storage, loc: storage)
             self.srgan.load_state_dict(checkpoint["state_dict"])
+
+        for d_parameters in self.srgan.parameters():
+            d_parameters.requires_grad = False
+        self.srgan.eval()
+
         self.degrep_conv = nn.Sequential(
             nn.Conv2d(3, 128, kernel_size=3, stride=2, padding=1),
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
@@ -40,9 +46,9 @@ class DegFeatureExtractor(nn.Module):
             nn.LeakyReLU(0.2, inplace=True)
         ) 
     def forward(self, x, white_level) -> Tensor:
-        x = de_linearize(x, white_level).clamp(0,1)
-        # x = self.vgg(x)
-        x = self.srgan(x)
+        x = de_linearize(x, white_level) #.clamp(0,1)
+        with torch.no_grad():
+            x = self.srgan(x)
         x = self.degrep_conv(x)
         x = F.adaptive_avg_pool2d(x, (1, 1))
         x = self.degrep_fc(x.reshape(-1,512))

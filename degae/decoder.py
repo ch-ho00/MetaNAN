@@ -59,7 +59,7 @@ class BasicBlock(nn.Module):
 
 class DegAE_decoder(nn.Module):
 
-    def __init__(self, img_feat_dim=64, cond_vec_dim=512, rand_noise=False):    
+    def __init__(self, img_feat_dim=64, cond_vec_dim=512, rand_noise=False, skip_condition=False):    
         super().__init__()
         self.img_feat_dim = 64
         self.block1 = BasicBlock(img_feat_dim, img_feat_dim, stride=1, downsample=None, rand_noise=rand_noise)
@@ -68,17 +68,18 @@ class DegAE_decoder(nn.Module):
         self.block4 = BasicBlock(img_feat_dim, img_feat_dim, stride=1, downsample=None, rand_noise=rand_noise)
 
         self.final_conv = nn.Conv2d(img_feat_dim, 3, 1, 1, 0)
-        self.cond_scale1 = nn.Linear(cond_vec_dim, img_feat_dim, bias=True)
-        self.cond_scale2 = nn.Linear(cond_vec_dim, img_feat_dim,  bias=True)
-        self.cond_scale3 = nn.Linear(cond_vec_dim, img_feat_dim, bias=True)
-        self.cond_scale4 = nn.Linear(cond_vec_dim, img_feat_dim, bias=True)
+        self.skip_condition = skip_condition
+        if not self.skip_condition:
+            self.cond_scale1 = nn.Linear(cond_vec_dim, img_feat_dim, bias=True)
+            self.cond_scale2 = nn.Linear(cond_vec_dim, img_feat_dim,  bias=True)
+            self.cond_scale3 = nn.Linear(cond_vec_dim, img_feat_dim, bias=True)
+            self.cond_scale4 = nn.Linear(cond_vec_dim, img_feat_dim, bias=True)
 
-        self.cond_shift1 = nn.Linear(cond_vec_dim, img_feat_dim, bias=True)
-        self.cond_shift2 = nn.Linear(cond_vec_dim, img_feat_dim, bias=True)
-        self.cond_shift3 = nn.Linear(cond_vec_dim, img_feat_dim, bias=True)
-        self.cond_shift4 = nn.Linear(cond_vec_dim, img_feat_dim, bias=True)
+            self.cond_shift1 = nn.Linear(cond_vec_dim, img_feat_dim, bias=True)
+            self.cond_shift2 = nn.Linear(cond_vec_dim, img_feat_dim, bias=True)
+            self.cond_shift3 = nn.Linear(cond_vec_dim, img_feat_dim, bias=True)
+            self.cond_shift4 = nn.Linear(cond_vec_dim, img_feat_dim, bias=True)
 
-        self.act = nn.ReLU(inplace=True)
         
     
     def forward(self, x, degrade_vec=None):
@@ -109,6 +110,4 @@ class DegAE_decoder(nn.Module):
         x = self.block4(x, scale4, shift4)
         x = self.final_conv(x)
 
-        if x.isnan().sum() > 0:
-            import pdb; pdb.set_trace()
         return x

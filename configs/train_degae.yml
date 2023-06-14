@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : srgan_generator_128x128_discrim3k_wBlurDegrade_wRandomNoise_1e-3_1e1_1e0_5e-3 #degae_test 
+expname                     : test #srgan_woEmbedExtractClamp_skipCondition_1e-3_1e1_1e0_5e-3 #degae_test 
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -23,9 +23,9 @@ batch_size                  : 2
 ## 
 degae_training              : True
 degrep_ckpt                 : './ckpts/SRGAN_x4-ImageNet-8c4a7569.pth.tar'
+skip_condition              : False
 
-condition_decode            : True
-img_size                    : 128
+img_size                    : 384
 lambda_perceptual           : 0.001
 lambda_embed                : 10
 lambda_content              : 1

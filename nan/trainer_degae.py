@@ -66,7 +66,7 @@ class Trainer:
         self.val_loader = DataLoader(self.val_dataset, batch_size=1)
         self.val_loader_iterator = iter(cycle(self.val_loader))
 
-        self.model = DegAE(args)
+        self.model = DegAE(args, train_scratch=True)
 
         # For perceptual Loss
         self.vgg_loss = VGG().to(self.device)
@@ -126,14 +126,16 @@ class Trainer:
                     self.train_sampler.set_epoch(epoch)
 
                 self.model.encoder.train()
-                self.model.degrep_extractor.train()
+                self.model.degrep_extractor.degrep_conv.train()
+                self.model.degrep_extractor.degrep_fc.train()
                 self.model.decoder.train()
 
                 # core optimization loop
                 self.training_loop(train_data, global_step)
 
                 self.model.encoder.eval()
-                self.model.degrep_extractor.eval()
+                self.model.degrep_extractor.degrep_conv.eval()
+                self.model.degrep_extractor.degrep_fc.eval()
                 self.model.decoder.eval()
 
                 # Logging and saving
@@ -185,7 +187,7 @@ class Trainer:
             self.scalars_to_log['train/perceptual_loss'] = perceptual_loss
 
         # loss3        
-        if self.args.condition_decode:        
+        if not self.args.skip_condition:        
             noise_vec_tar = self.model.degrep_extractor(train_data['target_rgb'], train_data['white_level'])
             noise_vec_pred = self.model.degrep_extractor(reconst_signal, train_data['white_level'])
             embed_loss = F.mse_loss(noise_vec_tar, noise_vec_pred) * self.args.lambda_embed
@@ -195,7 +197,7 @@ class Trainer:
         # loss4
         real_label = torch.full([reconst_signal.shape[0], 1, reconst_signal.shape[-2], reconst_signal.shape[-1]], 1.0, dtype=torch.float, device=reconst_signal.device)
         fake_label = torch.full([reconst_signal.shape[0], 1, reconst_signal.shape[-2], reconst_signal.shape[-1]], 0.0, dtype=torch.float, device=reconst_signal.device)
-        if self.args.lambda_adv > 0 and global_step > 3000:
+        if self.args.lambda_adv > 0:
 
             for d_parameters in self.discriminator.parameters():
                 d_parameters.requires_grad = False
