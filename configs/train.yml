@@ -25,6 +25,7 @@ coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
 meta_module                 : True
+direct_rgb                  : False
 
 ## AutoEncoder Module
 auto_encoder                : False

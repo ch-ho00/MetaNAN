@@ -136,7 +136,20 @@ class NanMLP(nn.Module):
                                              nn.Linear(16, 1),
                                              nn.ReLU())
 
-        self.rgb_fc = self.rgb_fc_factory()
+        if self.args.direct_rgb:
+            self.rgb_fc = nn.Sequential(nn.Linear(32 + 1 + 4, 16),
+                                   self.activation_func,
+                                   nn.Linear(16, 8),
+                                   self.activation_func,
+                                   nn.Linear(8, 3))
+            self.weight_fc = nn.Sequential(nn.Linear(32 + 1 + 4, 16),
+                                   self.activation_func,
+                                   nn.Linear(16, 8),
+                                   self.activation_func,
+                                   nn.Linear(8, 1))
+
+        else:
+            self.rgb_fc = self.rgb_fc_factory()
 
         self.rgb_reduce_fn = self.rgb_reduce_factory()
 
@@ -276,8 +289,16 @@ class NanMLP(nn.Module):
         return rho_out, rho_globalfeat
 
     def compute_rgb(self, x, mask, rgb_in):
-        x = self.rgb_fc(x)
-        rgb_out, blending_weights_rgb = self.rgb_reduce_fn(x, mask, rgb_in)
+        if self.args.direct_rgb:
+            pred_rgb =self.rgb_fc(x).squeeze([2,3])
+            pred_weight =self.weight_fc(x)
+            pred_weight = pred_weight.masked_fill((~mask), -1e9).squeeze([2,3]) 
+            pred_weight = torch.softmax(pred_weight, dim=-2)
+            rgb_out = torch.sum(pred_rgb * pred_weight, dim=-2) 
+            blending_weights_rgb = None
+        else:
+            x = self.rgb_fc(x)
+            rgb_out, blending_weights_rgb = self.rgb_reduce_fn(x, mask, rgb_in)
         return rgb_out, blending_weights_rgb
 
     def rgb_reduce_factory(self):

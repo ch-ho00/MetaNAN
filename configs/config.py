@@ -121,6 +121,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--degae_feat', default=False, action="store_true")
         parser.add_argument('--skip_condition', default=False, action="store_true")
         parser.add_argument('--lambda_adv', type=float, default=0)
+        parser.add_argument('--direct_rgb', default=False, action="store_true")
 
         ## Plain AE to NAN
         parser.add_argument('--ssim_alpha', type=float, default=0)

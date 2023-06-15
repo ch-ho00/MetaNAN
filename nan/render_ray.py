@@ -275,7 +275,7 @@ class RayRender:
             for idx, pixel in save_idx:
                 debug_dict[(tuple(pixel))] = OrderedDict([('z', ray_outputs.z_vals[idx].cpu()),
                                                           ('w', ray_outputs.weights[idx].cpu()),
-                                                          ('w_rgb', debug_info[0][idx].cpu()),
+                                                          ('w_rgb', debug_info[0][idx].cpu() if debug_info[0][idx] != None else None),
                                                           ('feat', debug_info[1][idx].cpu()),
                                                           ('globalfeat_attention', debug_info[2][idx].cpu())])
             ray_outputs.debug = debug_dict
