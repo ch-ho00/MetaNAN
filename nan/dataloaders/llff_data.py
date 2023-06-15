@@ -188,7 +188,7 @@ class COLMAPDataset(NoiseDataset, ABC):
 
         # d1
         if self.mode is Mode.train:
-            if self.blur_degrade:
+            if self.blur_degrade and random.random() > 0.25:
                 rgb_d1 = self.apply_blur_kernel(torch.from_numpy(rgb), final_sinc=False).clamp(0,1)
             else:
                 rgb_d1 = rgb 
@@ -200,8 +200,8 @@ class COLMAPDataset(NoiseDataset, ABC):
             else:
                 clean_d1 = True        
             
-            # if random.random() < self.final_sinc_prob:
-            #     rgb_d1 = self.apply_blur_kernel(rgb_d1, final_sinc=True)
+            if random.random() < self.final_sinc_prob and self.blur_degrade:
+                rgb_d1 = self.apply_blur_kernel(rgb_d1, final_sinc=True)
                 
         else:
             rgb_d1 = re_linearize(rgb, white_level)
@@ -211,14 +211,15 @@ class COLMAPDataset(NoiseDataset, ABC):
         d2_rgbs = np.concatenate([rgb, rgb_ref], axis=0)
         d2_rgbs = torch.from_numpy(d2_rgbs)
         if self.mode is Mode.train:
-            if self.blur_degrade:
+            if self.blur_degrade and random.random() > 0.25:
                 d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=False).clamp(0,1)
             d2_rgbs = re_linearize(d2_rgbs, white_level)
             if random.random() > 0.25 or clean_d1:
-                d2_rgbs, _ = self.add_noise(d2_rgbs)        
+                d2_rgbs, _ = self.add_noise(d2_rgbs)
+                clean_d2 = False        
 
-            # if random.random() < self.final_sinc_prob:
-            #     d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=True)
+            if random.random() < self.final_sinc_prob and self.blur_degrade:
+                d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=True)
         else:
             d2_rgbs = re_linearize(d2_rgbs[:, :3], white_level)
 
@@ -231,8 +232,6 @@ class COLMAPDataset(NoiseDataset, ABC):
                       'white_level'     : white_level
         }
 
-        if rgb_d1.isnan().sum() + torch.from_numpy(rgb).isnan().sum() + rgb_d2.isnan().sum() + rgb_ref_d2.isnan().sum() > 0:
-            import pdb; pdb.set_trace()
 
         if self.mode is not Mode.train:
             batch_dict['eval_gain'] = eval_gain
