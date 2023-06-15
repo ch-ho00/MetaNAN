@@ -25,7 +25,6 @@ coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
 meta_module                 : True
-direct_rgb                  : False
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory

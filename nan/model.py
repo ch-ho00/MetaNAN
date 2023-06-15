@@ -233,11 +233,12 @@ class NANScheme(nn.Module):
                                 {'params' : self.cond_shift4.parameters(), 'lr':self.args.lrate_feature},
                                 {'params' : self.cond_scale4.parameters(), 'lr':self.args.lrate_feature}]
         else:
-            params_list = [{'params': self.feature_net.parameters(), 'lr': self.args.lrate_feature},
-                        {'params': self.net_coarse.parameters(),  'lr': self.args.lrate_mlp}]
+            params_list = [{'params': self.feature_net.parameters(), 'lr': self.args.lrate_feature}]
             if self.args.meta_module:
                 params_list.append({'params': self.noise_conv.parameters(), 'lr': self.args.lrate_feature})
                 params_list.append({'params': self.weight_generator.parameters(), 'lr': self.args.lrate_feature})
+
+        params_list.append( {'params': self.net_coarse.parameters(),  'lr': self.args.lrate_mlp})
 
         if self.net_fine is not None:
             params_list.append({'params': self.net_fine.parameters(), 'lr': self.args.lrate_mlp})

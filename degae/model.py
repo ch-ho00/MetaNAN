@@ -34,7 +34,7 @@ class DegAE(nn.Module):
                        {'params': self.degrep_extractor.degrep_fc.parameters(),  'lr': self.args.lrate_feature},
                        {'params': self.decoder.parameters(),  'lr': self.args.lrate_feature},                       
                        ]
-                    #    {'params': self.degrep_extractor.vgg.parameters(),  'lr': self.args.lrate_feature},
+
         optimizer = torch.optim.Adam(params_list)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
                                                     step_size=self.args.lrate_decay_steps,
