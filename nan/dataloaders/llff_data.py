@@ -34,6 +34,7 @@ from nan.dataloaders.basic_dataset import Mode
 from basicsr.utils import DiffJPEG
 from basicsr.utils.img_process_util import filter2D
 from basicsr.data.degradations import circular_lowpass_kernel, random_mixed_kernels
+import itertools
 
 
 class COLMAPDataset(NoiseDataset, ABC):
@@ -88,15 +89,82 @@ class COLMAPDataset(NoiseDataset, ABC):
         else:
             return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files) * len(self.args.eval_gain)
 
+    def set_noise_param_list(self, N_sample=4):
+
+        eps = 0.001
+        self.omega_c_list = [ [tick - eps, tick] for tick in np.linspace(np.pi / 3,  np.pi, N_sample, endpoint=True)]
+        self.kernel_list = ["iso", "aniso", "generalized_iso", "generalized_aniso", "plateau_iso", "plateau_aniso"]
+        self.blur_sigma_list  = [ [tick, tick + eps] for tick in np.linspace(0.2, 3, N_sample, endpoint=True)] 
+        self.betag_range_list = [ [tick, tick + eps] for tick in np.linspace(0.5, 4, N_sample, endpoint=True)  ]
+        self.betap_range_list = [ [tick, tick + eps] for tick in np.linspace(1, 2, N_sample, endpoint=True)  ]
+        self.all_combination = list(itertools.product(self.omega_c_list, self.kernel_list, self.blur_sigma_list, self.betag_range_list, self.betap_range_list))
+          
+
+    def get_singleview_param(self, idx=None, hparams=None, eval_gain=1):
+
+        if idx != None:
+            hparams = self.all_combination[idx]
+        else:
+            assert hparams != None    
+        
+        omega_c, kernel, blur_sigma, betag_range, bet_ap_range = hparams      
+
+
+        # idx = idx // len(self.all_combination)
+        idx = 0
+        rgb_file: Path = self.render_rgb_files[idx]
+        # image (H, W, 3)
+        rgb = self.read_image(rgb_file)
+
+        side = self.args.img_size
+        crop_h = 768 // 2
+        crop_w = 1024 // 2
+        rgb = rgb[crop_h:crop_h+side, crop_w:crop_w+side].transpose((2,0,1))[None]
+        white_level = torch.Tensor([1])
+
+        # d1
+        rgb_d1 = self.apply_blur_kernel(torch.from_numpy(rgb), params=hparams).clamp(0,1)
+        rgb_d1 = re_linearize(rgb_d1, white_level)
+        clean_d1 = False
+        rgb_d1 = re_linearize(rgb, white_level)
+        rgb_d1, _ = self.add_noise_level(rgb_d1, eval_gain)                        
+
+
+        norm_omega_c = (np.mean(hparams[0]) - np.pi / 3) / (np.pi - np.pi / 3)
+        kernel = hparams[1]
+        norm_sigma = (np.mean(hparams[2]) - 0.2) / (3 - 0.2)
+        norm_betag = (np.mean(hparams[3]) - 0.5) / (4 - 0.5)
+        norm_betap = (np.mean(hparams[4]) - 1) / (2 - 1)
+        # self.omega_c_list = [ [tick - eps, tick] for tick in np.linspace(np.pi / 3,  np.pi, N_sample, endpoint=True)]
+        # self.kernel_list = ["iso", "aniso", "generalized_iso", "generalized_aniso", "plateau_iso", "plateau_aniso"]
+        # self.blur_sigma_list  = [ [tick, tick + eps] for tick in np.linspace(0.2, 3, N_sample, endpoint=True)] 
+        # self.betag_range_list = [ [tick, tick + eps] for tick in np.linspace(0.5, 4, N_sample, endpoint=True)  ]
+        # self.betap_range_list = [ [tick, tick + eps] for tick in np.linspace(1, 2, N_sample, endpoint=True)  ]
+
+        parsed_hparams = {
+            'omega_c'      : round(norm_omega_c,3), 
+            'kernel'       : kernel, 
+            'blur_sigma'   : round(norm_sigma,3), 
+            'betag_range'  : round(norm_betag,3), 
+            'betap_range' : round(norm_betap,3),
+            'eval_gain'    : eval_gain,
+            'white_level'  : white_level
+        }
+
+        return rgb_d1, parsed_hparams    
+
     def __getitem__(self, idx):
         if self.args.degae_training:
             return self.get_singleview_item(idx)            
         else:
             return self.get_multiview_item(idx)
 
-    def apply_blur_kernel(self, rgb, final_sinc=False):
-
+    def apply_blur_kernel(self, rgb, final_sinc=False, params=None):
         kernel_size = random.choice(self.kernel_range)
+        rand_params = True
+        if params != None:
+            omega_c, kernel, blur_sigma, betag_range, betap_range = params
+            rand_params = False
         if not final_sinc:
             if np.random.uniform() < self.args.sinc_prob:
                 # this sinc filter setting is for kernels ranging from [7, 21]
@@ -107,13 +175,13 @@ class COLMAPDataset(NoiseDataset, ABC):
                 kernel = circular_lowpass_kernel(omega_c, kernel_size, pad_to=False)
             else:
                 kernel = random_mixed_kernels(
-                    self.kernel_list,
-                    self.kernel_prob,
+                    self.kernel_list if rand_params else [kernel],
+                    self.kernel_prob if rand_params else [1],
                     kernel_size,
-                    self.blur_sigma,
-                    self.blur_sigma, [-math.pi, math.pi],
-                    self.betag_range,
-                    self.betap_range,
+                    self.blur_sigma if rand_params else blur_sigma,
+                    self.blur_sigma if rand_params else blur_sigma, [-math.pi, math.pi],
+                    self.betag_range if rand_params else betag_range,
+                    self.betap_range if rand_params else betap_range,
                     noise_range=None)
 
             # pad kernel
@@ -195,13 +263,13 @@ class COLMAPDataset(NoiseDataset, ABC):
             rgb_d1 = re_linearize(rgb_d1, white_level)
             clean_d1 = False
 
-            if random.random() > 0.25:
+            if random.random() > 0.5:
                 rgb_d1 , _ = self.add_noise(rgb_d1)
             else:
                 clean_d1 = True        
             
-            if random.random() < self.final_sinc_prob and self.blur_degrade:
-                rgb_d1 = self.apply_blur_kernel(rgb_d1, final_sinc=True)
+            # if random.random() < self.final_sinc_prob and self.blur_degrade:
+            #     rgb_d1 = self.apply_blur_kernel(rgb_d1, final_sinc=True)
                 
         else:
             rgb_d1 = re_linearize(rgb, white_level)
@@ -214,12 +282,12 @@ class COLMAPDataset(NoiseDataset, ABC):
             if self.blur_degrade and random.random() > 0.25:
                 d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=False).clamp(0,1)
             d2_rgbs = re_linearize(d2_rgbs, white_level)
-            if random.random() > 0.25 or clean_d1:
+            if random.random() > 0.5 or clean_d1:
                 d2_rgbs, _ = self.add_noise(d2_rgbs)
                 clean_d2 = False        
 
-            if random.random() < self.final_sinc_prob and self.blur_degrade:
-                d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=True)
+            # if random.random() < self.final_sinc_prob and self.blur_degrade:
+            #     d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=True)
         else:
             d2_rgbs = re_linearize(d2_rgbs[:, :3], white_level)
 

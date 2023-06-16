@@ -97,7 +97,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--degae_training', default=False, action="store_true")
         parser.add_argument("--degrep_ckpt", type=str, default=None)
         parser.add_argument("--batch_size", type=int, default=0)
-        parser.add_argument("--img_size", type=int, default=128)
+        parser.add_argument("--img_size", type=int, default=384)
         parser.add_argument("--visualize_dir_prefix", type=str, default='./degrad_ae')
         parser.add_argument('--lambda_perceptual', type=float, default=0)
         parser.add_argument('--lambda_embed', type=float, default=0)
@@ -302,8 +302,8 @@ class CustomArgumentParser(configargparse.ArgumentParser):
             print(f"[*] losses: {loss_dict}")
         if 'ssim' in loss_dict:
             if verbose:
-                print(f"[*] changing sample mode from {args.sample_mode=} to 'crop'")
-                print(f"[*] changing N_rand from {args.N_rand=} to {math.ceil(args.N_rand ** 0.5) ** 2} for patch loss")
+                print(f"[*] changing sample mode from {args.sample_mode} to 'crop'")
+                print(f"[*] changing N_rand from {args.N_rand} to {math.ceil(args.N_rand ** 0.5) ** 2} for patch loss")
             args.N_rand = math.ceil(args.N_rand ** 0.5) ** 2
             # This is not exactly the value that will be used, since it change in nan.trainer.Trainer.training_loop to
             # N_rand = int(1.0 * self.args.N_rand * self.args.num_source_views / train_data['src_rgbs'][0].shape[0])
