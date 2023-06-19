@@ -57,7 +57,7 @@ class DegFeatureExtractor(nn.Module):
     def forward(self, x, white_level) -> Tensor:
         if white_level.ndim == 2 and white_level.shape[0] == 1:
             white_level = white_level[0].item()
-        x = de_linearize(x, white_level).clamp(0,1)
+        x = de_linearize(x, white_level) #.clamp(0,1)
         with torch.no_grad():
             x = self.srgan(x)
         x = self.degrep_conv(x)
