@@ -23,6 +23,7 @@ from .realestate import *
 from .spaces_dataset import *
 from .nerf_synthetic import *
 from .deblur_data import *
+from .dtu_data import *
 
 dataset_dict = {
     'spaces': SpacesFreeDataset,
@@ -34,5 +35,7 @@ dataset_dict = {
     'ibrnet_collected': IBRNetCollectedDataset,
     'llff_test': LLFFTestDataset,
     'deblur_test' : DeblurTestDataset,
-    'deblur'    : DeblurTrainDataset
+    'deblur'    : DeblurTrainDataset,
+    'dtu'       : DTUTrainDataset,
+    'dtu_test'  : DTUTestDataset,
 }

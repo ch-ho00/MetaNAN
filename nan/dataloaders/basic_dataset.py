@@ -132,6 +132,14 @@ class BurstDataset(Dataset, ABC):
                     self.add_single_scene(cnt, Path(scene_root), holdout)
                     cnt += 1
 
+        elif self.args.train_dataset == 'dtu':
+            self.scene_root = os.path.join(DATA_DIR, self.dir_name)
+            self.scene_dirs = os.listdir(self.scene_root)
+            self.scene_dirs = [os.path.join(self.scene_root, scene) for scene in self.scene_dirs]
+            self.scene_dirs.sort()
+            for i, scene_path in enumerate(self.scene_dirs):
+                self.add_single_scene(i, scene_path)
+
         else:
             self.scenes_dirs = self.pick_scenes(scenes)
             if len(self.scenes_dirs) == 1:
@@ -168,12 +176,15 @@ class BurstDataset(Dataset, ABC):
     #     return imageio.imread(filename).astype(np.float32) / 255.
 
     @staticmethod
-    def read_image(filename, multiple32=True, **kwargs):
+    def read_image(filename, multiple32=True, img_wh=None, **kwargs):
         
         img = Image.open(filename).convert('RGB')
 
-        if multiple32:
+        if multiple32 and img_wh == None:
             img = img.resize([1024, 768], Image.LANCZOS)
+        elif img_wh:
+            img = img.resize(img_wh, Image.LANCZOS)
+
         img = transform(img)
         return img.permute(1,2,0).numpy()
 
