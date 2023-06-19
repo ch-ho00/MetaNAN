@@ -24,6 +24,7 @@ from .spaces_dataset import *
 from .nerf_synthetic import *
 from .deblur_data import *
 from .dtu_data import *
+from .seanerf_data import *
 
 dataset_dict = {
     'spaces': SpacesFreeDataset,
@@ -38,4 +39,6 @@ dataset_dict = {
     'deblur'    : DeblurTrainDataset,
     'dtu'       : DTUTrainDataset,
     'dtu_test'  : DTUTestDataset,
+    'seanerf_test' : SeaNeRFTestDataset,
+    'seanerf' : SeaNeRFTrainDataset
 }

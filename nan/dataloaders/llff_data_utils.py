@@ -109,12 +109,15 @@ def _minify(basedir, factors=[], resolutions=[]):
         print('Done')
 
 
-def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
+def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True, seanerf=False):
     poses_arr = np.load(basedir/'poses_bounds.npy')
     poses = poses_arr[:, :-2].reshape([-1, 3, 5]).transpose([1, 2, 0])
     bds = poses_arr[:, -2:].transpose([1, 0])
 
-    img0 = sorted((basedir/'images').glob("*.[Jjp][Ppn][Gg]"))[0]
+    if seanerf:
+        img0 = sorted((basedir/'images_wb').glob("*.[Jjp][Ppn][Gg]"))[0]
+    else:
+        img0 = sorted((basedir/'images').glob("*.[Jjp][Ppn][Gg]"))[0]
     sh = imageio.imread(img0).shape
 
     sfx = ''
@@ -136,7 +139,10 @@ def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
     else:
         factor = 1
 
-    imgdir = basedir/('images'+sfx)
+    if seanerf:
+        imgdir = basedir/('images_wb'+sfx)
+    else:
+        imgdir = basedir/('images'+sfx)
     if not imgdir.exists():
         print(imgdir, 'does not exist, returning')
         return
@@ -292,8 +298,8 @@ def spherify_poses(poses, bds):
 
 
 def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75,
-                   spherify=False, path_zflat=False, load_imgs=True):
-    out = _load_data(basedir, factor=factor, load_imgs=load_imgs)  # factor=8 downsamples original imgs by 8x
+                   spherify=False, path_zflat=False, load_imgs=True, seanerf=False):
+    out = _load_data(basedir, factor=factor, load_imgs=load_imgs, seanerf=seanerf)  # factor=8 downsamples original imgs by 8x
     if out is None:
         return
     else:

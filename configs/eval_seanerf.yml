@@ -1,0 +1,24 @@
+### INPUT
+
+ckpt_path     : out/reproduce__NAN/model_255000.pth
+distributed   : False
+
+## dataset
+eval_dataset : deblur_test
+eval_scenes  : fern
+
+### TESTING
+chunk_size    : 2048
+render_stride : 1
+
+## ADDITIONAL
+same          : True
+num_source_views : 8
+
+ eval_images : True
+ eval_rays   : True
+ rerun       : True
+
+process_output : True
+
+local_rank : 0

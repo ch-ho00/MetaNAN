@@ -230,9 +230,9 @@ class Trainer:
             ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args)
 
         average_im = ray_sampler.src_rgbs.cpu()[0,0]
-        src_rgbs = ray_sampler.src_rgbs.cpu()[0].permute(3,1,0,2).reshape(3,ray_sampler.src_rgbs.shape[2], -1)
-        src_rgbs = de_linearize(src_rgbs, ray_sampler.white_level).clamp(min=0., max=1.)
-        self.writer.add_image(prefix + 'src_imgs' + postfix, src_rgbs, global_step)
+        # src_rgbs = ray_sampler.src_rgbs.cpu()[0].permute(3,1,0,2).reshape(3,ray_sampler.src_rgbs.shape[2], -1)
+        # src_rgbs = de_linearize(src_rgbs, ray_sampler.white_level).clamp(min=0., max=1.)
+        # self.writer.add_image(prefix + 'src_imgs' + postfix, src_rgbs, global_step)
         if self.args.render_stride != 1:
             gt_img = gt_img[::render_stride, ::render_stride]
             average_im = average_im[::render_stride, ::render_stride]
