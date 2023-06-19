@@ -125,8 +125,6 @@ class COLMAPDataset(NoiseDataset, ABC):
         # d1
         rgb_d1 = self.apply_blur_kernel(torch.from_numpy(rgb), params=hparams).clamp(0,1)
         rgb_d1 = re_linearize(rgb_d1, white_level)
-        clean_d1 = False
-        rgb_d1 = re_linearize(rgb, white_level)
         rgb_d1, _ = self.add_noise_level(rgb_d1, eval_gain)                        
 
 
@@ -263,7 +261,7 @@ class COLMAPDataset(NoiseDataset, ABC):
             rgb_d1 = re_linearize(rgb_d1, white_level)
             clean_d1 = False
 
-            if random.random() > 0.5:
+            if random.random() > 0.25:
                 rgb_d1 , _ = self.add_noise(rgb_d1)
             else:
                 clean_d1 = True        
@@ -282,7 +280,7 @@ class COLMAPDataset(NoiseDataset, ABC):
             if self.blur_degrade and random.random() > 0.25:
                 d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=False).clamp(0,1)
             d2_rgbs = re_linearize(d2_rgbs, white_level)
-            if random.random() > 0.5 or clean_d1:
+            if random.random() > 0.25 or clean_d1:
                 d2_rgbs, _ = self.add_noise(d2_rgbs)
                 clean_d2 = False        
 

@@ -164,7 +164,7 @@ class SRResNet(nn.Module):
         x = self.upsampling(x)
         x = self.conv3(x)
 
-        # x = torch.clamp_(x, 0.0, 1.0)
+        x = torch.clamp_(x, 0.0, 1.0)
 
         return x
 

@@ -20,11 +20,12 @@ losses_weights              : [0,  1,  0,       0]
 workers                     : 0
 
 degae_feat                  : True
-degae_feat_ckpt             : ./ckpts/model_125000.pth
+degae_feat_ckpt             : ./ckpts/0619.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
 meta_module                 : True
+ref_img_embed               : False
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory

@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : srgan_cleanProb0.5_woClamp_1e-3_1e1_1e0_1e-3 #degae_test 
+expname                     : srgan_cleanProb0.25_woClampInp_ClampSRGAN_1e-4_1e2_1e0_5e-3 #degae_test 
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -27,9 +27,9 @@ skip_condition              : False
 
 img_size                    : 384
 lambda_perceptual           : 0.001
-lambda_embed                : 10
+lambda_embed                : 100
 lambda_content              : 1
-lambda_adv                  : 0.001
+lambda_adv                  : 0.005
 rand_noise                  : True
 
 #
