@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : MetaDegAE_embedPerImg_deblur #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : MetaDegAE_embedPerImg_downscale_deblur #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -26,6 +26,7 @@ fine_feat_dim               : 32
 img_size                    : 256
 meta_module                 : True
 ref_img_embed               : False
+downscale_input_img         : True
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory

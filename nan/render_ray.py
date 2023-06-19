@@ -321,11 +321,14 @@ class RayRender:
                     if self.model.args.ref_img_embed:
                         input_rgb = ref_rgb.to(orig_rgbs.device)               
                     else:
-                        H, W = orig_rgbs.shape[2:4]
-                        start_h = 0 if H < 384 else (H - 384) // 2
-                        start_w = 0 if W < 384 else (W - 384) // 2
-                        input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384]
-                    noise_vec = self.model.degae.degrep_extractor(input_rgb.permute(0,3,1,2), white_level.to(orig_rgbs.device))
+                        if self.model.args.downscale_input_img:
+                            input_rgb = F.interpolate(orig_rgbs[0].permute(0,3,1,2), scale_factor=0.5)
+                        else:
+                            H, W = orig_rgbs.shape[2:4]
+                            start_h = 0 if H < 384 else (H - 384) // 2
+                            start_w = 0 if W < 384 else (W - 384) // 2
+                            input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
+                    noise_vec = self.model.degae.degrep_extractor(input_rgb, white_level.to(orig_rgbs.device))
                 torch.cuda.empty_cache()
 
             scale1, scale2, scale3, scale4 = None, None, None, None

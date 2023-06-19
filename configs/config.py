@@ -121,6 +121,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--degae_feat', default=False, action="store_true")
         parser.add_argument('--ref_img_embed', default=False, action="store_true")
         parser.add_argument('--skip_condition', default=False, action="store_true")
+        parser.add_argument('--downscale_input_img', default=False, action="store_true")
         parser.add_argument('--lambda_adv', type=float, default=0)
 
         ## Plain AE to NAN

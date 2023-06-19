@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from pathlib import Path
-
+import torch
 import numpy as np
 import os
 import imageio
@@ -190,12 +190,16 @@ def ptstocam(pts, c2w):
 
 
 def poses_avg(poses):
-    hwf = poses[0, :3, -1:]
-
     center = poses[:, :3, 3].mean(0)
     vec2 = normalize(poses[:, :3, 2].sum(0))
     up = poses[:, :3, 1].sum(0)
-    c2w = np.concatenate([viewmatrix(vec2, up, center), hwf], 1)
+
+    if poses.shape[-1] == 5:
+        hwf = poses[0, :3, -1:]
+        c2w = np.concatenate([viewmatrix(vec2, up, center), hwf], 1)
+    else:
+        hwf = None
+        c2w = viewmatrix(vec2, up, center)
 
     return c2w
 

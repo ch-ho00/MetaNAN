@@ -369,7 +369,7 @@ class DTUDataset(NoiseDataset, ABC):
             crop_w =  np.random.randint(low=0, high=1024 - side)
             ref_rgb = ref_rgb[crop_h:crop_h+side, crop_w:crop_w+side]
 
-        depth_range = torch.tensor([depth_range[0] * 0.9, depth_range[1] * 1.6])
+        depth_range = torch.tensor(depth_range) #torch.tensor([depth_range[0] * 0.9, depth_range[1] * 1.6])
         gt_depth = None
         return self.create_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain, ref_rgb=ref_rgb)
 
@@ -429,28 +429,22 @@ class DTUDataset(NoiseDataset, ABC):
             intrinsic[:2] *= 4
             extrinsic[:3, 3] *= self.scale_factor
             intrinsics += [intrinsic.copy()]
-            c2ws += [np.linalg.inv(extrinsic) ] # @ self.opencv2blender
+            c2w = np.linalg.inv(extrinsic)
+            c2ws += [c2w] 
             near_fars.append(near_far)
             rgb_files.append(img_filename)
             depth_files.append(depth_filename)
 
         intrinsics, c2ws, near_fars = [np.stack(element) for element in [intrinsics, c2ws, near_fars]]
 
-        # w = intrinsics[0,0,2] * 2
-        # h = intrinsics[0,1,2] * 2
-        # intrinsics[0,:] *= self.img_wh[0] / w
-        # intrinsics[1,:] *= self.img_wh[1] / h
-
         intrinsics_ = np.stack([np.eye(4)] * intrinsics.shape[0])
         intrinsics_[:,:3,:3] = intrinsics
-        # Required? 
-        # c2ws[:, :, 1:3] *= -1
-
         return intrinsics_, c2ws, near_fars, rgb_files, depth_files
 
 
     def add_single_scene(self, i, scene_path):
         intrinsics, c2w_mats, bds, rgb_files, depth_files = self.load_dtu_scene(scene_path)
+        assert intrinsics.shape[0] == c2w_mats.shape[0] and c2w_mats.shape[0] == bds.shape[0] and bds.shape[0] == len(rgb_files) and len(rgb_files) == len(depth_files)
         near_depth = bds.min()
         far_depth = bds.max()
         # intrinsics, c2w_mats = batch_parse_llff_poses(poses, hw=[768,1024])
