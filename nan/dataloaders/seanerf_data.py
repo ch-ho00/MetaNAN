@@ -333,7 +333,7 @@ class SeaNeRFDataset(NoiseDataset, ABC):
             else:
                 id_render = None
             subsample_factor = np.random.choice(np.arange(1, 4), p=[0.2, 0.45, 0.35])
-            num_select = self.num_source_views + np.random.randint(low=-2, high=self.num_select_high)
+            num_select = self.num_source_views # + np.random.randint(low=-2, high=self.num_select_high)
             id_render = id_render
         else:
             id_render = None

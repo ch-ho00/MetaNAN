@@ -71,7 +71,7 @@ def render_single_image(ray_sampler: RaySampler,
         ret       = ray_render.render_batch(ray_batch=ray_batch,
                                             proc_src_rgbs=src_rgbs,
                                             featmaps=featmaps,
-                                            org_src_rgbs=ray_sampler.src_rgbs.to(device),
+                                            org_src_rgbs=ray_sampler.src_rgbs.to(device) if not args.weightsum_filtered else src_rgbs,
                                             sigma_estimate=ray_sampler.sigma_estimate.to(device) if ray_sampler.sigma_estimate != None else None,
                                             reconst_signal=reconst_signal,
                                             denoise_signal=denoise_signal)

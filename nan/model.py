@@ -40,7 +40,7 @@ def parallel(model, local_rank):
 
 class Gaussian2D(nn.Conv2d):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: Tuple[int, int], sigma: Tuple[float, float]):
-        super().__init__(in_channels, out_channels, kernel_size, padding='same')
+        super().__init__(in_channels, out_channels, kernel_size, padding='same', bias=False)
 
         gauss_kernel: torch.Tensor = kornia.filters.get_gaussian_kernel2d(kernel_size, sigma)
         new_weight = torch.zeros_like(self.weight)
@@ -50,7 +50,7 @@ class Gaussian2D(nn.Conv2d):
 
         with torch.no_grad():
             self.weight.copy_(new_weight)
-        nn.init.zeros_(self.bias.data)
+        # nn.init.zeros_(self.bias.data)
 
 
 
@@ -194,7 +194,10 @@ class NANScheme(nn.Module):
         self.mlps: Dict[str, NanMLP] = {'coarse': self.net_coarse, 'fine': self.net_fine}
 
         if args.pre_net:
-            self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(3, 3), sigma=(1.5, 1.5)).to(device)
+            if args.weightsum_filtered:
+                self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(13, 13), sigma=(1.5, 1.5)).to(device)                
+            else:
+                self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(3, 3), sigma=(1.5, 1.5)).to(device)
         else:
             self.pre_net = None
             

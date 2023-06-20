@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_plain_seanerf #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : MetaDegAE_downscale_plain_seanerf #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -19,12 +19,12 @@ losses                      : [l2, l1, l1_grad, ssim]
 losses_weights              : [0,  1,  0,       0]
 workers                     : 0
 
-degae_feat                  : False
+degae_feat                  : True
 degae_feat_ckpt             : ./ckpts/0619.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-meta_module                 : False
+meta_module                 : True
 ref_img_embed               : False
 downscale_input_img         : True
 
@@ -38,7 +38,7 @@ inv_uniform                 : True
 white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 1000
+i_img                       : 2500
 i_print                     : 100
 i_tb                        : 20
 i_weights                   : 5000
