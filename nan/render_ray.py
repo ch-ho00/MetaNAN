@@ -294,8 +294,10 @@ class RayRender:
         if self.model.pre_net is not None:
             if self.model.args.bpn_prenet:
                 src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
+                src_rgbs = F.interpolate(src_rgbs, scale_factor=0.5, mode='bilinear')
                 hw = src_rgbs.shape[-2:]
                 src_rgbs = self.model.pre_net(src_rgbs.reshape(1,-1,hw[0], hw[1]), src_rgbs[None])[0][0]
+                src_rgbs = F.upsample(src_rgbs, scale_factor=2, mode='bilinear')
             else:
                 src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
 

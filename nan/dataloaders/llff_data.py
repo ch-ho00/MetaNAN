@@ -446,7 +446,7 @@ class LLFFTestDataset(COLMAPDataset):
         if self.mode is Mode.train and self.random_crop:
             crop_h = np.random.randint(low=250, high=750) // 128 * 128
             crop_h = crop_h + 1 if crop_h % 2 == 1 else crop_h
-            crop_w = int(350 * 550 / crop_h // 128 * 128)
+            crop_w = int(300 * 500 / crop_h // 128 * 128) # 350 * 550
             crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
             rgb, camera, src_rgbs, src_cameras = random_crop(rgb, camera, src_rgbs, src_cameras,
                                                              (crop_h, crop_w))
