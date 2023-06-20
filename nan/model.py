@@ -30,6 +30,7 @@ from nan.nan_mlp import NanMLP
 from nan.utils.io_utils import get_latest_file, print_link
 from degae.model import DegAE
 from degae.decoder import BasicBlock
+from nan.bpn_prenet import BPN
 
 def de_parallel(model):
     return model.module if hasattr(model, 'module') else model
@@ -194,10 +195,13 @@ class NANScheme(nn.Module):
         self.mlps: Dict[str, NanMLP] = {'coarse': self.net_coarse, 'fine': self.net_fine}
 
         if args.pre_net:
-            if args.weightsum_filtered:
-                self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(13, 13), sigma=(1.5, 1.5)).to(device)                
+            if args.bpn_prenet:
+                self.pre_net = BPN().to(device)
             else:
-                self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(3, 3), sigma=(1.5, 1.5)).to(device)
+                if args.weightsum_filtered:
+                    self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(13, 13), sigma=(1.5, 1.5)).to(device)                
+                else:
+                    self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(3, 3), sigma=(1.5, 1.5)).to(device)
         else:
             self.pre_net = None
             

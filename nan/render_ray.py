@@ -292,7 +292,12 @@ class RayRender:
         conv1_weights = None
         orig_rgbs = src_rgbs
         if self.model.pre_net is not None:
-            src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
+            if self.model.args.bpn_prenet:
+                src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
+                hw = src_rgbs.shape[-2:]
+                src_rgbs = self.model.pre_net(src_rgbs.reshape(1,-1,hw[0], hw[1]), src_rgbs[None])[0][0]
+            else:
+                src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
 
         if not self.model.args.degae_feat:
             if self.model.args.meta_module:
