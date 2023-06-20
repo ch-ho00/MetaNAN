@@ -196,7 +196,7 @@ class NANScheme(nn.Module):
 
         if args.pre_net:
             if args.bpn_prenet:
-                self.pre_net = BPN().to(device)
+                self.pre_net = BPN(bpn_per_img=args.bpn_per_img).to(device)
             else:
                 if args.weightsum_filtered:
                     self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(13, 13), sigma=(1.5, 1.5)).to(device)                

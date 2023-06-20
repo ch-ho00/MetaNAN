@@ -112,7 +112,7 @@ class KernelConv(nn.Module):
 
 class BPN(nn.Module):
     def __init__(self, color=True, burst_length=8, blind_est=True,
-                 kernel_size=7, basis_size=15, upMode='bilinear'):
+                 kernel_size=7, basis_size=15, upMode='bilinear', bpn_per_img=False):
         super(BPN, self).__init__()
         self.burst_length = burst_length
         self.blind_est = blind_est
@@ -120,14 +120,19 @@ class BPN(nn.Module):
         self.basis_size = basis_size
         self.upMode = upMode
         self.color_channel = 3 if color else 1
-        self.in_channel = self.color_channel * (
-            self.burst_length if self.blind_est else self.burst_length + 1)
+        self.bpn_per_img = bpn_per_img
+        if bpn_per_img:
+            self.in_channel = self.color_channel
+            self.burst_length = 1   
+        else:
+            self.in_channel = self.color_channel * (
+                self.burst_length if self.blind_est else self.burst_length + 1)
+        factor = 2
         self.coeff_channel = self.basis_size
         self.basis_channel = self.color_channel * self.burst_length * self.basis_size
 
         # Layer definition in each block
         # Encoder
-        factor = 2
         self.initial_conv = SingleConv(self.in_channel, 64 // factor)
         self.down_conv1 = DownBlock(64 // factor , 64  // factor)
         self.down_conv2 = DownBlock(64 // factor , 64 // factor)
