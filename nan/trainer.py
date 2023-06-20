@@ -25,6 +25,7 @@ from nan.utils.general_utils import img_HWC2CHW
 from nan.utils.io_utils import print_link, colorize
 # from pytorch_msssim import ms_ssim
 from nan.ssim_l1_loss import MS_SSIM_L1_LOSS
+import torch.nn.functional as F
 
 
 
@@ -172,6 +173,17 @@ class Trainer:
 
         if batch_out['fine'] is not None:
             loss += self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
+
+        if self.args.lambda_embed_loss > 0:
+            clean_down = F.interpolate(train_data['rgb_clean'].permute(0,3,1,2).to(self.device), scale_factor=0.25, mode='bilinear')
+            reconst_down = F.interpolate(proc_src_rgbs[0].permute(0,3,1,2), scale_factor=0.25, mode='bilinear')
+
+            clean_embed_vec = self.model.degae.degrep_extractor(clean_down, white_level=ray_batch['white_level'].to(self.device))
+            reconst_embed_vec = self.model.degae.degrep_extractor(reconst_down, white_level=ray_batch['white_level'].to(self.device))
+
+            embed_loss = F.mse_loss(reconst_embed_vec, clean_embed_vec.repeat(reconst_embed_vec.shape[0], 1))
+            loss += embed_loss * self.args.lambda_embed_loss
+            self.scalars_to_log['train/embed-loss'] = embed_loss * self.args.lambda_embed_loss
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()

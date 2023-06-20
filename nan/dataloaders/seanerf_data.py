@@ -332,7 +332,7 @@ class SeaNeRFDataset(NoiseDataset, ABC):
                 id_render = train_rgb_files.index(rgb_file)
             else:
                 id_render = None
-            subsample_factor = np.random.choice(np.arange(1, 4), p=[0.2, 0.45, 0.35])
+            subsample_factor = 1 #np.random.choice(np.arange(1, 4), p=[0.2, 0.45, 0.35])
             num_select = self.num_source_views # + np.random.randint(low=-2, high=self.num_select_high)
             id_render = id_render
         else:
