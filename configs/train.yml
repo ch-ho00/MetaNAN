@@ -28,7 +28,7 @@ meta_module                 : True
 ref_img_embed               : False
 downscale_input_img         : True
 weightsum_filtered          : True
-lambda_embed_loss           : 10
+lambda_embed_loss           : 0
 bpn_prenet                  : True
 
 ## AutoEncoder Module
