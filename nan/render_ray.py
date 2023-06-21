@@ -20,6 +20,52 @@ from nan.model import NANScheme
 from nan.projection import Projector
 from nan.raw2output import RaysOutput
 
+def stack_image(image, N=2, pad=7):
+    b, c, h, w = image.size()
+    assert h % N == 0 and w % 8 == 0
+    padded_image = torch.nn.functional.pad(image, (pad, pad, pad, pad), mode='constant', value=0)
+    patch_h = h//N
+    patch_w = w//N 
+    stacked = torch.zeros((b * N * N, c, patch_h + 2*pad, patch_w + 2*pad)).to(image.device)
+    for j in range(N):
+        for k in range(N):
+            row_start = j* patch_h
+            row_end = (j+1)* patch_h + 2*pad
+            col_start = k* patch_w
+            col_end = (k+1)* patch_w + 2*pad
+            stacked[(j * N + k) * b: (j * N + k + 1) * b] = padded_image[:, :, row_start:row_end, col_start:col_end]
+    return stacked
+
+
+def unstack_image(stack_image, total_n_patch=4, pad=7):
+    b, c, patch_h, patch_w = stack_image.size()
+    assert b % total_n_patch == 0
+    N = int(total_n_patch ** 0.5)
+    
+    out_patch_h = patch_h - pad * 2
+    out_patch_w = patch_w - pad * 2
+    nimgs = b // total_n_patch
+    output = torch.zeros((nimgs, c, out_patch_h * N, out_patch_w * N)).to(stack_image.device)
+    # print(output.shape, stack_image.shape)
+    for patch_idx in range(b):
+        h_idx = (patch_idx // nimgs) // N
+        w_idx = (patch_idx // nimgs) % N
+        
+        start_h = pad
+        end_h   = pad + out_patch_h
+
+        start_w = pad
+        end_w   = pad + out_patch_w
+        
+        # print(patch_idx, patch_idx % nimgs, h_idx, w_idx)
+        # print(start_h, end_h, 0, patch_h)
+        # print(start_w, end_w, 0, patch_w)
+        # print(output[patch_idx // total_n_patch, :, out_patch_h * h_idx: out_patch_h * (h_idx + 1), out_patch_w * w_idx : out_patch_w * (w_idx +1)].shape, 
+        #       stack_image[patch_idx, :, start_h: end_h, start_w: end_w].shape)
+        output[patch_idx % nimgs, :, out_patch_h * h_idx: out_patch_h * (h_idx + 1), out_patch_w * w_idx : out_patch_w * (w_idx +1)] = stack_image[patch_idx, :, start_h: end_h, start_w: end_w]
+    return output
+
+
 
 def sample_pdf(bins, weights, N_samples, det=False):
     """
@@ -293,19 +339,23 @@ class RayRender:
         orig_rgbs = src_rgbs
         if self.model.pre_net is not None:
             if self.model.args.bpn_prenet:
-
+                pad = 7
+                npatch_per_side = 2
                 if self.model.args.bpn_per_img:
                     src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
-                    src_rgbs = F.interpolate(src_rgbs, scale_factor=1/3, mode='bilinear')
-                    hw = src_rgbs.shape[-2:]
-                    src_rgbs = self.model.pre_net(src_rgbs, src_rgbs[:,None])[0][:,0]                    
-                    src_rgbs = F.upsample(src_rgbs, scale_factor=3, mode='bilinear')
+                    src_rgbs_stacked = stack_image(src_rgbs, N=npatch_per_side, pad=pad)
+                    src_rgbs = self.model.pre_net(src_rgbs_stacked, src_rgbs_stacked[:,None])[:,0]                    
+                    del src_rgbs_stacked
+                    src_rgbs = unstack_image(src_rgbs, total_n_patch=4, pad=pad)
                 else:
                     src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
-                    src_rgbs = F.interpolate(src_rgbs, scale_factor=0.5, mode='bilinear')
-                    hw = src_rgbs.shape[-2:]
-                    src_rgbs = self.model.pre_net(src_rgbs.reshape(1,-1,hw[0], hw[1]), src_rgbs[None])[0][0]
-                    src_rgbs = F.upsample(src_rgbs, scale_factor=2, mode='bilinear')
+                    src_rgbs_stacked = stack_image(src_rgbs, N=npatch_per_side, pad=pad)
+                    hw = src_rgbs_stacked.shape[-2:]
+                    src_rgbs_stacked = src_rgbs_stacked.reshape(self.model.args.num_source_views, npatch_per_side **2, 3, hw[0], hw[1]).permute(1,0,2,3,4)
+                    src_rgbs = self.model.pre_net(src_rgbs_stacked.reshape(npatch_per_side **2, self.model.args.num_source_views * 3, hw[0], hw[1]), src_rgbs_stacked)
+                    del src_rgbs_stacked
+                    src_rgbs = unstack_image(src_rgbs.reshape(-1,3,hw[0], hw[1]), total_n_patch=npatch_per_side**2, pad=pad)
+                torch.cuda.empty_cache()
             else:
                 src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
 
@@ -344,6 +394,7 @@ class RayRender:
                             start_w = 0 if W < 384 else (W - 384) // 2
                             input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
                     noise_vec = self.model.degae.degrep_extractor(input_rgb, white_level.to(orig_rgbs.device))
+                    del input_rgb
                 torch.cuda.empty_cache()
 
             scale1, scale2, scale3, scale4 = None, None, None, None
@@ -363,6 +414,9 @@ class RayRender:
             degfeat = self.model.feature_conv_1(degfeat, scale2, shift2) 
             degfeat = self.model.feature_conv_2(degfeat, scale3, shift3)
             feat    = self.model.feature_conv_3(degfeat, scale4, shift4)
+
+            del scale1, scale2, scale3, scale4
+            del shift1, shift2, shift3, shift4
 
             output = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
             featmaps = {

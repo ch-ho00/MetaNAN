@@ -109,7 +109,7 @@ class NanMLP(nn.Module):
                                     )
 
             input_channel = in_feat_ch + 3 + reconst_dim
-            view_att_nhead = 5
+            view_att_nhead = 5 if not args.bpn_prenet else 3
             self.views_attention = MultiHeadAttention(view_att_nhead, input_channel, 7, 8)
 
         self.vis_fc = nn.Sequential(nn.Linear(32, 32),
@@ -129,7 +129,7 @@ class NanMLP(nn.Module):
                                          nn.Linear(64, 16),
                                          self.activation_func)
 
-        ray_att_nhead = 4
+        ray_att_nhead = 4  if not args.bpn_prenet else 3
         self.ray_attention = MultiHeadAttention(ray_att_nhead, 16, 4, 4)
         self.out_geometry_fc = nn.Sequential(nn.Linear(16, 16),
                                              self.activation_func,
@@ -196,6 +196,7 @@ class NanMLP(nn.Module):
         # [n_rays, n_samples, n_views, 3*n_feat]
         num_valid_obs = mask.sum(dim=-2)
         ext_feat, weight, tar_feat, src_feat = self.compute_extended_features(ray_diff, rgb_feat, mask, num_valid_obs, sigma_est)
+        torch.cuda.empty_cache()
 
         x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32)
         x_vis = self.vis_fc(x * weight)
@@ -203,10 +204,12 @@ class NanMLP(nn.Module):
         vis = torch.sigmoid(vis) * mask
         x = x + x_res
         vis = self.vis_fc2(x * vis) * mask
+        torch.cuda.empty_cache()
 
         rho_out, rho_globalfeat = self.compute_rho(x[:, :, 0, 0], vis[:, :, 0, 0], num_valid_obs[:, :, 0, 0])
         x = torch.cat([x, vis, ray_diff], dim=-1)
         rgb_out, w_rgb = self.compute_rgb(x, mask, rgb_in)
+        torch.cuda.empty_cache()
 
         return rgb_out, rho_out, w_rgb, rgb_in, rho_globalfeat, tar_feat, src_feat
 
@@ -236,12 +239,12 @@ class NanMLP(nn.Module):
                 feat = torch.cat([feat, sigma_est[:, :, self.k_mid:self.k_mid + 1, self.k_mid:self.k_mid + 1]], dim=-1)
 
         weight = self.compute_weights(ray_diff, mask)
-
+        del ray_diff, mask 
         # compute mean and variance across different views for each point
         mean, var = fused_mean_variance(rgb_feat, weight)  # [n_rays, n_samples, 1, n_feat]
         globalfeat = torch.cat([mean, var], dim=-1)  # [n_rays, n_samples, 1, 2*n_feat]
         globalfeat = globalfeat.expand(*rgb_feat.shape[:-1], globalfeat.shape[-1])
-
+        del mean, var 
         ext_feat = torch.cat([globalfeat, feat], dim=-1)
         return ext_feat, weight, tar_feat, src_feat
 
