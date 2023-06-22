@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : MetaDegAE_fullRes_preBPN_perImg_embedLoss0_denoise #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : MetaDegAE_clampMSE_preBPN_sumFilter_ftEmbed_embedLoss1e4_denoise #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -27,10 +27,11 @@ img_size                    : 256
 meta_module                 : True
 ref_img_embed               : False
 downscale_input_img         : True
-weightsum_filtered          : False
-lambda_embed_loss           : 0
+weightsum_filtered          : True
+lambda_embed_loss           : 10000
 bpn_prenet                  : True
-bpn_per_img                 : True
+bpn_per_img                 : False
+ft_embed_fc                 : True
 
 ## AutoEncoder Module
 auto_encoder                : False

@@ -238,7 +238,11 @@ class NANScheme(nn.Module):
                                 {'params' : self.cond_scale3.parameters(), 'lr':self.args.lrate_feature},
                                 {'params' : self.cond_shift3.parameters(), 'lr':self.args.lrate_feature},
                                 {'params' : self.cond_shift4.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_scale4.parameters(), 'lr':self.args.lrate_feature}]
+                                {'params' : self.cond_scale4.parameters(), 'lr':self.args.lrate_feature}]            
+                if self.args.ft_embed_fc:
+                    params_list += [{'params' : self.degae.degrep_extractor.degrep_conv.parameters(), 'lr':3e-6},
+                                    {'params' : self.degae.degrep_extractor.degrep_fc.parameters(),   'lr':3e-6}]
+                    
         else:
             params_list = [{'params': self.feature_net.parameters(), 'lr': self.args.lrate_feature}]
             if self.args.meta_module:

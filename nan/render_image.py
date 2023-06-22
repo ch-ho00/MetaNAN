@@ -60,6 +60,9 @@ def render_single_image(ray_sampler: RaySampler,
         all_ret['reconst_signal'] = reconst_signal
         all_ret['denoised_signal'] = denoise_signal
 
+    if model.args.bpn_prenet:
+        all_ret['bpn_reconst'] = src_rgbs
+
 
     if args.N_importance > 0:
         all_ret['fine'] = RaysOutput.empty_ret()

@@ -127,6 +127,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--lambda_embed_loss', type=float, default=0)
         parser.add_argument('--bpn_prenet', default=False, action="store_true")
         parser.add_argument('--bpn_per_img', default=False, action="store_true")
+        parser.add_argument('--ft_embed_fc', default=False, action="store_true")
 
         ## Plain AE to NAN
         parser.add_argument('--ssim_alpha', type=float, default=0)
