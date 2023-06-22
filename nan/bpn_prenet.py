@@ -111,7 +111,7 @@ class KernelConv(nn.Module):
 
 class BPN(nn.Module):
     def __init__(self, color=True, burst_length=8, blind_est=True,
-                 kernel_size=3, basis_size=8, upMode='bilinear', bpn_per_img=False):
+                 kernel_size=7, basis_size=64, upMode='bilinear', bpn_per_img=False):
         super(BPN, self).__init__()
         self.burst_length = burst_length
         self.blind_est = blind_est
@@ -126,7 +126,7 @@ class BPN(nn.Module):
         else:
             self.in_channel = self.color_channel * (
                 self.burst_length if self.blind_est else self.burst_length + 1)
-        factor = 4
+        factor = 1
         self.coeff_channel = self.basis_size
         self.basis_channel = self.color_channel * self.burst_length * self.basis_size
 
@@ -264,7 +264,7 @@ class BPN(nn.Module):
         # up sampling with pooled-skip connection, for basis
         up_basis_conv1 = self.up_basis_conv1(torch.cat([self.pool_before_cat(
             initial_conv, tosize=int((self.kernel_size + 1) / 4)), F.interpolate(
-            F.adaptive_avg_pool2d(features, (1, 1)), scale_factor=1,
+            F.adaptive_avg_pool2d(features, (1, 1)), scale_factor=2,
             mode=self.upMode)], dim=1))
         del initial_conv
         up_basis_conv2 = self.up_basis_conv2(torch.cat([self.pool_before_cat(

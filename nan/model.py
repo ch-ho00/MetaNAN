@@ -143,7 +143,7 @@ class NANScheme(nn.Module):
 
         # create feature extraction network
         self.degae_feat = args.degae_feat
-        if args.degae_feat:
+        if args.degae_feat or args.lambda_embed_loss > 0:
             assert args.degae_feat_ckpt != None
             self.degae = DegAE(args, train_scratch=False)
             checkpoint = torch.load(args.degae_feat_ckpt, map_location=lambda storage, loc: storage)
@@ -153,26 +153,27 @@ class NANScheme(nn.Module):
                 param.requires_grad = False
             self.degae.eval()
 
-            dim_ = self.args.fine_feat_dim + self.args.coarse_feat_dim
-            self.feature_conv_0 = BasicBlock(dim_, dim_, stride=2, downsample=True,  rand_noise=True).to(device)
-            self.feature_conv_1 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=True).to(device)
-            self.feature_conv_2 = BasicBlock(dim_, dim_, stride=2, downsample=True,  rand_noise=True).to(device)
-            self.feature_conv_3 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=True).to(device)
+            if args.degae_feat:
+                dim_ = self.args.fine_feat_dim + self.args.coarse_feat_dim
+                self.feature_conv_0 = BasicBlock(dim_, dim_, stride=2, downsample=True,  rand_noise=True).to(device)
+                self.feature_conv_1 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=True).to(device)
+                self.feature_conv_2 = BasicBlock(dim_, dim_, stride=2, downsample=True,  rand_noise=True).to(device)
+                self.feature_conv_3 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=True).to(device)
 
-            if self.args.meta_module:
-                self.cond_scale1 = nn.Linear(512, dim_, bias=True).to(device)
-                self.cond_shift1 = nn.Linear(512, dim_, bias=True).to(device)
+                if self.args.meta_module:
+                    self.cond_scale1 = nn.Linear(512, dim_, bias=True).to(device)
+                    self.cond_shift1 = nn.Linear(512, dim_, bias=True).to(device)
 
-                self.cond_scale2 = nn.Linear(512, dim_, bias=True).to(device)
-                self.cond_shift2 = nn.Linear(512, dim_, bias=True).to(device)
+                    self.cond_scale2 = nn.Linear(512, dim_, bias=True).to(device)
+                    self.cond_shift2 = nn.Linear(512, dim_, bias=True).to(device)
 
-                self.cond_scale3 = nn.Linear(512, dim_, bias=True).to(device)
-                self.cond_shift3 = nn.Linear(512, dim_, bias=True).to(device)
+                    self.cond_scale3 = nn.Linear(512, dim_, bias=True).to(device)
+                    self.cond_shift3 = nn.Linear(512, dim_, bias=True).to(device)
 
-                self.cond_scale4 = nn.Linear(512, dim_, bias=True).to(device)
-                self.cond_shift4 = nn.Linear(512, dim_, bias=True).to(device)
+                    self.cond_scale4 = nn.Linear(512, dim_, bias=True).to(device)
+                    self.cond_shift4 = nn.Linear(512, dim_, bias=True).to(device)
 
-        else:
+        if not args.degae_feat:
             self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
                                     fine_out_ch=args.fine_feat_dim,
                                     coarse_only=args.coarse_only,
