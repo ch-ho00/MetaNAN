@@ -346,7 +346,7 @@ class RayRender:
                     src_rgbs_stacked = stack_image(src_rgbs, N=npatch_per_side, pad=pad)
                     src_rgbs = self.model.pre_net(src_rgbs_stacked, src_rgbs_stacked[:,None])[:,0]                    
                     del src_rgbs_stacked
-                    src_rgbs = unstack_image(src_rgbs, total_n_patch=4, pad=pad)
+                    src_rgbs = unstack_image(src_rgbs, total_n_patch=npatch_per_side**2, pad=pad)
                 else:
                     src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
                     src_rgbs_stacked = stack_image(src_rgbs, N=npatch_per_side, pad=pad)
@@ -354,7 +354,9 @@ class RayRender:
                     src_rgbs_stacked = src_rgbs_stacked.reshape(self.model.args.num_source_views, npatch_per_side **2, 3, hw[0], hw[1]).permute(1,0,2,3,4)
                     src_rgbs = self.model.pre_net(src_rgbs_stacked.reshape(npatch_per_side **2, self.model.args.num_source_views * 3, hw[0], hw[1]), src_rgbs_stacked)
                     del src_rgbs_stacked
+                    src_rgbs = src_rgbs.transpose(0,1)
                     src_rgbs = unstack_image(src_rgbs.reshape(-1,3,hw[0], hw[1]), total_n_patch=npatch_per_side**2, pad=pad)
+                        
                 torch.cuda.empty_cache()
             else:
                 src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)

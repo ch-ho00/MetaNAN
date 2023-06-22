@@ -287,7 +287,7 @@ class Trainer:
         if self.args.bpn_prenet:
             h, w, _ = ret['bpn_reconst'].shape[-3:]
             reconst_img = ret['bpn_reconst'][0].permute(3,1,0,2).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
-            reconst_img = de_linearize(reconst_img).clamp(0,1)
+            reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
             self.writer.add_image(prefix + 'bpn_reconst'+ postfix, reconst_img, global_step)
             
         # write scalar
