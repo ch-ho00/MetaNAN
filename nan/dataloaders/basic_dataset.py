@@ -309,7 +309,7 @@ class NoiseDataset(BurstDataset, ABC):
         return noise_rgb, sigma_estimate
 
     def create_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs_clean, src_cameras, depth_range,
-                                gt_depth=None, eval_gain=1, ref_rgb=None):
+                                gt_depth=None, eval_gain=1):
         if self.mode in [Mode.train]: #, Mode.validation]:
             white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
         else:
@@ -339,9 +339,6 @@ class NoiseDataset(BurstDataset, ABC):
                       'white_level'   : white_level,
                       'eval_gain' : eval_gain}
 
-        if self.args.degae_feat and self.args.meta_module:
-            ref_rgb = re_linearize(ref_rgb, white_level)
-            batch_dict['ref_clean_rgb'] = ref_rgb
 
         if rgb_clean is not None:
             batch_dict['rgb_clean'] = rgb_clean
@@ -353,7 +350,7 @@ class NoiseDataset(BurstDataset, ABC):
         return batch_dict
 
     def create_deblur_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
-                                gt_depth=None, eval_gain=1, ref_rgb=None):
+                                gt_depth=None, eval_gain=1):
         if self.mode in [Mode.train]: #, Mode.validation]:
             white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
         else:
@@ -381,10 +378,6 @@ class NoiseDataset(BurstDataset, ABC):
                       'depth_range'   : depth_range,
                       'white_level'   : white_level,
                       'eval_gain'     : eval_gain}
-
-        if self.args.degae_feat and self.args.meta_module:
-            ref_rgb = re_linearize(ref_rgb, white_level)
-            batch_dict['ref_clean_rgb'] = ref_rgb
 
         if rgb_clean is not None:
             batch_dict['rgb_clean'] = rgb_clean

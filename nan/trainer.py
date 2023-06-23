@@ -27,7 +27,7 @@ from nan.utils.io_utils import print_link, colorize
 from nan.ssim_l1_loss import MS_SSIM_L1_LOSS
 import torch.nn.functional as F
 
-
+alpha=0.9997
 
 class Trainer:
     def __init__(self, args):
@@ -151,20 +151,21 @@ class Trainer:
         # Calculate the feature maps of all views.
         # This step is seperated because in evaluation time we want to do it once for each image.
         org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
-        ref_rgb = train_data['ref_clean_rgb'] if 'ref_clean_rgb' in train_data.keys() else None
         proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs,
                                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None,
-                                                                white_level=ray_batch['white_level'], ref_rgb=ref_rgb)
+                                                                white_level=ray_batch['white_level'])
 
-        reconst_signal = None
-        denoise_signal = None
-        
+        if not self.args.weightsum_filtered:
+            org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
+        else:
+            w = alpha ** global_step
+            org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
+            self.scalars_to_log['weight'] = w 
+
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                                 org_src_rgbs=org_src_rgbs if not self.args.weightsum_filtered else proc_src_rgbs,
-                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None,
-                                                 reconst_signal=reconst_signal,
-                                                 denoise_signal=denoise_signal)
+                                                 org_src_rgbs=org_src_rgbs_,
+                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None)
 
         # compute loss
         torch.cuda.empty_cache()
@@ -239,7 +240,7 @@ class Trainer:
     def log_view_to_tb(self, global_step, ray_sampler, gt_img, render_stride=1, prefix='', postfix='', visualize=False):
         self.model.switch_to_eval()
         with torch.no_grad():
-            ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args)
+            ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args, global_step=global_step)
 
         average_im = ray_sampler.src_rgbs.cpu()[0,0]
         # src_rgbs = ray_sampler.src_rgbs.cpu()[0].permute(3,1,0,2).reshape(3,ray_sampler.src_rgbs.shape[2], -1)

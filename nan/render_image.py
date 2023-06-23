@@ -23,10 +23,13 @@ from nan.raw2output import RaysOutput
 from nan.sample_ray import RaySampler
 
 
+alpha=0.9996
+
 def render_single_image(ray_sampler: RaySampler,
                         model,
                         args,
-                        save_pixel=None) -> Dict[str, RaysOutput]:
+                        save_pixel=None,
+                        global_step=0) -> Dict[str, RaysOutput]:
     """
     :param: save_pixel:
     :param: featmaps:
@@ -48,17 +51,11 @@ def render_single_image(ray_sampler: RaySampler,
     ray_render = RayRender(model=model, args=args, device=device, save_pixel=save_pixel)
     src_rgbs, featmaps = ray_render.calc_featmaps(ray_sampler.src_rgbs.to(device), 
                                                   sigma_estimate=ray_sampler.sigma_estimate.to(device) if ray_sampler.sigma_estimate != None else None, 
-                                                  white_level=ray_sampler.white_level, 
-                                                  ref_rgb=ray_sampler.ref_rgb)
+                                                  white_level=ray_sampler.white_level)
 
     all_ret = OrderedDict([('coarse', RaysOutput.empty_ret()),
                            ('fine', None)])
 
-    denoise_signal, reconst_signal = None, None
-    if isinstance(src_rgbs, list):
-        src_rgbs, reconst_signal, denoise_signal = src_rgbs
-        all_ret['reconst_signal'] = reconst_signal
-        all_ret['denoised_signal'] = denoise_signal
 
     if model.args.bpn_prenet:
         all_ret['bpn_reconst'] = src_rgbs
@@ -71,13 +68,17 @@ def render_single_image(ray_sampler: RaySampler,
     for i in tqdm(range(0, N_rays, args.chunk_size)):
         # print('batch', i)
         ray_batch = ray_sampler.specific_ray_batch(slice(i, i + args.chunk_size, 1), clean=args.sup_clean)
+        if not args.weightsum_filtered:
+            org_src_rgbs = ray_sampler.src_rgbs.to(device)
+        else:
+            w = alpha ** global_step
+            org_src_rgbs = src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(device) * w
+
         ret       = ray_render.render_batch(ray_batch=ray_batch,
                                             proc_src_rgbs=src_rgbs,
                                             featmaps=featmaps,
-                                            org_src_rgbs=ray_sampler.src_rgbs.to(device) if not args.weightsum_filtered else src_rgbs,
-                                            sigma_estimate=ray_sampler.sigma_estimate.to(device) if ray_sampler.sigma_estimate != None else None,
-                                            reconst_signal=reconst_signal,
-                                            denoise_signal=denoise_signal)
+                                            org_src_rgbs=org_src_rgbs,
+                                            sigma_estimate=ray_sampler.sigma_estimate.to(device) if ray_sampler.sigma_estimate != None else None)
         all_ret['coarse'].append(ret['coarse'])
         if ret['fine'] is not None:
             all_ret['fine'].append(ret['fine'])

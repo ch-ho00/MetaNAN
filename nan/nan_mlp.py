@@ -54,6 +54,46 @@ def softmax3d(x, dim):
     return nn.functional.softmax(x.reshape((R, S, -1, C)), dim=-2).view(x.shape)
 
 
+import math
+
+class CondSeqential(nn.Module):
+    def __init__(self, sequential_module, embedding_size=512):
+        super().__init__()
+        self.embedding_size = embedding_size
+        self.sequential_layer = sequential_module
+        self.embedding_layer = nn.ModuleList()
+        layer_sizes = [layer.out_features * 2 for layer in self.sequential_layer if isinstance(layer, nn.Linear)][:-1]
+        if len(layer_sizes) > 1:
+            for i in range(len(layer_sizes) - 1):
+                self.embedding_layer.append(nn.Linear(embedding_size, layer_sizes[i]))
+        self.init_weights()
+
+    def forward(self, x, embedding):
+        linear_cnt = 0
+        for i, layer in enumerate(self.sequential_layer):
+            x = layer(x)
+            if isinstance(layer, nn.Linear) and linear_cnt < len(self.embedding_layer):
+                embedded = self.embedding_layer[linear_cnt](embedding)
+                scale, shift = torch.chunk(embedded, 2, dim=1)
+                x = scale * x + shift
+                linear_cnt += 1
+        return x
+
+    def init_weights(self):
+        for layer in self.sequential_layer:
+            if isinstance(layer, nn.Linear):
+                nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))
+                if layer.bias is not None:
+                    fan_in, _ = nn.init._calculate_fan_in_and_fan_out(layer.weight)
+                    bound = 1 / math.sqrt(fan_in)
+                    nn.init.uniform_(layer.bias, -bound, bound)
+        for layer in self.embedding_layer:
+            nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))
+            if layer.bias is not None:
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(layer.weight)
+                bound = 1 / math.sqrt(fan_in)
+                nn.init.uniform_(layer.bias, -bound, bound)
+                
 class KernelBasis(nn.Module):
     def __init__(self, args):
         super().__init__()
@@ -77,17 +117,15 @@ class NanMLP(nn.Module):
 
         self.n_samples = n_samples
 
-        reconst_dim = 0 #
         self.ray_dir_fc = nn.Sequential(nn.Linear(4, 16),
                                         self.activation_func,
-                                        nn.Linear(16, in_feat_ch + 3 + reconst_dim), #  
+                                        nn.Linear(16, in_feat_ch + 3), #  
                                         self.activation_func)
 
-        base_input_channels = (in_feat_ch + 3 + reconst_dim) * 3
+        base_input_channels = (in_feat_ch + 3) * 3
         if self.args.noise_feat:
             base_input_channels += 3
             
-        base_input_channels += 3 * (int(self.args.denoise_vol) + int(self.args.reconst_vol))
 
         self.base_fc = nn.Sequential(nn.Linear(base_input_channels, 64),
                                      self.activation_func,
@@ -95,20 +133,7 @@ class NanMLP(nn.Module):
                                      self.activation_func)
 
         if args.views_attn:
-            if self.args.transform_tar_feat:
-                self.transform_tar_fc = nn.Sequential(nn.Linear(in_feat_ch + 3, 32),
-                                    self.activation_func,
-                                    nn.Linear(32, in_feat_ch + 3),
-                                    self.activation_func,
-                                    )
-            if self.args.transform_src_feat:
-                self.transform_src_fc = nn.Sequential(nn.Linear(in_feat_ch + 3, 32),
-                                    self.activation_func,
-                                    nn.Linear(32, in_feat_ch + 3),
-                                    self.activation_func,
-                                    )
-
-            input_channel = in_feat_ch + 3 + reconst_dim
+            input_channel = in_feat_ch + 3
             view_att_nhead = 5 if not args.bpn_prenet else 3
             self.views_attention = MultiHeadAttention(view_att_nhead, input_channel, 7, 8)
 
@@ -139,6 +164,14 @@ class NanMLP(nn.Module):
         self.rgb_fc = self.rgb_fc_factory()
 
         self.rgb_reduce_fn = self.rgb_reduce_factory()
+
+        if self.args.cond_renderer:
+            self.base_fc         =  CondSeqential(self.base_fc        )
+            self.vis_fc          =  CondSeqential(self.vis_fc         )
+            self.vis_fc2         =  CondSeqential(self.vis_fc2        )
+            self.geometry_fc     =  CondSeqential(self.geometry_fc    )
+            # self.out_geometry_fc =  CondSeqential(self.out_geometry_fc)
+            self.rgb_fc          =  CondSeqential(self.rgb_fc         )
 
         # positional encoding
         self.pos_enc_d = 16
@@ -182,7 +215,7 @@ class NanMLP(nn.Module):
 
         return sinusoid_table
 
-    def forward(self, rgb_feat, ray_diff, mask, rgb_in, sigma_est):
+    def forward(self, rgb_feat, ray_diff, mask, rgb_in, sigma_est, degrade_vec=None):
         """
         :param rgb_feat: rgbs and image features [R, S, k, k, N, F]
         :param ray_diff: ray direction difference [R, S, 1, 1, N, 4], first 3 channels are directions, last channel is inner product
@@ -195,25 +228,35 @@ class NanMLP(nn.Module):
 
         # [n_rays, n_samples, n_views, 3*n_feat]
         num_valid_obs = mask.sum(dim=-2)
-        ext_feat, weight, tar_feat, src_feat = self.compute_extended_features(ray_diff, rgb_feat, mask, num_valid_obs, sigma_est)
+        ext_feat, weight = self.compute_extended_features(ray_diff, rgb_feat, mask, num_valid_obs, sigma_est, degrade_vec=degrade_vec)
         torch.cuda.empty_cache()
 
-        x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32)
-        x_vis = self.vis_fc(x * weight)
-        x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
-        vis = torch.sigmoid(vis) * mask
-        x = x + x_res
-        vis = self.vis_fc2(x * vis) * mask
+        if self.args.cond_renderer:
+            x = self.base_fc(ext_feat, degrade_vec)  # ((32 + 3) x 3) --> MLP --> (32)
+            x_vis = self.vis_fc(x * weight, degrade_vec)
+            x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
+            vis = torch.sigmoid(vis) * mask
+            x = x + x_res
+            vis = self.vis_fc2(x * vis, degrade_vec) * mask
+            
+        else:
+            x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32)
+            x_vis = self.vis_fc(x * weight)
+            x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
+            vis = torch.sigmoid(vis) * mask
+            x = x + x_res
+            vis = self.vis_fc2(x * vis) * mask
+
         torch.cuda.empty_cache()
 
-        rho_out, rho_globalfeat = self.compute_rho(x[:, :, 0, 0], vis[:, :, 0, 0], num_valid_obs[:, :, 0, 0])
+        rho_out, rho_globalfeat = self.compute_rho(x[:, :, 0, 0], vis[:, :, 0, 0], num_valid_obs[:, :, 0, 0], degrade_vec)
         x = torch.cat([x, vis, ray_diff], dim=-1)
-        rgb_out, w_rgb = self.compute_rgb(x, mask, rgb_in)
+        rgb_out, w_rgb = self.compute_rgb(x, mask, rgb_in, degrade_vec)
         torch.cuda.empty_cache()
 
-        return rgb_out, rho_out, w_rgb, rgb_in, rho_globalfeat, tar_feat, src_feat
+        return rgb_out, rho_out, w_rgb, rgb_in, rho_globalfeat
 
-    def compute_extended_features(self, ray_diff, rgb_feat, mask, num_valid_obs, sigma_est):
+    def compute_extended_features(self, ray_diff, rgb_feat, mask, num_valid_obs, sigma_est, degrade_vec=None):
         direction_feat = self.ray_dir_fc(ray_diff)  # [n_rays, n_samples, k, k, n_views, 35]
         rgb_feat = rgb_feat[:, :, self.k_mid:self.k_mid + 1, 
                     self.k_mid:self.k_mid + 1] + direction_feat  # [n_rays, n_samples, 1, 1, n_views, 35]
@@ -221,22 +264,10 @@ class NanMLP(nn.Module):
 
         if self.args.views_attn:
             r, s, k, _, v, f = feat.shape
-            tar_feat = self.transform_tar_fc(feat) if self.args.transform_tar_feat else feat
-            src_feat = self.transform_src_fc(feat) if self.args.transform_src_feat else feat
-
-            feat, _ = self.views_attention(tar_feat, src_feat, src_feat, (num_valid_obs > 1).unsqueeze(-1))
+            feat, _ = self.views_attention(feat, feat, feat, (num_valid_obs > 1).unsqueeze(-1))
 
         if self.args.noise_feat:
-            if isinstance(sigma_est, list):
-                sigma_est, reconst_signal, denoise_signal = sigma_est
-                concat_feats = [feat, sigma_est[:, :, self.k_mid:self.k_mid + 1, self.k_mid:self.k_mid + 1]]
-                if self.args.denoise_vol and denoise_signal != None: 
-                    concat_feats += [denoise_signal[:, :, self.k_mid:self.k_mid + 1, self.k_mid:self.k_mid + 1]]
-                if self.args.reconst_vol and reconst_signal != None:
-                    concat_feats += [reconst_signal[:, :, self.k_mid:self.k_mid + 1, self.k_mid:self.k_mid + 1]]
-                feat = torch.cat(concat_feats, dim=-1)            
-            else:
-                feat = torch.cat([feat, sigma_est[:, :, self.k_mid:self.k_mid + 1, self.k_mid:self.k_mid + 1]], dim=-1)
+            feat = torch.cat([feat, sigma_est[:, :, self.k_mid:self.k_mid + 1, self.k_mid:self.k_mid + 1]], dim=-1)
 
         weight = self.compute_weights(ray_diff, mask)
         del ray_diff, mask 
@@ -246,7 +277,7 @@ class NanMLP(nn.Module):
         globalfeat = globalfeat.expand(*rgb_feat.shape[:-1], globalfeat.shape[-1])
         del mean, var 
         ext_feat = torch.cat([globalfeat, feat], dim=-1)
-        return ext_feat, weight, tar_feat, src_feat
+        return ext_feat, weight
 
     def compute_weights(self, ray_diff, mask):
         if self.anti_alias_pooling:
@@ -259,13 +290,17 @@ class NanMLP(nn.Module):
         weight = weight / prod(self.args.kernel_size)
         return weight
 
-    def compute_rho(self, x, vis, num_valid_obs):
+    def compute_rho(self, x, vis, num_valid_obs, noise_vec=None):
         weight = vis / (torch.sum(vis, dim=2, keepdim=True) + 1e-8)
 
         mean, var = fused_mean_variance(x, weight)
         rho_globalfeat = torch.cat([mean.squeeze(2), var.squeeze(2), weight.mean(dim=2)],
                                    dim=-1)  # [n_rays, n_samples, 32*2+1]
-        globalfeat = self.geometry_fc(rho_globalfeat)  # [n_rays, n_samples, 16]
+
+        if self.args.cond_renderer:
+            globalfeat = self.geometry_fc(rho_globalfeat, noise_vec)  # [n_rays, n_samples, 16]        
+        else:
+            globalfeat = self.geometry_fc(rho_globalfeat)  # [n_rays, n_samples, 16]
 
         # positional encoding
         globalfeat = globalfeat + self.pos_encoding
@@ -278,9 +313,13 @@ class NanMLP(nn.Module):
 
         return rho_out, rho_globalfeat
 
-    def compute_rgb(self, x, mask, rgb_in):
+    def compute_rgb(self, x, mask, rgb_in, degrade_vec=None):
 
-        x = self.rgb_fc(x)
+        if self.args.cond_renderer:
+            x = self.rgb_fc(x, degrade_vec)        
+        else:
+            x = self.rgb_fc(x)
+
         rgb_out, blending_weights_rgb = self.rgb_reduce_fn(x, mask, rgb_in)
         return rgb_out, blending_weights_rgb
 

@@ -143,7 +143,7 @@ class NANScheme(nn.Module):
 
         # create feature extraction network
         self.degae_feat = args.degae_feat
-        if args.degae_feat or args.lambda_embed_loss > 0:
+        if args.degae_feat or args.lambda_embed_loss > 0 or args.cond_renderer:
             assert args.degae_feat_ckpt != None
             self.degae = DegAE(args, train_scratch=False)
             checkpoint = torch.load(args.degae_feat_ckpt, map_location=lambda storage, loc: storage)
@@ -176,14 +176,8 @@ class NANScheme(nn.Module):
         if not args.degae_feat:
             self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
                                     fine_out_ch=args.fine_feat_dim,
-                                    coarse_only=args.coarse_only,
-                                    auto_encoder=args.auto_encoder,
-                                    per_level_render=args.per_level_render,
-                                    meta_module=args.meta_module).to(device)
+                                    coarse_only=args.coarse_only).to(device)
 
-            if args.meta_module:
-                self.noise_conv = NoiseLevelConv().to(device)
-                self.weight_generator = ConvWeightGenerator(in_dim=self.noise_conv.out_dim * (self.noise_conv.out_size ** 2), out_dim=self.feature_net.conv1_kdim).to(device)
 
         # create coarse NAN mlps
         self.net_coarse = self.nan_factory('coarse', device)
@@ -207,17 +201,6 @@ class NANScheme(nn.Module):
             self.pre_net = None
             
 
-        if args.transform_tar_feat:
-            self.decode_tar_feat_fc = nn.Sequential(nn.Linear(args.coarse_feat_dim + 3, 64),
-                                        nn.ELU(inplace=True),
-                                        nn.Linear(64, 3)).to(device)
-
-        if args.transform_src_feat:
-            self.decode_src_feat_fc = nn.Sequential(nn.Linear(args.coarse_feat_dim + 3, 64),
-                                        nn.ELU(inplace=True),
-                                        nn.Linear(64, 3)).to(device)
-
-
         out_folder = OUT_DIR / args.expname
 
         # optimizer and learning rate scheduler
@@ -226,11 +209,13 @@ class NANScheme(nn.Module):
         self.start_step = self.load_from_ckpt(out_folder)
 
     def create_optimizer(self):
-        if self.args.degae_feat:
-            params_list = [ {'params': self.feature_conv_0.parameters(), 'lr': self.args.lrate_feature},
-                            {'params': self.feature_conv_1.parameters(), 'lr': self.args.lrate_feature},
-                            {'params': self.feature_conv_2.parameters(), 'lr': self.args.lrate_feature},
-                            {'params': self.feature_conv_3.parameters(), 'lr': self.args.lrate_feature}]        
+        params_list = []
+        if self.args.degae_feat or self.args.cond_renderer:
+            if self.args.degae_feat:
+                params_list += [ {'params': self.feature_conv_0.parameters(), 'lr': self.args.lrate_feature},
+                                {'params': self.feature_conv_1.parameters(), 'lr': self.args.lrate_feature},
+                                {'params': self.feature_conv_2.parameters(), 'lr': self.args.lrate_feature},
+                                {'params': self.feature_conv_3.parameters(), 'lr': self.args.lrate_feature}]        
             if self.args.meta_module:
                 params_list += [{'params' : self.cond_shift1.parameters(), 'lr':self.args.lrate_feature},
                                 {'params' : self.cond_scale1.parameters(), 'lr':self.args.lrate_feature},
@@ -240,9 +225,9 @@ class NANScheme(nn.Module):
                                 {'params' : self.cond_shift3.parameters(), 'lr':self.args.lrate_feature},
                                 {'params' : self.cond_shift4.parameters(), 'lr':self.args.lrate_feature},
                                 {'params' : self.cond_scale4.parameters(), 'lr':self.args.lrate_feature}]            
-                if self.args.ft_embed_fc:
-                    params_list += [{'params' : self.degae.degrep_extractor.degrep_conv.parameters(), 'lr':3e-6},
-                                    {'params' : self.degae.degrep_extractor.degrep_fc.parameters(),   'lr':3e-6}]
+            if self.args.ft_embed_fc:
+                params_list += [{'params' : self.degae.degrep_extractor.degrep_conv.parameters(), 'lr':self.args.lrate_feature * 1e-2},
+                                {'params' : self.degae.degrep_extractor.degrep_fc.parameters(),   'lr':self.args.lrate_feature * 1e-2}]
                     
         else:
             params_list = [{'params': self.feature_net.parameters(), 'lr': self.args.lrate_feature}]
@@ -300,6 +285,10 @@ class NANScheme(nn.Module):
             if self.pre_net is not None:
                 self.pre_net.eval()
 
+        if self.args.cond_renderer and self.args.ft_embed_fc:
+            self.degae.degrep_extractor.degrep_conv.eval()
+            self.degae.degrep_extractor.degrep_fc.eval()
+
 
     def switch_to_train(self):
         self.net_coarse.train()
@@ -333,6 +322,10 @@ class NANScheme(nn.Module):
         if not self.args.frozen_prenet:
             if self.pre_net is not None:
                 self.pre_net.train()
+
+        if self.args.cond_renderer and self.args.ft_embed_fc:
+            self.degae.degrep_extractor.degrep_conv.train()
+            self.degae.degrep_extractor.degrep_fc.train()
 
 
     def save_model(self, filename):

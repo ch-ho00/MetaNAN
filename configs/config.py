@@ -114,13 +114,12 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument("--jpeg_range", nargs='+', type=float, default=[])
         parser.add_argument('--final_sinc_prob', type=float, default=0)
         parser.add_argument('--blur_degrade', default=False, action="store_true")
+        parser.add_argument('--skip_condition', default=False, action="store_true")
 
         ## DegAE to NAN 
         parser.add_argument("--degae_feat_ckpt", type=str, default=None)
         parser.add_argument("--discrim_ckpt", type=str, default=None)
         parser.add_argument('--degae_feat', default=False, action="store_true")
-        parser.add_argument('--ref_img_embed', default=False, action="store_true")
-        parser.add_argument('--skip_condition', default=False, action="store_true")
         parser.add_argument('--downscale_input_img', default=False, action="store_true")
         parser.add_argument('--lambda_adv', type=float, default=0)
         parser.add_argument('--weightsum_filtered', default=False, action="store_true")
@@ -128,24 +127,13 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--bpn_prenet', default=False, action="store_true")
         parser.add_argument('--bpn_per_img', default=False, action="store_true")
         parser.add_argument('--ft_embed_fc', default=False, action="store_true")
+        parser.add_argument('--cond_renderer', default=False, action="store_true")
 
         ## Plain AE to NAN
         parser.add_argument('--ssim_alpha', type=float, default=0)
         parser.add_argument('--lambda_tv_loss', type=float, default=0)
-        parser.add_argument('--lambda_denoise_loss', type=float, default=0)
-        parser.add_argument('--lambda_reconst_loss', type=float, default=0)        
-        parser.add_argument('--auto_encoder', default=False, action="store_true")
         parser.add_argument('--meta_module', default=False, action="store_true")
-        parser.add_argument('--patch_kernel', default=False, action="store_true")    
-        parser.add_argument('--annealing_loss', default=False, action="store_true")    
-        parser.add_argument('--reconst_vol', default=False, action="store_true")    
-        parser.add_argument('--denoise_vol', default=False, action="store_true")    
-        parser.add_argument('--per_level_render', default=False, action="store_true")    
         parser.add_argument('--frozen_prenet', default=False, action="store_true")
-        parser.add_argument('--decode_trans_feat', default=False, action="store_true")
-        parser.add_argument('--decode_pre_feat', default=False, action="store_true")
-        parser.add_argument('--transform_tar_feat', default=False, action="store_true")
-        parser.add_argument('--transform_src_feat', default=False, action="store_true")
 
         # ########## dataset options ##########
         # ## train and eval dataset

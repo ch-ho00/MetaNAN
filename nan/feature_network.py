@@ -158,10 +158,7 @@ class ResUNet(nn.Module):
                  coarse_out_ch=32,
                  fine_out_ch=32,
                  norm_layer=None,
-                 coarse_only=False,
-                 auto_encoder=False,
-                 per_level_render=False,
-                 meta_module=False):
+                 coarse_only=False):
 
         super().__init__()
         assert encoder in ['resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152'], "Incorrect encoder type"
@@ -176,7 +173,6 @@ class ResUNet(nn.Module):
         self.fine_out_ch = fine_out_ch
         out_ch = coarse_out_ch + fine_out_ch
 
-        self.meta_module = meta_module
         # original
         layers = [3, 4, 6, 3]
         if norm_layer is None:
@@ -189,15 +185,8 @@ class ResUNet(nn.Module):
         self.inplanes = 64
         self.groups = 1
         self.base_width = 64
-        if not self.meta_module:
-            self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
-                                bias=False, padding_mode='reflect')
-        else:
-            self.conv1_in_dim = self.inplanes // 2
-            self.conv1_kdim = self.conv1_in_dim * 3 * 7 * 7 
-            self.conv1_half = nn.Conv2d(3, self.conv1_in_dim, kernel_size=7, stride=2, padding=3,
-                                bias=False, padding_mode='reflect')
-
+        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
+                            bias=False, padding_mode='reflect')
         self.bn1 = norm_layer(self.inplanes, track_running_stats=False, affine=True)
         self.relu = nn.ReLU(inplace=True)
         self.layer1 = self._make_layer(block, 64, layers[0], stride=2)
@@ -214,64 +203,6 @@ class ResUNet(nn.Module):
 
         # fine-level conv
         self.out_conv = nn.Conv2d(out_ch, out_ch, 1, 1)
-
-        self.auto_encoder = auto_encoder
-        self.per_level_render = per_level_render
-        if self.auto_encoder:
-            deconv_in_dim = out_ch // 2
-            self.reconst_deconv =  nn.Sequential(
-                nn.Upsample(scale_factor=2, mode='bilinear'),
-                nn.Conv2d(deconv_in_dim, out_ch//2, 1, 1, 0),
-                nn.LeakyReLU(0.2, True),
-                nn.Upsample(scale_factor=2, mode='bilinear'),
-                nn.Conv2d(out_ch//2, out_ch//4, 1, 1, 0),
-                nn.LeakyReLU(0.2, True),
-                nn.Conv2d(out_ch//4, 3, 1, 1, 0),
-                # nn.Conv2d(out_ch//4, 3, 3, 1, 1),
-                # nn.Sigmoid()            
-            )
-
-            self.denoise_deconv =  nn.Sequential(
-                nn.Upsample(scale_factor=2, mode='bilinear'),
-                nn.Conv2d(deconv_in_dim, out_ch//2, 1, 1, 0),
-                nn.LeakyReLU(0.2, True),
-                nn.Upsample(scale_factor=2, mode='bilinear'),
-                nn.Conv2d(out_ch//2, out_ch//4, 1, 1, 0),
-                nn.LeakyReLU(0.2, True),
-                nn.Conv2d(out_ch//4, 3, 1, 1, 0),
-                # nn.Conv2d(out_ch//4, 3, 3, 1, 1),
-                # nn.Sigmoid()            
-            )
-
-
-            # self.reconst_deconv =  nn.Sequential(
-            #     nn.Upsample(scale_factor=2, mode='bilinear'),
-            #     nn.Conv2d(deconv_in_dim, out_ch//2, 3, 1, 1),
-            #     nn.BatchNorm2d(out_ch//2),
-            #     nn.LeakyReLU(0.2, True),
-            #     nn.Upsample(scale_factor=2, mode='bilinear'),
-            #     nn.Conv2d(out_ch//2, out_ch//4, 3, 1, 1),
-            #     nn.BatchNorm2d(out_ch//4),
-            #     nn.LeakyReLU(0.2, True),
-            #     nn.Conv2d(out_ch//4, 3, 1, 1, 0),
-            #     # nn.Conv2d(out_ch//4, 3, 3, 1, 1),
-            #     # nn.Sigmoid()            
-            # )
-
-
-            # self.denoise_deconv =  nn.Sequential(
-            #     nn.Upsample(scale_factor=2, mode='bilinear'),
-            #     nn.Conv2d(deconv_in_dim, out_ch//2, 3, 1, 1),
-            #     nn.BatchNorm2d(out_ch//2),
-            #     nn.LeakyReLU(0.2, True),
-            #     nn.Upsample(scale_factor=2, mode='bilinear'),
-            #     nn.Conv2d(out_ch//2, out_ch//4, 3, 1, 1),
-            #     nn.BatchNorm2d(out_ch//4),
-            #     nn.LeakyReLU(0.2, True),
-            #     nn.Conv2d(out_ch//4, 3, 1, 1, 0),
-            #     # nn.Conv2d(out_ch//4, 3, 3, 1, 1),
-            #     # nn.Sigmoid()            
-            # )
 
 
     def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
@@ -350,30 +281,5 @@ class ResUNet(nn.Module):
             x_fine = x_out[:, -self.fine_out_ch:, :]
 
         out_dict = {'coarse': x_coarse, 'fine': x_fine}
-        if self.auto_encoder and reconstruct:
-            if not self.per_level_render:
-                x_reconst_coarse = self.reconst_deconv(x_coarse)
-                x_denoised_coarse = self.denoise_deconv(x_coarse)
-
-                x_reconst_fine = self.reconst_deconv(x_fine)
-                x_denoised_fine = self.denoise_deconv(x_fine)
-
-                out_dict['reconst_signal'] = (x_reconst_coarse + x_reconst_fine) / 2 
-                out_dict['denoised_signal'] = (x_denoised_coarse + x_denoised_fine) / 2
-                    
-            else:
-
-                x_reconst_coarse = self.reconst_deconv(x_coarse)
-                x_denoised_coarse = self.denoise_deconv(x_coarse)
-
-                x_reconst_fine = self.reconst_deconv(x_fine)
-                x_denoised_fine = self.denoise_deconv(x_fine)
-
-                out_dict['reconst_signal_coarse'] = x_reconst_coarse 
-                out_dict['reconst_signal_fine'] = x_reconst_fine 
-                
-                out_dict['denoised_signal_coarse'] = x_denoised_coarse
-                out_dict['denoised_signal_fine'] = x_denoised_fine
-                    
-                
+                        
         return out_dict

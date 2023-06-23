@@ -225,7 +225,7 @@ class RayRender:
         return pts, z_vals
 
     def render_batch(self, ray_batch, proc_src_rgbs, featmaps, org_src_rgbs,
-                     sigma_estimate, reconst_signal=None, denoise_signal=None) -> Dict[str, RaysOutput]:
+                     sigma_estimate) -> Dict[str, RaysOutput]:
         """
         :param sigma_estimate: (1, N, H, W, 3)
         :param org_src_rgbs: (1, N, H, W, 3)
@@ -260,9 +260,7 @@ class RayRender:
         # Process the rays and return the coarse phase output
         coarse_ray_out = self.process_rays_batch(ray_batch=ray_batch, pts=pts_coarse, z_vals=z_vals_coarse, save_idx=save_idx,
                                          level='coarse', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                         org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, 
-                                         reconst_signal=reconst_signal[0] if reconst_signal != None else None,
-                                         denoise_signal=denoise_signal[0] if denoise_signal != None else None)
+                                         org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate)
         batch_out['coarse'] = coarse_ray_out
 
         if self.fine_processing:
@@ -274,15 +272,13 @@ class RayRender:
             # Process the rays and return the fine phase output
             fine = self.process_rays_batch(ray_batch=ray_batch, pts=pts_fine, z_vals=z_vals_fine, save_idx=save_idx,
                                            level='fine', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, 
-                                           reconst_signal=reconst_signal[-1] if reconst_signal != None else None,
-                                           denoise_signal=denoise_signal[-1] if denoise_signal != None else None)
+                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate)
 
             batch_out['fine'] = fine
         return batch_out
 
     def process_rays_batch(self, ray_batch, pts, z_vals, save_idx, level, proc_src_rgbs, featmaps,
-                           org_src_rgbs, sigma_estimate, reconst_signal=None, denoise_signal=None):
+                           org_src_rgbs, sigma_estimate):
         """
         :param sigma_estimate: (1, N, H, W, 3)
         :param org_src_rgbs: (1, N, H, W, 3)
@@ -299,23 +295,16 @@ class RayRender:
         # based on the target camera and src cameras (intrinsics - K, rotation - R, translation - t)
         proj_out = self.projector.compute(pts, ray_batch['camera'], proc_src_rgbs, org_src_rgbs, sigma_estimate,
                                           ray_batch['src_cameras'],
-                                          featmaps=featmaps[level],
-                                          reconst_signal=reconst_signal,
-                                          denoise_signal=denoise_signal)  # [N_rays, N_samples, N_views, x]
+                                          featmaps=featmaps[level])  # [N_rays, N_samples, N_views, x]
         rgb_feat, ray_diff, pts_mask, org_rgb, sigma_est, proj_feat = proj_out
 
         # [N_rays, N_samples, 4]
         # Process the feature vectors of all 3D points along each ray to predict density and rgb value
         rgb_out, rho_out, *debug_info = self.model.mlps[level](rgb_feat, ray_diff,
                                                                pts_mask.unsqueeze(-3).unsqueeze(-3),
-                                                               org_rgb, sigma_est)
+                                                               org_rgb, sigma_est, featmaps['noise_vec'])
         ray_outputs = RaysOutput.raw2output(rgb_out, rho_out, z_vals, pts_mask, white_bkgd=self.white_bkgd)
 
-        ray_outputs.proj_mask = pts_mask
-        ray_outputs.proj_noisy_rgb = debug_info[1]
-        ray_outputs.transformer_tar_feat = debug_info[-2]
-        ray_outputs.transformer_src_feat = debug_info[-1]
-        ray_outputs.pre_transform_feat = proj_feat
         if save_idx is not None:
             debug_dict = {}
             for idx, pixel in save_idx:
@@ -328,7 +317,7 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs, sigma_estimate=None, white_level=None, ref_rgb=None):
+    def calc_featmaps(self, src_rgbs, sigma_estimate=None, white_level=None):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)
@@ -356,48 +345,32 @@ class RayRender:
                     del src_rgbs_stacked
                     src_rgbs = src_rgbs.transpose(0,1)
                     src_rgbs = unstack_image(src_rgbs.reshape(-1,3,hw[0], hw[1]), total_n_patch=npatch_per_side**2, pad=pad)
-                        
+                src_rgbs = src_rgbs.permute(0, 2, 3, 1).unsqueeze(0)
                 torch.cuda.empty_cache()
             else:
                 src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
 
+
+        noise_vec = None
+        if (self.model.args.degae_feat and self.model.args.meta_module) or self.model.args.cond_renderer:
+            with torch.no_grad():
+                if self.model.args.downscale_input_img:
+                    input_rgb = F.interpolate(orig_rgbs[0].permute(0,3,1,2), scale_factor=0.5)
+                else:
+                    H, W = orig_rgbs.shape[2:4]
+                    start_h = 0 if H < 384 else (H - 384) // 2
+                    start_w = 0 if W < 384 else (W - 384) // 2
+                    input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
+                noise_vec = self.model.degae.degrep_extractor(input_rgb, white_level.to(orig_rgbs.device))
+                del input_rgb
+                torch.cuda.empty_cache()
+
         if not self.model.args.degae_feat:
-            if self.model.args.meta_module:
-                sigma_estimate = sigma_estimate[0].permute(0,3,1,2)
-                noise_vector = self.model.noise_conv(sigma_estimate)
-                noise_vector = noise_vector.reshape(noise_vector.shape[0], -1)
-                conv1_weights = self.model.weight_generator(noise_vector)
-
-
-            if self.model.pre_net is not None:
-                featmaps = self.model.feature_net(src_rgbs, conv1_weights, reconstruct=self.model.args.denoise_vol or self.model.args.reconst_vol)
-                src_rgbs = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
-            else:
-                featmaps = self.model.feature_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))
-
-            if self.model.args.auto_encoder:
-                reconst_signal = [featmaps['reconst_signal_coarse'], featmaps['reconst_signal_fine']] if self.model.args.per_level_render else [featmaps['reconst_signal']]
-                denoise_signal = [featmaps['denoised_signal_coarse'], featmaps['denoised_signal_fine']] if self.model.args.per_level_render else [featmaps['denoised_signal']]
-                output = [src_rgbs, reconst_signal, denoise_signal]
-            else:
-                output = src_rgbs
+            featmaps = self.model.feature_net(src_rgbs)
+            src_rgbs = src_rgbs.permute(0, 2, 3, 1).unsqueeze(0)
         else:
             with torch.no_grad():
                 degfeat = self.model.degae.encoder(orig_rgbs[0].permute(0,3,1,2), img_wh=torch.Tensor([orig_rgbs.shape[-2], orig_rgbs.shape[-3]]).int().to(orig_rgbs.device))    
-                if self.model.args.meta_module:
-                    if self.model.args.ref_img_embed:
-                        input_rgb = ref_rgb.to(orig_rgbs.device)               
-                    else:
-                        if self.model.args.downscale_input_img:
-                            input_rgb = F.interpolate(orig_rgbs[0].permute(0,3,1,2), scale_factor=0.5)
-                        else:
-                            H, W = orig_rgbs.shape[2:4]
-                            start_h = 0 if H < 384 else (H - 384) // 2
-                            start_w = 0 if W < 384 else (W - 384) // 2
-                            input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
-                    noise_vec = self.model.degae.degrep_extractor(input_rgb, white_level.to(orig_rgbs.device))
-                    del input_rgb
-                torch.cuda.empty_cache()
 
             scale1, scale2, scale3, scale4 = None, None, None, None
             shift1, shift2, shift3, shift4 = None, None, None, None
@@ -420,11 +393,11 @@ class RayRender:
             del scale1, scale2, scale3, scale4
             del shift1, shift2, shift3, shift4
 
-            output = src_rgbs.permute((0, 2, 3, 1)).unsqueeze(0)  # (1, N, H, W, 3)
             featmaps = {
                 'coarse' : feat[:,:self.model.args.coarse_feat_dim],
                 'fine'   : feat[:,self.model.args.coarse_feat_dim:]
             }
             del degfeat
-        
-        return output , featmaps
+        featmaps['noise_vec'] = noise_vec
+
+        return src_rgbs , featmaps
