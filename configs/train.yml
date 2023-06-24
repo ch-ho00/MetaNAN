@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : MetaDegAE_condRenderer_preBPN_weightSumFilter_perImg_ftEmbed_embedLoss1e3_denoise # MetaDegAE #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : MetaDegAE_AllCondRenderer_preBPN_weightSumFilter_perImg_ftEmbed_embedLoss1e4_denoise # MetaDegAE #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -20,14 +20,14 @@ losses_weights              : [0,  1,  0,       0]
 workers                     : 0
 
 degae_feat                  : True
-degae_feat_ckpt             : ./ckpts/srgan_cleanProb0.25_woClampInp_ClampSRGAN_1e-3_1e1_1e0_1e-3_135000.pth
+degae_feat_ckpt             : ./ckpts/0619.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
 meta_module                 : True
 downscale_input_img         : True
 weightsum_filtered          : True
-lambda_embed_loss           : 1000 #1000
+lambda_embed_loss           : 10000 #1000
 bpn_prenet                  : True
 bpn_per_img                 : True
 ft_embed_fc                 : True

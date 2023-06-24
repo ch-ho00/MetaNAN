@@ -103,15 +103,15 @@ class COLMAPDataset(NoiseDataset, ABC):
     def get_singleview_param(self, idx=None, hparams=None, eval_gain=1):
 
         if idx != None:
-            hparams = self.all_combination[idx]
+            hparams = self.all_combination[idx % len(self.all_combination)]
         else:
             assert hparams != None    
         
         omega_c, kernel, blur_sigma, betag_range, bet_ap_range = hparams      
 
 
-        # idx = idx // len(self.all_combination)
-        idx = 0
+        idx = idx // len(self.all_combination)
+        # idx = 0
         rgb_file: Path = self.render_rgb_files[idx]
         # image (H, W, 3)
         rgb = self.read_image(rgb_file)

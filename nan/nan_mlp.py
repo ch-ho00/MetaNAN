@@ -170,7 +170,7 @@ class NanMLP(nn.Module):
             self.vis_fc          =  CondSeqential(self.vis_fc         )
             self.vis_fc2         =  CondSeqential(self.vis_fc2        )
             self.geometry_fc     =  CondSeqential(self.geometry_fc    )
-            # self.out_geometry_fc =  CondSeqential(self.out_geometry_fc)
+            self.out_geometry_fc =  CondSeqential(self.out_geometry_fc)
             self.rgb_fc          =  CondSeqential(self.rgb_fc         )
 
         # positional encoding
@@ -269,7 +269,7 @@ class NanMLP(nn.Module):
         if self.args.noise_feat:
             feat = torch.cat([feat, sigma_est[:, :, self.k_mid:self.k_mid + 1, self.k_mid:self.k_mid + 1]], dim=-1)
 
-        weight = self.compute_weights(ray_diff, mask)
+        weight = self.compute_weights(ray_diff, mask, degrade_vec=degrade_vec)
         del ray_diff, mask 
         # compute mean and variance across different views for each point
         mean, var = fused_mean_variance(rgb_feat, weight)  # [n_rays, n_samples, 1, n_feat]
@@ -279,7 +279,7 @@ class NanMLP(nn.Module):
         ext_feat = torch.cat([globalfeat, feat], dim=-1)
         return ext_feat, weight
 
-    def compute_weights(self, ray_diff, mask):
+    def compute_weights(self, ray_diff, mask, degrade_vec=None):
         if self.anti_alias_pooling:
             _, dot_prod = torch.split(ray_diff, [3, 1], dim=-1)  # [n_rays, n_samples, 1, 1, n_views, 1]
             exp_dot_prod = torch.exp(torch.abs(self.s) * (dot_prod - 1))
@@ -290,7 +290,7 @@ class NanMLP(nn.Module):
         weight = weight / prod(self.args.kernel_size)
         return weight
 
-    def compute_rho(self, x, vis, num_valid_obs, noise_vec=None):
+    def compute_rho(self, x, vis, num_valid_obs, degrade_vec=None):
         weight = vis / (torch.sum(vis, dim=2, keepdim=True) + 1e-8)
 
         mean, var = fused_mean_variance(x, weight)
@@ -298,7 +298,7 @@ class NanMLP(nn.Module):
                                    dim=-1)  # [n_rays, n_samples, 32*2+1]
 
         if self.args.cond_renderer:
-            globalfeat = self.geometry_fc(rho_globalfeat, noise_vec)  # [n_rays, n_samples, 16]        
+            globalfeat = self.geometry_fc(rho_globalfeat, degrade_vec)  # [n_rays, n_samples, 16]        
         else:
             globalfeat = self.geometry_fc(rho_globalfeat)  # [n_rays, n_samples, 16]
 
@@ -308,7 +308,10 @@ class NanMLP(nn.Module):
         # ray attention
         globalfeat, _ = self.ray_attention(globalfeat, globalfeat, globalfeat,
                                            mask=num_valid_obs > 1)  # [n_rays, n_samples, 16]
-        rho = self.out_geometry_fc(globalfeat)  # [n_rays, n_samples, 1]
+        if self.args.cond_renderer:
+           rho = self.out_geometry_fc(globalfeat, degrade_vec)  # [n_rays, n_samples, 1]        
+        else:
+           rho = self.out_geometry_fc(globalfeat)  # [n_rays, n_samples, 1]
         rho_out = rho.masked_fill(num_valid_obs < 1, 0.)  # set the rho of invalid point to zero
 
         return rho_out, rho_globalfeat

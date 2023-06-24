@@ -33,22 +33,22 @@ if train_args.distributed:
 val_dataset = dataset_dict["llff_test"](train_args, Mode.validation, scenes=['horns', 'trex', 'fern'])
 val_dataset.set_noise_param_list()
 
-load_ckpt = './ckpts/0619.pth'
+load_ckpt = './ckpts/0619.pth' # srgan_cleanProb0.25_woClampInp_ClampSRGAN_1e-3_1e1_1e0_1e-3_135000.pth
 model = DegAE(train_args, train_scratch=False)
 checkpoint = torch.load(load_ckpt, map_location=lambda storage, loc: storage)
 model.load_state_dict(checkpoint["model"])
 
 
-num_sample = 2000 #len(val_dataset.all_combination)
-all_combi = list(range(len(val_dataset.all_combination)))
+num_sample = 7500 #len(val_dataset.all_combination)
+all_combi = list(range(len(val_dataset.all_combination))) # * 18
 sampled_idxs = random.choices(all_combi, k=num_sample)
 
 embeddings = []
 all_hparams = {}
 
-skip_forward = True
-prefix = '0619_2'
-
+skip_forward = False
+prefix = 'rerun_single_0619' #multiImg_srgan_cleanProb0.25_woClampInp_ClampSRGAN_1e-3_1e1_1e0_1e-3_135000 
+# import pdb; pdb.set_trace()
 if not skip_forward:
     for gain_level in [0, 1, 8, 16, 20]: #,4,1, 20, 16, 8
         for idx in tqdm(sampled_idxs, desc=f'Calculating embedding at {gain_level}'):
@@ -99,7 +99,7 @@ with open(f'./results/{prefix}_hparams_{num_sample}.pkl', 'rb') as fp:
 embeddings = torch.load(f'./results/{prefix}_embedding_{num_sample}.pt')
 import torch
 from torch.nn.functional import pairwise_distance
-K = 3
+K = 7
 
 val2idx = {round(val,3) : idx for idx, val in enumerate(np.linspace(0,1, 4))}
 val2idx[0.666] = 2
@@ -108,7 +108,7 @@ kernel2idx = {
     kernel : idx for idx, kernel in enumerate( ["iso", "aniso", "generalized_iso", "generalized_aniso", "plateau_iso", "plateau_aniso"]) 
 }
 
-for gain_level in [0]: #,1, 20, 16, 8 4,
+for gain_level in [0, 1, 8, 16, 20]: #,1, 20, 16, 8 4,
     closest_hparams = {'retrieved_'+ (k) : [] for k in hparams.keys()}
     dict_ = {'query_' +k : [] for k in hparams.keys()}
     closest_hparams.update(dict_)
