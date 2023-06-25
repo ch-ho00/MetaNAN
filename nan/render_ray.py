@@ -345,7 +345,6 @@ class RayRender:
                     del src_rgbs_stacked
                     src_rgbs = src_rgbs.transpose(0,1)
                     src_rgbs = unstack_image(src_rgbs.reshape(-1,3,hw[0], hw[1]), total_n_patch=npatch_per_side**2, pad=pad)
-                src_rgbs = src_rgbs.permute(0, 2, 3, 1).unsqueeze(0)
                 torch.cuda.empty_cache()
             else:
                 src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
@@ -367,7 +366,6 @@ class RayRender:
 
         if not self.model.args.degae_feat:
             featmaps = self.model.feature_net(src_rgbs)
-            src_rgbs = src_rgbs.permute(0, 2, 3, 1).unsqueeze(0)
         else:
             with torch.no_grad():
                 degfeat = self.model.degae.encoder(orig_rgbs[0].permute(0,3,1,2), img_wh=torch.Tensor([orig_rgbs.shape[-2], orig_rgbs.shape[-3]]).int().to(orig_rgbs.device))    
@@ -398,6 +396,8 @@ class RayRender:
                 'fine'   : feat[:,self.model.args.coarse_feat_dim:]
             }
             del degfeat
+
+        src_rgbs = src_rgbs.permute(0, 2, 3, 1).unsqueeze(0)
         featmaps['noise_vec'] = noise_vec
 
         return src_rgbs , featmaps
