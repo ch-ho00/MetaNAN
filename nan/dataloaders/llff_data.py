@@ -31,6 +31,7 @@ from nan.dataloaders.llff_data_utils import load_llff_data, batch_parse_llff_pos
 from nan.dataloaders.basic_dataset import Mode
 
 
+from basicsr.utils import DiffJPEG
 import itertools
 
 

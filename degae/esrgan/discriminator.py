@@ -6,6 +6,9 @@ from torchvision import models, transforms
 from torchvision.models.feature_extraction import create_feature_extractor
 
 
+def de_parallel(model):
+    return model.module if hasattr(model, 'module') else model
+    
 class DiscriminatorUNet(nn.Module):
     def __init__(
             self,
@@ -54,6 +57,12 @@ class DiscriminatorUNet(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self._forward_impl(x)
+
+    def save_model(self, filename, optimizer, scheduler):
+        to_save = {'optimizer'  : optimizer.state_dict(),
+                   'scheduler'  : scheduler.state_dict(),
+                   'model' : de_parallel(self).state_dict()}
+        torch.save(to_save, filename)
 
     # Support torch.script function
     def _forward_impl(self, x: Tensor) -> Tensor:

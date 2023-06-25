@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : finetune_0619_cleanProb0.5_1e-3_1e3_1e0_5e-3
+expname                     : finetune_0619_cleanProb0.5_1e-3_1e2_1e0_0
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -29,9 +29,9 @@ skip_condition              : False
 
 img_size                    : 384
 lambda_perceptual           : 0.001
-lambda_embed                : 1000
+lambda_embed                : 100
 lambda_content              : 1
-lambda_adv                  : 0.005
+lambda_adv                  : 0 #0.005
 rand_noise                  : True
 
 #

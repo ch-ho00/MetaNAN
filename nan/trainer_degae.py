@@ -221,9 +221,9 @@ class Trainer:
         self.scalars_to_log['train/psnr'] = mse2psnr(l2_loss.detach().cpu())
 
 
-        self.discriminator.zero_grad(set_to_none=True)
 
         if self.args.lambda_adv > 0:
+            self.discriminator.zero_grad(set_to_none=True)
             for d_parameters in self.discriminator.parameters():
                 d_parameters.requires_grad = True
 
@@ -260,6 +260,10 @@ class Trainer:
                 print(f"Saving checkpoints at {global_step} to {self.exp_out_dir}...")
                 self.last_weights_path = self.exp_out_dir / f"model_{global_step:06d}.pth"
                 self.model.save_model(self.last_weights_path)
+                if self.args.lambda_adv > 0:
+                    last_weights_path_discrim = self.exp_out_dir / f"discrim_{global_step:06d}.pth"
+                    self.discriminator.save_model(last_weights_path_discrim, self.d_optimizer, self.d_scheduler)
+
                 files = sorted(self.exp_out_dir.glob("*.pth"), key=os.path.getctime)
                 rm_files = files[0:max(0, len(files) - max_keep)]
                 for f in rm_files:

@@ -25,10 +25,9 @@ coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
 meta_module                 : True
-ref_img_embed               : False
 downscale_input_img         : True
 weightsum_filtered          : True
-lambda_embed_loss           : 100
+lambda_embed_loss           : 1000
 bpn_prenet                  : True
 bpn_per_img                 : True
 
