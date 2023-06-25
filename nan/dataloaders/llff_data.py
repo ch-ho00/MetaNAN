@@ -31,9 +31,6 @@ from nan.dataloaders.llff_data_utils import load_llff_data, batch_parse_llff_pos
 from nan.dataloaders.basic_dataset import Mode
 
 
-from basicsr.utils import DiffJPEG
-from basicsr.utils.img_process_util import filter2D
-from basicsr.data.degradations import circular_lowpass_kernel, random_mixed_kernels
 import itertools
 
 
@@ -157,59 +154,6 @@ class COLMAPDataset(NoiseDataset, ABC):
         else:
             return self.get_multiview_item(idx)
 
-    def apply_blur_kernel(self, rgb, final_sinc=False, params=None):
-        kernel_size = random.choice(self.kernel_range)
-        rand_params = True
-        if params != None:
-            omega_c, kernel, blur_sigma, betag_range, betap_range = params
-            rand_params = False
-        if not final_sinc:
-            if np.random.uniform() < self.args.sinc_prob:
-                # this sinc filter setting is for kernels ranging from [7, 21]
-                if kernel_size < 13:
-                    omega_c = np.random.uniform(np.pi / 3, np.pi)
-                else:
-                    omega_c = np.random.uniform(np.pi / 5, np.pi)
-                kernel = circular_lowpass_kernel(omega_c, kernel_size, pad_to=False)
-            else:
-                kernel = random_mixed_kernels(
-                    self.kernel_list if rand_params else [kernel],
-                    self.kernel_prob if rand_params else [1],
-                    kernel_size,
-                    self.blur_sigma if rand_params else blur_sigma,
-                    self.blur_sigma if rand_params else blur_sigma, [-math.pi, math.pi],
-                    self.betag_range if rand_params else betag_range,
-                    self.betap_range if rand_params else betap_range,
-                    noise_range=None)
-
-            # pad kernel
-            pad_size = (21 - kernel_size) // 2
-            kernel = np.pad(kernel, ((pad_size, pad_size), (pad_size, pad_size)))
-            kernel = kernel.astype(np.float32)
-            out = filter2D(rgb, torch.from_numpy(kernel[None].repeat(rgb.shape[0], 0)))
-
-        else:
-            # ------------------------------------- the final sinc kernel ------------------------------------- #
-            if np.random.uniform() < self.args.final_sinc_prob:
-                kernel_size = random.choice(self.kernel_range)
-                omega_c = np.random.uniform(np.pi / 3, np.pi)
-                sinc_kernel = circular_lowpass_kernel(omega_c, kernel_size, pad_to=21)
-                sinc_kernel = sinc_kernel.astype(np.float32)
-                sinc_kernel = torch.FloatTensor(sinc_kernel)
-            else:
-                sinc_kernel = self.pulse_tensor
-            out = filter2D(rgb, sinc_kernel[None].repeat(rgb.shape[0], 1, 1))
-
-        return out
-    
-    def apply_jpeg_compression(self, rgb):
-        # JPEG compression
-        jpeg_p = rgb.new_zeros(rgb.size(0)).uniform_(*self.args.jpeg_range)
-        rgb = torch.clamp(rgb, 0, 1)  # clamp to [0, 1], otherwise JPEGer will result in unpleasant artifacts
-        out = self.jpeger(rgb, quality=jpeg_p)
-        
-        return out 
-    
     def get_singleview_item(self, idx):
         # Read target data:
         eval_gain = self.args.eval_gain[idx // len(self.render_rgb_files)]

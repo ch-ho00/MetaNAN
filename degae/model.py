@@ -29,10 +29,10 @@ class DegAE(nn.Module):
 
 
     def create_optimizer(self):
-        params_list = [{'params': self.encoder.parameters(), 'lr': self.args.lrate_feature},
-                       {'params': self.degrep_extractor.degrep_conv.parameters(),  'lr': self.args.lrate_feature},
-                       {'params': self.degrep_extractor.degrep_fc.parameters(),  'lr': self.args.lrate_feature},
-                       {'params': self.decoder.parameters(),  'lr': self.args.lrate_feature},                       
+        params_list = [{'params': self.encoder.parameters(),                        'lr': self.args.lrate_feature * (1 if not self.args.ft_training else 1e-2)},
+                       {'params': self.degrep_extractor.degrep_conv.parameters(),   'lr': self.args.lrate_feature * (1 if not self.args.ft_training else 1e-2)},
+                       {'params': self.degrep_extractor.degrep_fc.parameters(),     'lr': self.args.lrate_feature * (1 if not self.args.ft_training else 1e-2)},
+                       {'params': self.decoder.parameters(),                        'lr': self.args.lrate_feature * (1 if not self.args.ft_training else 1e-2)},                       
                        ]
 
         optimizer = torch.optim.Adam(params_list)

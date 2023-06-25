@@ -17,7 +17,7 @@ ROOT_DIR_DICT = LocalSettingDict()
 
 # config
 CONFIG_TRAIN_DICT = LocalSettingDict()
-CONFIG_TRAIN_DICT[PC_NAME] = 'train_degae.yml'
+CONFIG_TRAIN_DICT[PC_NAME] = 'train_degae_ft.yml'
 
 CONFIG_EVAL_DICT = LocalSettingDict()
 CONFIG_EVAL_DICT[PC_NAME] = 'eval_degae.yml'

@@ -53,6 +53,26 @@ class DeblurDataset(NoiseDataset, ABC):
         super().__init__(args, mode, scenes=scenes, random_crop=random_crop, **kwargs)
         self.depth_range = self.render_depth_range[0]
 
+        # blur settings for the first degradation
+        self.blur_kernel_size = args.blur_kernel_size
+        self.kernel_list = args.kernel_list
+        self.kernel_prob = args.kernel_prob  # a list for each kernel probability
+        self.blur_sigma = args.blur_sigma
+        self.betag_range = args.betag_range  # betag used in generalized Gaussian blur kernels
+        self.betap_range = args.betap_range  # betap used in plateau blur kernels
+        self.sinc_prob = args.sinc_prob  # the probability for sinc filters
+        self.jpeg_range = args.jpeg_range
+        self.blur_degrade = args.blur_degrade
+        
+        # a final sinc filter
+        self.final_sinc_prob = args.final_sinc_prob
+        self.kernel_range = [2 * v + 1 for v in range(3, 11)]  # kernel size ranges from 7 to 21
+        # TODO: kernel range is now hard-coded, should be in the configure file
+        self.pulse_tensor = torch.zeros(21, 21).float()  # convolving with pulse tensor brings no blurry effect
+        self.pulse_tensor[10, 10] = 1
+        self.jpeger = DiffJPEG(differentiable=False)  # simulate JPEG compression artifacts        
+
+
     def get_i_test(self, N, holdout):
         return np.arange(N)[::holdout]
 
@@ -64,10 +84,131 @@ class DeblurDataset(NoiseDataset, ABC):
         return load_llff_data(scene_path, load_imgs=False, factor=factor)
 
     def __len__(self):
+        if self.args.degae_training:
+            return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files) * len(self.args.eval_gain)
         return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files)
 
     def __getitem__(self, idx):
-        return self.get_multiview_item(idx)
+        if self.args.degae_training:
+            return self.get_singleview_item(idx)            
+        else:
+            return self.get_multiview_item(idx)
+
+    def get_singleview_item(self, idx):
+        # Read target data:
+        eval_gain = self.args.eval_gain[idx // len(self.render_rgb_files)]
+        idx = idx % len(self.render_rgb_files)
+        rgb_file: Path = self.render_rgb_files[idx]
+
+        noise_type = 'syn_motion' if 'synthetic_camera_motion_blur' in str(rgb_file) else 'syn_focus'
+        folder_name = 'camera_motion_blur' if noise_type == 'syn_motion' else 'defocus_blur'
+        noise_name = 'blur' if noise_type == 'syn_motion' else 'defocus'
+
+        rgb_file = str(rgb_file).replace(str(self.folder_path) + '/', '')
+        rgb_clean_file: Path = rgb_file.replace(folder_name, 'gt').replace(noise_name, 'gt').replace('images_1', 'raw').replace('images', 'raw')
+        rgb_file = self.folder_path / rgb_file
+        rgb_clean_file = self.folder_path / rgb_clean_file
+
+        # image (H, W, 3)
+        rgb_noisy = self.read_image(rgb_file)
+        rgb_clean = self.read_image(rgb_clean_file)
+
+        side = self.args.img_size
+        if self.mode in [Mode.train]:
+            crop_h = np.random.randint(low=0, high=768 - side)
+            crop_w =  np.random.randint(low=0, high=1024 - side)
+        else:
+            crop_h = 768 // 2
+            crop_w = 1024 // 2
+        rgb_noisy = rgb_noisy[crop_h:crop_h+side, crop_w:crop_w+side].transpose((2,0,1))[None]
+        rgb_clean = rgb_clean[crop_h:crop_h+side, crop_w:crop_w+side].transpose((2,0,1))[None]
+
+        idx_ref = idx
+        while idx == idx_ref:
+            idx_ref = random.choice(list(range(len(self.render_rgb_files))))        
+        rgb_file_ref: Path = self.render_rgb_files[idx]
+
+        noise_type = 'syn_motion' if 'synthetic_camera_motion_blur' in str(rgb_file) else 'syn_focus'
+        folder_name = 'camera_motion_blur' if noise_type == 'syn_motion' else 'defocus_blur'
+        noise_name = 'blur' if noise_type == 'syn_motion' else 'defocus'
+        rgb_file_ref        = str(rgb_file_ref).replace(str(self.folder_path) + '/', '')
+        rgb_clean_file_ref  = rgb_file_ref.replace(folder_name, 'gt').replace(noise_name, 'gt').replace('images_1', 'raw').replace('images', 'raw')
+        rgb_file_ref        = self.folder_path / rgb_file_ref
+        rgb_clean_file_ref  = self.folder_path / rgb_clean_file_ref
+
+        rgb_clean_ref = self.read_image(rgb_clean_file_ref)
+
+        crop_h = np.random.randint(low=0, high=768 - side)
+        crop_w =  np.random.randint(low=0, high=1024 -side)
+        rgb_clean_ref = rgb_clean_ref[crop_h:crop_h+side, crop_w:crop_w+side].transpose((2,0,1))[None]
+
+        # augment
+        if self.mode in [Mode.train]:
+            if random.random() < 0.5:
+                rgb_noisy = np.flip(rgb_noisy, axis=-1).copy()
+                rgb_clean = np.flip(rgb_clean, axis=-1).copy()
+            if random.random() < 0.5:
+                rgb_noisy = np.flip(rgb_noisy, axis=-2).copy()
+                rgb_clean = np.flip(rgb_clean, axis=-2).copy()
+
+            if random.random() < 0.5:
+                rgb_clean_ref = np.flip(rgb_clean_ref, axis=-1).copy()
+            if random.random() < 0.5:
+                rgb_clean_ref = np.flip(rgb_clean_ref, axis=-2).copy()
+
+            white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
+        else:
+            white_level = torch.Tensor([1])
+
+        # d1
+        if self.mode is Mode.train:
+            if self.blur_degrade and random.random() > 0.5:
+                rgb_d1 = self.apply_blur_kernel(torch.from_numpy(rgb_noisy), final_sinc=False).clamp(0,1)
+            else:
+                rgb_d1 = rgb_clean 
+
+            white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
+
+            rgb_d1 = re_linearize(rgb_d1, white_level)
+            clean_d1 = False
+
+            if random.random() > 0.5:
+                rgb_d1 , _ = self.add_noise(rgb_d1)
+            else:
+                clean_d1 = True                                    
+        else:
+            rgb_d1 = re_linearize(rgb_noisy, white_level)
+            rgb_d1, _ = self.add_noise_level(rgb_d1, eval_gain)                        
+
+        # d2
+        d2_rgbs = np.concatenate([rgb_clean, rgb_clean_ref], axis=0)
+        d2_rgbs = torch.from_numpy(d2_rgbs)
+        if self.mode is Mode.train:
+            if self.blur_degrade and random.random() > 0.5:
+                d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=False).clamp(0,1)
+
+            d2_rgbs = re_linearize(d2_rgbs, white_level)
+
+            if random.random() > 0.5 or clean_d1:
+                d2_rgbs, _ = self.add_noise(d2_rgbs)
+                clean_d2 = False        
+
+        else:
+            d2_rgbs = re_linearize(d2_rgbs[:, :3], white_level)
+
+        rgb_d2, rgb_ref_d2 = d2_rgbs[0], d2_rgbs[1]
+        batch_dict = {
+                      'noisy_rgb'       : rgb_d1.squeeze(),
+                      'target_rgb'      : rgb_d2.squeeze(),
+                      'ref_rgb'         : rgb_ref_d2.squeeze(),
+                      'white_level'     : white_level
+        }
+
+
+        if self.mode is not Mode.train:
+            batch_dict['eval_gain'] = eval_gain
+
+        return batch_dict  
 
     def get_multiview_item(self, idx):
         # Read target data:
@@ -169,15 +310,15 @@ class DeblurDataset(NoiseDataset, ABC):
                                     tar_id=id_render,
                                     angular_dist_method='dist')
 
-    def add_single_scene(self, i, scene_path, holdout):
-        _, poses, bds, render_poses, i_test, rgb_files = self.load_scene(scene_path, None)
+    def add_single_scene(self, i, scene_path, holdout, noise_type=None):
+        _, poses, bds, render_poses, i_test, rgb_files = self.load_scene(scene_path, None if 'synthetic' not in str(scene_path) else 1)
         near_depth = bds.min()
         far_depth = bds.max()
         intrinsics, c2w_mats = batch_parse_llff_poses(poses, hw=[768,1024])
-
         i_clean = self.get_i_test(poses.shape[0], holdout)
         i_blurry = self.get_i_train(poses.shape[0], i_clean)
-        i_render = i_clean
+
+        i_render = i_clean  if not self.args.degae_training else i_blurry
 
         # Source images
         self.src_intrinsics.append(intrinsics[i_blurry])

@@ -1,0 +1,81 @@
+### INPUT
+expname                     : finetune_0619_cleanProb0.5_1e-3_1e3_1e0_5e-3
+render_stride               : 2  # used in evaluation
+distributed                 : False
+
+## dataset
+train_dataset               : deblur #llff
+eval_dataset                : deblur_test #llff_test
+eval_scenes                 : [fern, trex, leaves, horns] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
+
+### TRAINING
+n_iters                     : 255000
+N_rand                      : 512
+lrate_feature               : 0.0002
+lrate_mlp                   : 0.0005
+lrate_decay_factor          : 0.5
+lrate_decay_steps           : 50000
+losses                      : [l2, l1, l1_grad, ssim]
+losses_weights              : [0,  1,  0,       0]
+workers                     : 0
+batch_size                  : 2
+llffhold                    : 8
+
+## 
+degae_training              : True
+ft_training                 : True
+degrep_ckpt                 : './ckpts/SRGAN_x4-ImageNet-8c4a7569.pth.tar'
+skip_condition              : False
+
+img_size                    : 384
+lambda_perceptual           : 0.001
+lambda_embed                : 1000
+lambda_content              : 1
+lambda_adv                  : 0.005
+rand_noise                  : True
+
+#
+blur_degrade                : True
+blur_kernel_size            : 21
+kernel_list                 : [iso, aniso, generalized_iso, generalized_aniso, plateau_iso, plateau_aniso]
+kernel_prob                 : [0.45, 0.25, 0.12, 0.03, 0.12, 0.03]
+sinc_prob                   : 0.1
+blur_sigma                  : [0.2, 3]
+betag_range                 : [0.5, 4]
+betap_range                 : [1, 2]  
+jpeg_range                  : [30, 95]
+final_sinc_prob             : 0.8
+
+### TESTING
+chunk_size                  : 2048 # can be bigger depend on the gpu memory
+
+### RENDERING
+N_importance                : 64
+N_samples                   : 64
+inv_uniform                 : True
+white_bkgd                  : False
+
+### CONSOLE AND TENSORBOARD
+i_img                       : 2000
+i_print                     : 1
+i_tb                        : 100
+i_weights                   : 5000
+
+### additional
+ckpt_path                   : ckpts/0619.pth   # use this if you want to train from a specific checkpoint.
+no_load_opt                 : False
+no_load_scheduler           : False
+sup_clean                   : True
+
+include_target              : True  # set to False if you want to synthesize images rather than denoise the images
+eval_gain                    : [0, 1, 20, 16]
+std                         : [-3.0, -0.5, -2.0, -0.5]
+
+
+views_attn                  : True
+kernel_size                 : [3, 3]
+pre_net                     : True
+noise_feat                  : True
+rgb_weights                 : True
+
+local_rank                  : 0
