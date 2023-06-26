@@ -68,9 +68,6 @@ class Trainer:
 
         self.model = DegAE(args, train_scratch=True)
 
-        if args.ckpt_path != None:
-            ckpts = torch.load(args.ckpt_path)
-            self.model.load_state_dict(ckpts['model'])
 
         # For perceptual Loss
         self.vgg_loss = VGG().to(self.device)
@@ -88,6 +85,15 @@ class Trainer:
                                                         gamma=self.args.lrate_decay_factor)
 
 
+        if args.ckpt_path != None:
+            ckpts = torch.load(args.ckpt_path)
+            self.model.load_state_dict(ckpts['model'])
+
+            if args.lambda_adv > 0:
+                assert args.discrim_ckpt_path != None
+                discrim_ckpts = torch.load(args.discrim_ckpt_path)
+                self.discriminator.load_state_dict(discrim_ckpts['model'])
+                
         # tb_dir will contain tensorboard files and later evaluation results
         tb_dir = LOG_DIR / args.expname
         if args.local_rank == 0:
@@ -264,10 +270,18 @@ class Trainer:
                     last_weights_path_discrim = self.exp_out_dir / f"discrim_{global_step:06d}.pth"
                     self.discriminator.save_model(last_weights_path_discrim, self.d_optimizer, self.d_scheduler)
 
-                files = sorted(self.exp_out_dir.glob("*.pth"), key=os.path.getctime)
-                rm_files = files[0:max(0, len(files) - max_keep)]
+                model_files = sorted(self.exp_out_dir.glob("*.pth"), key=os.path.getctime)
+                model_files = [f for f in model_files if 'model' in str(f)]
+                rm_files = model_files[0:max(0, len(model_files) - max_keep)]
                 for f in rm_files:
                     f.unlink()
+
+                if self.args.lambda_adv > 0:
+                    discrim_files = sorted(self.exp_out_dir.glob("*.pth"), key=os.path.getctime)
+                    discrim_files = [f for f in discrim_files if 'discrim' in str(f)]
+                    rm_files = discrim_files[0:max(0, len(discrim_files) - max_keep)]
+                    for f in rm_files:
+                        f.unlink()
 
             # log images of training and validation
             if global_step % self.args.i_img == 0: #or global_step == self.model.start_step + 1:
@@ -289,7 +303,7 @@ class Trainer:
         
         if visualize:
             self.writer.add_image(prefix + f'reconst_rgb_gain{eval_gain}_{idx}', delin_pred[0].detach().cpu(), global_step)
-            if global_step < 5:
+            if global_step < 5 or 'train' in prefix:
                 self.writer.add_image(prefix + f'target_rgb_gain_{idx}', delin_tar[0].detach().cpu(), global_step)
                 self.writer.add_image(prefix + f'input_rgb_gain{eval_gain}_{idx}', delin_noisy[0].detach().cpu(), global_step)
 

@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : finetune_0619_cleanProb0.5_1e-3_1e2_1e0_0
+expname                     : finetune_0619_pretrainedDiscrim_cleanProb0.5_1e-3_1e2_1e0_5e-3
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -31,7 +31,7 @@ img_size                    : 384
 lambda_perceptual           : 0.001
 lambda_embed                : 100
 lambda_content              : 1
-lambda_adv                  : 0 #0.005
+lambda_adv                  : 0.005
 rand_noise                  : True
 
 #
@@ -63,6 +63,7 @@ i_weights                   : 5000
 
 ### additional
 ckpt_path                   : ckpts/0619.pth   # use this if you want to train from a specific checkpoint.
+discrim_ckpt_path           : ckpts/discrim_025000.pth   # use this if you want to train from a specific checkpoint.
 no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True

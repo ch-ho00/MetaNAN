@@ -117,6 +117,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--skip_condition', default=False, action="store_true")
 
         ## DegAE to NAN 
+        
         parser.add_argument("--degae_feat_ckpt", type=str, default=None)
         parser.add_argument("--discrim_ckpt", type=str, default=None)
         parser.add_argument('--degae_feat', default=False, action="store_true")
@@ -192,6 +193,8 @@ class CustomArgumentParser(configargparse.ArgumentParser):
                             help='do not reload weights from saved ckpt')
         parser.add_argument("--resume_training", action='store_true', help='continue training from latest ckpt')
         parser.add_argument("--ckpt_path", type=Path, default=None,
+                            help='specific weights npy file to reload for network')
+        parser.add_argument("--discrim_ckpt_path", type=Path, default=None,
                             help='specific weights npy file to reload for network')
         parser.add_argument("--no_load_opt", action='store_true',
                             help='do not load optimizer when reloading')

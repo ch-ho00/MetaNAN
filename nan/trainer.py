@@ -27,7 +27,7 @@ from nan.utils.io_utils import print_link, colorize
 from nan.ssim_l1_loss import MS_SSIM_L1_LOSS
 import torch.nn.functional as F
 
-alpha=0.9999
+alpha=0.9998
 
 class Trainer:
     def __init__(self, args):
