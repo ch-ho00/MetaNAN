@@ -206,7 +206,14 @@ class Trainer:
             self.scalars_to_log['train/embed-loss'] = embed_loss * self.args.lambda_embed_loss
 
         if self.args.lambda_adv > 0:
-            target_rgb = ray_sampler.src_rgbs.to(self.device)[0,:1] * (1-w) + train_data['rgb_clean'].to(self.device) * w 
+            if self.args.include_target:
+                target_rgb = ray_sampler.src_rgbs.to(self.device)[0,:1] * w + train_data['rgb_clean'].to(self.device) * (1-w)
+            else:
+                with torch.no_grad():
+                    closest_idx = self.ray_render.projector.get_closest_idx(train_data['camera'].to(self.device), train_data['src_cameras'].to(self.device))
+                    closest_sigma_est = train_data['sigma_estimate'][:,closest_idx].to(self.device)
+                target_rgb = train_data['rgb_clean'].to(self.device)  + closest_sigma_est * w
+
             target_rgb = target_rgb.permute(0,3,1,2)
             delin_pred = de_linearize(proc_src_rgbs[0].permute(0,3,1,2), train_data['white_level'][0].to(self.device))
             delin_tar = de_linearize(target_rgb, train_data['white_level'][0].to(self.device))

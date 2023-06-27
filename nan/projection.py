@@ -15,7 +15,8 @@
 from math import prod
 import torch
 import torch.nn.functional as F
-
+from nan.sample_ray import parse_camera
+import numpy as np
 
 class Projector:
     """
@@ -49,7 +50,7 @@ class Projector:
         normalized_pixel_locations = 2 * pixel_locations / resize_factor - 1.  # [n_views, n_points, 2]
         return normalized_pixel_locations
 
-    def compute_projections(self, xyz, src_cameras):
+    def compute_projections(self, xyz, src_cameras, expand=True):
         """
         project 3D points into cameras
         :param xyz: [n_rays, n_samples, 3]   
@@ -73,14 +74,15 @@ class Projector:
         uv = projections[..., :2] / torch.clamp(projections[..., 2:3], min=1e-8)  # [n_views, n_points, 2]
         uv = torch.clamp(uv, min=-1e6, max=1e6)
         mask_inbound = self.inbound(uv, h, w)  # a point is invalid if out of the image
-        uv = self.expander(uv)  # [n_views, n_points, kernel_size, 2]
+        if expand:
+            uv = self.expander(uv)  # [n_views, n_points, kernel_size, 2]
 
         mask = mask_in_front * mask_inbound
 
         # split second dimension (n_points) into 2 dimensions: (n_rays, n_samples):
         # uv (because of F.grid_sample): [n_views, n_points, k, k, 2]  -->  [n_views, n_rays, n_samples*k*k, 2]
         # mask                         : [n_views, n_points]           -->  [n_views, n_rays, n_samples]
-        return uv.view((num_views, n_rays, n_samples * self.kernel_enum, 2)), mask.view((num_views, n_rays, n_samples))
+        return uv.view((num_views, n_rays, n_samples * (self.kernel_enum if expand else 1), 2)), mask.view((num_views, n_rays, n_samples))
                                                                               
     @staticmethod
     def compute_angle(xyz, query_camera, train_cameras):
@@ -107,6 +109,41 @@ class Projector:
         ray_diff = torch.cat([ray_diff_direction, ray_diff_dot], dim=-1)
         ray_diff = ray_diff.reshape((num_views,) + original_shape + (4,))
         return ray_diff
+
+    def get_closest_idx(self, query_camera, src_cameras):
+        tar_pose = query_camera[0, -16:].reshape(-1, 4, 4)  # [n_views, 4, 4]
+        src_poses = src_cameras[0, :, -16:].reshape(-1, 4, 4)  # [n_views, 4, 4]
+
+        dists = torch.sum((tar_pose[:, :3, 3] - src_poses[:, :3, 3]) ** 2, -1)
+        i_closest = torch.argmin(dists)
+        return i_closest
+
+    '''
+    def warp_closest2tar(self, query_camera, src_cameras, src_imgs):
+        tar_pose = query_camera[0, -16:].reshape(-1, 4, 4)  # [n_views, 4, 4]
+        src_poses = src_cameras[0, :, -16:].reshape(-1, 4, 4)  # [n_views, 4, 4]
+
+        dists = torch.sum((tar_pose[:, :3, 2] * src_poses[:, :3, 2]), -1)
+        i_closest = torch.argmax(dists)
+        closest_img = src_imgs[0, i_closest].permute(2,0,1)[None]
+
+        W, H, intrinsics, c2w = parse_camera(query_camera)
+        x, y = np.meshgrid(np.arange(W.item()), np.arange(H.item()))
+        x = x.reshape(-1).astype(dtype=np.float32)  # + 0.5    # add half pixel
+        y = y.reshape(-1).astype(dtype=np.float32)  # + 0.5
+        pixels = np.stack((x, y, np.ones_like(x)), axis=0)  # (3, H*W)
+        pixels = torch.from_numpy(pixels).to(intrinsics.device)
+        batched_pixels = pixels.unsqueeze(0).expand(-1, 3, pixels.shape[-1]).to(intrinsics.device).float()
+        rays_d = (c2w[:, :3, :3].bmm(torch.inverse(intrinsics[:, :3, :3])).bmm(batched_pixels)).transpose(1, 2)
+        rays_d = rays_d.reshape(-1, 3)
+        rays_o = c2w[:, :3, 3].unsqueeze(1).expand(1, rays_d.shape[0], 3).reshape(-1, 3)  # B x HW x 3
+        tar_img_xyzs = rays_o + rays_d 
+        coords, mask = self.compute_projections(tar_img_xyzs[:,None], src_cameras[0, i_closest:i_closest+1], expand=False)
+        norm_xys = self.normalize(coords, H, W)  # [n_views, n_rays, n_samples, 2]
+        warped_img = F.grid_sample(closest_img, norm_xys, align_corners=True, padding_mode='reflection')
+        warped_img = warped_img.squeeze().permute(1,0).reshape(int(H.item()), int(W.item()), 3)
+        return warped_img, closest_img
+    '''
 
     def compute(self, xyz, query_camera, src_imgs, org_src_imgs, sigma_estimate, src_cameras, featmaps):
         """ Given 3D points and the camera of the target and src views,
