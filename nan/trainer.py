@@ -206,8 +206,10 @@ class Trainer:
             self.scalars_to_log['train/embed-loss'] = embed_loss * self.args.lambda_embed_loss
 
         if self.args.lambda_adv > 0:
+            target_rgb = ray_sampler.src_rgbs.to(self.device)[0,:1] * (1-w) + train_data['rgb_clean'].to(self.device) * w 
+            target_rgb = target_rgb.permute(0,3,1,2)
             delin_pred = de_linearize(proc_src_rgbs[0].permute(0,3,1,2), train_data['white_level'][0].to(self.device))
-            delin_tar = de_linearize(train_data['rgb_clean'].permute(0,3,1,2).to(self.device), train_data['white_level'][0].to(self.device))
+            delin_tar = de_linearize(target_rgb, train_data['white_level'][0].to(self.device))
 
             real_label = torch.full([delin_tar.shape[0], 1, delin_tar.shape[-2], delin_tar.shape[-1]], 1.0, dtype=torch.float, device=self.device)
             fake_label = torch.full([delin_pred.shape[0], 1, delin_pred.shape[-2], delin_pred.shape[-1]], 0.0, dtype=torch.float, device=self.device)

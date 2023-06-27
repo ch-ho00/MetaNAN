@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : DegAE_AllCondRenderer_discrimScratch_preBPN_weightSumFilter0.9998_perImg_ftEmbed_embedLoss1e3_adv5e-2_novelView #denoise # MetaDegAE #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : DegAE_AllCondRenderer_discrimScratch_annealTarget_preBPN_weightSumFilter0.9998_perImg_ftEmbed_embedLoss1e3_adv5e-3_novelView #denoise # MetaDegAE #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -32,7 +32,7 @@ bpn_prenet                  : True
 bpn_per_img                 : True
 ft_embed_fc                 : True
 cond_renderer               : True
-lambda_adv                  : 0.05
+lambda_adv                  : 0.005
 # discrim_ckpt_path           : ./ckpts/discrim_100000.pth
 
 ### TESTING
