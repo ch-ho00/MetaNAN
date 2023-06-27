@@ -78,7 +78,7 @@ class Trainer:
         if self.args.lambda_adv > 0:
             self.discriminator = DiscriminatorUNet(in_channels=3, out_channels=1, channels=64).to(self.device)
             self.adv_loss = nn.BCEWithLogitsLoss()
-            params_list = [{'params': self.discriminator.parameters(), 'lr': self.args.lrate_feature}]
+            params_list = [{'params': self.discriminator.parameters(), 'lr': self.args.lrate_feature * (1e-1 if self.args.ft_training else 1)}]
             self.d_optimizer = torch.optim.Adam(params_list)
             self.d_scheduler = torch.optim.lr_scheduler.StepLR(self.d_optimizer,
                                                         step_size=self.args.lrate_decay_steps,

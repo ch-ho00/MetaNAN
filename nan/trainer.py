@@ -26,6 +26,8 @@ from nan.utils.io_utils import print_link, colorize
 # from pytorch_msssim import ms_ssim
 from nan.ssim_l1_loss import MS_SSIM_L1_LOSS
 import torch.nn.functional as F
+from degae.esrgan.discriminator import DiscriminatorUNet
+import torch.nn as nn
 
 alpha=0.9998
 
@@ -65,6 +67,23 @@ class Trainer:
 
         # Create ray render object
         self.ray_render = RayRender(model=self.model, args=args, device=self.device)
+
+        # For adversarial Loss
+        if self.args.lambda_adv > 0:
+            self.discriminator = DiscriminatorUNet(in_channels=3, out_channels=1, channels=64).to(self.device)
+            self.adv_loss = nn.BCEWithLogitsLoss()
+
+            if args.discrim_ckpt_path != None:
+                discrim_ckpts = torch.load(args.discrim_ckpt_path)
+                self.discriminator.load_state_dict(discrim_ckpts['model'])
+                params_list = [{'params': self.discriminator.parameters(), 'lr': self.args.lrate_feature * 1e-2}]
+            else:
+                params_list = [{'params': self.discriminator.parameters(), 'lr': self.args.lrate_feature}]
+
+            self.d_optimizer = torch.optim.Adam(params_list)
+            self.d_scheduler = torch.optim.lr_scheduler.StepLR(self.d_optimizer,
+                                                        step_size=self.args.lrate_decay_steps,
+                                                        gamma=self.args.lrate_decay_factor)
 
         # Create criterion
         self.criterion = NANLoss(args)
@@ -186,11 +205,46 @@ class Trainer:
             loss += embed_loss * self.args.lambda_embed_loss
             self.scalars_to_log['train/embed-loss'] = embed_loss * self.args.lambda_embed_loss
 
+        if self.args.lambda_adv > 0:
+            delin_pred = de_linearize(proc_src_rgbs[0].permute(0,3,1,2), train_data['white_level'][0].to(self.device))
+            delin_tar = de_linearize(train_data['rgb_clean'].permute(0,3,1,2).to(self.device), train_data['white_level'][0].to(self.device))
+
+            real_label = torch.full([delin_tar.shape[0], 1, delin_tar.shape[-2], delin_tar.shape[-1]], 1.0, dtype=torch.float, device=self.device)
+            fake_label = torch.full([delin_pred.shape[0], 1, delin_pred.shape[-2], delin_pred.shape[-1]], 0.0, dtype=torch.float, device=self.device)
+
+
+            for d_parameters in self.discriminator.parameters():
+                d_parameters.requires_grad = False
+
+            adversarial_loss = self.adv_loss(self.discriminator(delin_pred), real_label.repeat(delin_pred.shape[0],1,1,1))
+            adversarial_loss = torch.mean(adversarial_loss) * self.args.lambda_adv
+            loss += adversarial_loss
+            self.scalars_to_log['train/adversarial_loss'] = adversarial_loss
+
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
         self.model.optimizer.step()
         self.model.scheduler.step()
         self.model.optimizer.zero_grad()
+
+
+        if self.args.lambda_adv > 0:
+            self.discriminator.zero_grad(set_to_none=True)
+            for d_parameters in self.discriminator.parameters():
+                d_parameters.requires_grad = True
+
+            self.d_optimizer.zero_grad()
+            gt_output = self.discriminator(delin_tar)
+            fake_output = self.discriminator(delin_pred.detach().clone())
+
+            d_loss_gt = self.adv_loss(gt_output, real_label)
+            d_loss_fake = self.adv_loss(fake_output, fake_label)
+
+            d_loss = torch.mean(d_loss_fake) + torch.mean(d_loss_gt)
+            d_loss.backward()
+            self.d_optimizer.step()
+            self.d_scheduler.step()
+            self.scalars_to_log['train/d_loss'] = d_loss
 
         self.scalars_to_log['lr_features'] = self.model.scheduler.get_last_lr()[0]
         self.scalars_to_log['lr_mlp'] = self.model.scheduler.get_last_lr()[1]
