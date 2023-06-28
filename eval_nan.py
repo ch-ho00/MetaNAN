@@ -21,7 +21,7 @@ from nan.utils.general_utils import img_HWC2CHW
 from nan.utils.io_utils import print_link, colorize
 from nan.utils.eval_utils import mse2psnr, img2psnr
 import pickle
-
+from pprint import pprint
 
 sys.argv = sys.argv + ['--config', str(EVAL_CONFIG)]
 # Create training args
@@ -38,25 +38,25 @@ if args.distributed:
     torch.distributed.init_process_group(backend="nccl", init_method="env://")
     synchronize()
 
-args.eval_gain = [1,2,4,8,16,20] # 
-val_dataset = dataset_dict["llff_test"](args, Mode.validation, scenes=[])
-
-load_ckpt = args.ckpt_path
-model = NANScheme.create(args)
-checkpoint = torch.load(load_ckpt, map_location=lambda storage, loc: storage)
-model.load_state_dict(checkpoint["model"])
-
-N_val_imgs = len(val_dataset.render_rgb_files)
-render_result = {}
-visualize_freq = 8
-
 model_name = str(args.ckpt_path).split('/')[-1][:-4]
 save_folder = Path(f'eval_result/{model_name}')
 save_folder.mkdir(parents=True, exist_ok=True)
 skip_forward = False
 
 if not skip_forward:
-    for idx in range(N_val_imgs):
+    args.eval_gain = [1,2,4,8,16,20] # 
+    val_dataset = dataset_dict["llff_test"](args, Mode.validation, scenes=[])
+
+    load_ckpt = args.ckpt_path
+    model = NANScheme.create(args)
+    checkpoint = torch.load(load_ckpt, map_location=lambda storage, loc: storage)
+    model.load_state_dict(checkpoint["model"])
+
+    N_val_imgs = len(val_dataset.render_rgb_files)
+    render_result = {}
+    visualize_freq = 8
+
+    for idx in tqdm(range(N_val_imgs), desc='Validation Image Number'):
         render_result[idx] = {}
         for lvl_cnt, gain_level in enumerate(args.eval_gain): 
 
@@ -82,15 +82,15 @@ if not skip_forward:
                 rgb_im = de_linearize(rgb_im, ray_sampler.white_level).clamp(min=0., max=1.)
                 depth_im = img_HWC2CHW(colorize(ret['fine'].depth.detach().cpu(), cmap_name='jet', append_cbar=True))
                 rgb_im = torch.cat((rgb_im, depth_im), dim=-1)
-                plt.imsave(save_dir, rgb_im.permute(1,2,0).cpu().numpy())
 
 
                 if args.bpn_prenet:
-                    import pdb; pdb.set_trace()
                     h, w, _ = ret['bpn_reconst'].shape[-3:]
-                    reconst_img = ret['bpn_reconst'][0][0].permute(3,1,0,2).reshape(3,h,-1)
+                    reconst_img = ret['bpn_reconst'][0,0].permute(2,0,1)[...,::args.render_stride, ::args.render_stride]
                     reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
-                    rgb_im[:, :reconst_img.shape[-2], 3 * w_max : 3 * w_max + reconst_img.shape[-1]] = reconst_img
+                    rgb_im = torch.cat((rgb_im, reconst_img.cpu()), dim=-1)
+
+                plt.imsave(save_dir, rgb_im.permute(1,2,0).cpu().numpy())
 
                 del depth_im 
             # write scalar
@@ -104,14 +104,40 @@ if not skip_forward:
                 'rgb' : de_linearize(rgb_fine, ray_sampler.white_level).clamp(min=0., max=1.)
             }
 
-    with open(f'./{str(save_folder)}/result.pkl', 'wb') as fp:
-        pickle.dump(render_result, fp)
+        with open(f'./{str(save_folder)}/result.pkl', 'wb') as fp:
+            pickle.dump(render_result, fp)
 
 
 ### 
 with open(f'./{str(save_folder)}/result.pkl', 'rb') as fp:
     render_result = pickle.load(fp)
 
+final_result = {}
+results_level = {k : [] for k in args.eval_gain}
+for img_idx in render_result.keys():
+    for gain_level in render_result[img_idx].keys():
+        results_level[gain_level].append(render_result[img_idx][gain_level]['psnr'])
 
-import pdb; pdb.set_trace()
-print()
+
+for level in args.eval_gain:
+    results_level[str(level) + "_avg"] = np.mean(results_level[level])
+
+final_result.update(results_level)
+pprint(results_level)
+
+depth_std = {}
+rgb_std = {}
+for img_idx in render_result.keys():
+    pred_rgbs = np.stack([render_result[img_idx][gain_level]['rgb'] for gain_level in render_result[img_idx].keys()])
+    pred_depths = np.stack([render_result[img_idx][gain_level]['depth'] for gain_level in render_result[img_idx].keys()])
+    rgb_std[img_idx] = np.std(pred_rgbs, axis=0).mean()
+    depth_std[img_idx] = np.std(pred_depths, axis=0).mean()
+
+final_result['mean_rgb_std'] = np.mean(list(rgb_std.values()))
+final_result['mean_depth_std'] = np.mean(list(depth_std.values()))
+
+with open(f'./{str(save_folder)}/result_final.pkl', 'wb') as fp:
+    pickle.dump(final_result, fp)
+
+pprint(final_result)
+
