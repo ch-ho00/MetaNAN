@@ -205,8 +205,16 @@ class Trainer:
             loss += embed_loss * self.args.lambda_embed_loss
             self.scalars_to_log['train/embed-loss'] = embed_loss * self.args.lambda_embed_loss
 
+        if self.args.lambda_reconst_loss > 0:
+            delin_pred = de_linearize(proc_src_rgbs[0,0], train_data['white_level'][0].to(self.device))
+            delin_tar = de_linearize(train_data['rgb_clean'].to(self.device), train_data['white_level'][0].to(self.device))
+
+            reconst_loss = ((delin_pred - delin_tar) ** 2).mean() * self.args.lambda_reconst_loss
+            loss += reconst_loss
+            self.scalars_to_log['train/reconst_loss'] = reconst_loss
+                        
         if self.args.lambda_adv > 0:
-            w2 = max(w, 0.5)
+            w2 = max(w, 0.3)
             if self.args.include_target:
                 target_rgb = ray_sampler.src_rgbs.to(self.device)[0,:1] * w2 + train_data['rgb_clean'].to(self.device) * (1-w2)
             else:

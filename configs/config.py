@@ -125,6 +125,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--lambda_adv', type=float, default=0)
         parser.add_argument('--weightsum_filtered', default=False, action="store_true")
         parser.add_argument('--lambda_embed_loss', type=float, default=0)
+        parser.add_argument('--lambda_reconst_loss', type=float, default=0)
         parser.add_argument('--bpn_prenet', default=False, action="store_true")
         parser.add_argument('--bpn_per_img', default=False, action="store_true")
         parser.add_argument('--ft_embed_fc', default=False, action="store_true")
