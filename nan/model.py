@@ -144,10 +144,11 @@ class NANScheme(nn.Module):
         # create feature extraction network
         self.degae_feat = args.degae_feat
         if args.degae_feat or args.lambda_embed_loss > 0 or args.cond_renderer:
-            assert args.degae_feat_ckpt != None
+            # assert args.degae_feat_ckpt != None
             self.degae = DegAE(args, train_scratch=False)
-            checkpoint = torch.load(args.degae_feat_ckpt, map_location=lambda storage, loc: storage)
-            self.degae.load_state_dict(checkpoint["model"])
+            if args.degae_feat_ckpt != None:
+                checkpoint = torch.load(args.degae_feat_ckpt, map_location=lambda storage, loc: storage)
+                self.degae.load_state_dict(checkpoint["model"])
             
             for param in self.degae.parameters():
                 param.requires_grad = False

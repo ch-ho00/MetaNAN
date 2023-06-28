@@ -175,6 +175,7 @@ class BurstDataset(Dataset, ABC):
                 print(f"loading {len(self.scenes_dirs)} scenes for {mode}")
             print(f"num of source views {self.num_source_views}")
 
+            self.scenes_dirs = [dir_ for dir_ in self.scenes_dirs if 'sparse' not in str(dir_)]
             for i, scene_path in enumerate(self.scenes_dirs):
                 self.add_single_scene(i, scene_path)
 

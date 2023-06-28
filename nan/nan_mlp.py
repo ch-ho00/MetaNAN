@@ -134,7 +134,7 @@ class NanMLP(nn.Module):
 
         if args.views_attn:
             input_channel = in_feat_ch + 3
-            view_att_nhead = 5 # if not args.bpn_prenet else 3
+            view_att_nhead = 5  if not args.bpn_prenet else 3
             self.views_attention = MultiHeadAttention(view_att_nhead, input_channel, 7, 8)
 
         self.vis_fc = nn.Sequential(nn.Linear(32, 32),
@@ -154,7 +154,7 @@ class NanMLP(nn.Module):
                                          nn.Linear(64, 16),
                                          self.activation_func)
 
-        ray_att_nhead = 4  # if not args.bpn_prenet else 3
+        ray_att_nhead = 4  if not args.bpn_prenet else 3
         self.ray_attention = MultiHeadAttention(ray_att_nhead, 16, 4, 4)
         self.out_geometry_fc = nn.Sequential(nn.Linear(16, 16),
                                              self.activation_func,

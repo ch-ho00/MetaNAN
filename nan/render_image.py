@@ -29,7 +29,8 @@ def render_single_image(ray_sampler: RaySampler,
                         model,
                         args,
                         save_pixel=None,
-                        global_step=0) -> Dict[str, RaysOutput]:
+                        global_step=0,
+                        eval_=False) -> Dict[str, RaysOutput]:
     """
     :param: save_pixel:
     :param: featmaps:
@@ -71,8 +72,11 @@ def render_single_image(ray_sampler: RaySampler,
         if not args.weightsum_filtered:
             org_src_rgbs = ray_sampler.src_rgbs.to(device)
         else:
-            w = alpha ** global_step
-            org_src_rgbs = src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(device) * w
+            if eval_:
+                org_src_rgbs = src_rgbs
+            else:
+                w = alpha ** global_step
+                org_src_rgbs = src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(device) * w
 
         ret       = ray_render.render_batch(ray_batch=ray_batch,
                                             proc_src_rgbs=src_rgbs,
