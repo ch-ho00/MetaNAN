@@ -54,7 +54,7 @@ if not skip_forward:
 
     N_val_imgs = len(val_dataset.render_rgb_files)
     render_result = {}
-    visualize_freq = 8
+    visualize_freq = 2
 
     for idx in tqdm(range(N_val_imgs), desc='Validation Image Number'):
         render_result[idx] = {}

@@ -16,6 +16,7 @@ from basicsr.utils import DiffJPEG
 from basicsr.utils.img_process_util import filter2D
 from basicsr.data.degradations import circular_lowpass_kernel, random_mixed_kernels
 import itertools
+from pprint import pprint
 
 
 class Mode(Enum):
@@ -176,6 +177,10 @@ class BurstDataset(Dataset, ABC):
             print(f"num of source views {self.num_source_views}")
 
             self.scenes_dirs = [dir_ for dir_ in self.scenes_dirs if 'sparse' not in str(dir_)]
+            if self.mode != Mode.train:
+                self.scenes_dirs.sort()
+                pprint(self.scenes_dirs)
+
             for i, scene_path in enumerate(self.scenes_dirs):
                 self.add_single_scene(i, scene_path)
 
