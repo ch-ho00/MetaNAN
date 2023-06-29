@@ -367,29 +367,12 @@ class RayRender:
         if not self.model.args.degae_feat:
             featmaps = self.model.feature_net(src_rgbs)
         else:
-            with torch.no_grad():
-                degfeat = self.model.degae.encoder(orig_rgbs[0].permute(0,3,1,2), img_wh=torch.Tensor([orig_rgbs.shape[-2], orig_rgbs.shape[-3]]).int().to(orig_rgbs.device))    
-
-            scale1, scale2, scale3, scale4 = None, None, None, None
-            shift1, shift2, shift3, shift4 = None, None, None, None
-            if self.model.args.meta_module:
-                scale1 = self.model.cond_scale1(noise_vec)
-                scale2 = self.model.cond_scale2(noise_vec)
-                scale3 = self.model.cond_scale3(noise_vec)
-                scale4 = self.model.cond_scale4(noise_vec)
-
-                shift1 = self.model.cond_shift1(noise_vec)
-                shift2 = self.model.cond_shift2(noise_vec)                    
-                shift3 = self.model.cond_shift3(noise_vec)
-                shift4 = self.model.cond_shift4(noise_vec)
-
-            degfeat = self.model.feature_conv_0(degfeat, scale1, shift1) 
-            degfeat = self.model.feature_conv_1(degfeat, scale2, shift2) 
-            degfeat = self.model.feature_conv_2(degfeat, scale3, shift3)
-            feat    = self.model.feature_conv_3(degfeat, scale4, shift4)
-
-            del scale1, scale2, scale3, scale4
-            del shift1, shift2, shift3, shift4
+            # with torch.no_grad():
+            degfeat = self.model.degae.encoder(orig_rgbs[0].permute(0,3,1,2), img_wh=torch.Tensor([orig_rgbs.shape[-2], orig_rgbs.shape[-3]]).int().to(orig_rgbs.device))    
+            degfeat = self.model.feature_conv_0(degfeat) 
+            degfeat = self.model.feature_conv_1(degfeat) 
+            degfeat = self.model.feature_conv_2(degfeat)
+            feat    = self.model.feature_conv_3(degfeat)
 
             featmaps = {
                 'coarse' : feat[:,:self.model.args.coarse_feat_dim],

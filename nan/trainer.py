@@ -214,7 +214,7 @@ class Trainer:
             else:
                 delin_pred = de_linearize(proc_src_rgbs[0], train_data['white_level'][0].to(self.device))
                 delin_tar = de_linearize(ray_sampler.src_rgbs[0].to(self.device), train_data['white_level'][0].to(self.device))
-                reconst_loss = reconstruction_loss(delin_pred.permute(0,3,1,2), delin_tar.permute(0,3,1,2), self.device, kernel_size=13) * self.args.lambda_reconst_loss
+                reconst_loss = reconstruction_loss(delin_pred.permute(0,3,1,2), delin_tar.permute(0,3,1,2), self.device) * self.args.lambda_reconst_loss
 
             loss += reconst_loss
             self.scalars_to_log['train/reconst_loss'] = reconst_loss

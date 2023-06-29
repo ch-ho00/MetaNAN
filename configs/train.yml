@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : DegAE_revised_0.3annealCapDiscrimTarget_weightSumFilter0.9998_perImg_ftEmbed_embedLoss1e3_adv5e-3_reconst1e-3_novelView
+expname                     : DegAE_unfreezeLast2_revised_0.3annealCapDiscrimTarget_weightSumFilter0.9998_perImg_ftEmbed_embedLoss1e3_adv5e-3_randKerreconst1e-2
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -31,7 +31,8 @@ bpn_per_img                 : True
 ft_embed_fc                 : True
 cond_renderer               : True
 lambda_adv                  : 0.005
-lambda_reconst_loss         : 0.001
+lambda_reconst_loss         : 0.01
+unfreeze_last_degae         : True #False
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory

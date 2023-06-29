@@ -161,18 +161,6 @@ class NANScheme(nn.Module):
                 self.feature_conv_2 = BasicBlock(dim_, dim_, stride=2, downsample=True,  rand_noise=True).to(device)
                 self.feature_conv_3 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=True).to(device)
 
-                if self.args.meta_module:
-                    self.cond_scale1 = nn.Linear(512, dim_, bias=True).to(device)
-                    self.cond_shift1 = nn.Linear(512, dim_, bias=True).to(device)
-
-                    self.cond_scale2 = nn.Linear(512, dim_, bias=True).to(device)
-                    self.cond_shift2 = nn.Linear(512, dim_, bias=True).to(device)
-
-                    self.cond_scale3 = nn.Linear(512, dim_, bias=True).to(device)
-                    self.cond_shift3 = nn.Linear(512, dim_, bias=True).to(device)
-
-                    self.cond_scale4 = nn.Linear(512, dim_, bias=True).to(device)
-                    self.cond_shift4 = nn.Linear(512, dim_, bias=True).to(device)
 
         if not args.degae_feat:
             self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
@@ -216,16 +204,13 @@ class NANScheme(nn.Module):
                 params_list += [ {'params': self.feature_conv_0.parameters(), 'lr': self.args.lrate_feature},
                                 {'params': self.feature_conv_1.parameters(), 'lr': self.args.lrate_feature},
                                 {'params': self.feature_conv_2.parameters(), 'lr': self.args.lrate_feature},
-                                {'params': self.feature_conv_3.parameters(), 'lr': self.args.lrate_feature}]        
-            if self.args.meta_module:
-                params_list += [{'params' : self.cond_shift1.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_scale1.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_scale2.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_shift2.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_scale3.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_shift3.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_shift4.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_scale4.parameters(), 'lr':self.args.lrate_feature}]            
+                                {'params': self.feature_conv_3.parameters(), 'lr': self.args.lrate_feature}]
+                if self.args.unfreeze_last_degae:
+                    params_list += [ {'params': self.degae.encoder.upsample_3.parameters(), 'lr': self.args.lrate_feature * 1e-2},
+                                    {'params': self.degae.encoder.upsample_2.parameters(), 'lr': self.args.lrate_feature * 1e-2},
+                                    {'params': self.degae.encoder.decoderlayer_3.parameters(), 'lr': self.args.lrate_feature * 1e-2},
+                                    {'params': self.degae.encoder.decoderlayer_2.parameters(), 'lr': self.args.lrate_feature * 1e-2}]
+
             if self.args.ft_embed_fc:
                 params_list += [{'params' : self.degae.degrep_extractor.degrep_conv.parameters(), 'lr':self.args.lrate_feature * 1e-2},
                                 {'params' : self.degae.degrep_extractor.degrep_fc.parameters(),   'lr':self.args.lrate_feature * 1e-2}]
@@ -260,19 +245,12 @@ class NANScheme(nn.Module):
             self.feature_conv_1.eval()        
             self.feature_conv_2.eval()        
             self.feature_conv_3.eval()        
+            if self.args.unfreeze_last_degae:
+                self.degae.encoder.upsample_3.eval()
+                self.degae.encoder.upsample_2.eval()
+                self.degae.encoder.decoderlayer_3.eval()
+                self.degae.encoder.decoderlayer_3.eval()
 
-            if self.args.meta_module:
-                self.cond_scale1.eval()       
-                self.cond_shift1.eval()       
-
-                self.cond_scale2.eval()       
-                self.cond_shift2.eval()       
-
-                self.cond_scale3.eval()       
-                self.cond_shift3.eval()       
-
-                self.cond_scale4.eval()       
-                self.cond_shift4.eval()       
         else:
             self.feature_net.eval()
             if self.args.meta_module:
@@ -298,19 +276,12 @@ class NANScheme(nn.Module):
             self.feature_conv_1.train()        
             self.feature_conv_2.train()        
             self.feature_conv_3.train()        
+            if self.args.unfreeze_last_degae:
+                self.degae.encoder.upsample_3.train()
+                self.degae.encoder.upsample_2.train()
+                self.degae.encoder.decoderlayer_3.train()
+                self.degae.encoder.decoderlayer_3.train()
 
-            if self.args.meta_module:
-                self.cond_scale1.train()       
-                self.cond_shift1.train()       
-                
-                self.cond_scale2.train()       
-                self.cond_shift2.train()       
-
-                self.cond_scale3.train()       
-                self.cond_shift3.train()       
-                
-                self.cond_scale4.train()       
-                self.cond_shift4.train()       
         else:
             self.feature_net.train()
             if self.args.meta_module:

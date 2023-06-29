@@ -41,10 +41,10 @@ if args.distributed:
 model_name = str(args.ckpt_path).split('/')[-1][:-4]
 save_folder = Path(f'eval_result/{model_name}')
 save_folder.mkdir(parents=True, exist_ok=True)
-skip_forward = False
+skip_forward = True
 
+args.eval_gain = [1,2,4,8,16,20] # 
 if not skip_forward:
-    args.eval_gain = [1,2,4,8,16,20] # 
     val_dataset = dataset_dict["llff_test"](args, Mode.validation, scenes=[])
 
     load_ckpt = args.ckpt_path
@@ -133,11 +133,39 @@ for img_idx in render_result.keys():
     rgb_std[img_idx] = np.std(pred_rgbs, axis=0).mean()
     depth_std[img_idx] = np.std(pred_depths, axis=0).mean()
 
-final_result['mean_rgb_std'] = np.mean(list(rgb_std.values()))
-final_result['mean_depth_std'] = np.mean(list(depth_std.values()))
 
-with open(f'./{str(save_folder)}/result_final.pkl', 'wb') as fp:
-    pickle.dump(final_result, fp)
+import pdb; pdb.set_trace()
+percentile = 15
+
+rgb_std   = np.array(list(rgb_std.values()))
+rgb_top = np.percentile(rgb_std , percentile)
+rgb_bottom = np.percentile(rgb_std , 100 - percentile)
+final_result['mean_rgb_std']   = np.std(rgb_std[(rgb_std >= rgb_top) & (rgb_std <= rgb_bottom)])
+
+depth_std   = np.array(list(depth_std.values()))
+depth_top = np.percentile(depth_std , percentile)
+depth_bottom = np.percentile(depth_std , 100 - percentile)
+final_result['mean_depth_std']   = np.std(depth_std[(depth_std >= depth_top) & (depth_std <= depth_bottom)])
+
+# with open(f'./{str(save_folder)}/result_final.pkl', 'wb') as fp:
+#     pickle.dump(final_result, fp)
 
 pprint(final_result)
+
+
+# depth_std = {}
+# rgb_std = {}
+# for img_idx in render_result.keys():
+#     pred_rgbs = np.stack([render_result[img_idx][gain_level]['rgb'] for gain_level in render_result[img_idx].keys()])
+#     pred_depths = np.stack([render_result[img_idx][gain_level]['depth'] for gain_level in render_result[img_idx].keys()])
+#     rgb_std[img_idx] = np.std(pred_rgbs, axis=0).mean()
+#     depth_std[img_idx] = np.std(pred_depths, axis=0).mean()
+
+# final_result['mean_rgb_std'] = np.mean(list(rgb_std.values()))
+# final_result['mean_depth_std'] = np.mean(list(depth_std.values()))
+
+# with open(f'./{str(save_folder)}/result_final.pkl', 'wb') as fp:
+#     pickle.dump(final_result, fp)
+
+# pprint(final_result)
 
