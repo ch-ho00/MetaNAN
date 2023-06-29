@@ -56,7 +56,7 @@ def plateau_shaped_blur(image, kernel_size, beta):
     return F.conv2d(image, kernel.unsqueeze(0).unsqueeze(0), padding=center)
 
 
-def reconstruction_loss(output, target, device):
+def reconstruction_loss(output, target, device, kernel_size=None):
     """
     Computes the reconstruction loss between the output and target images.
     """
@@ -70,7 +70,8 @@ def reconstruction_loss(output, target, device):
     # Choose a random kernel and kernel size
     # kernel_choice = np.random.choice(kernel_choices, p=kernel_probs)
     kernel_choice = 'gaussian'
-    kernel_size = np.random.choice(kernel_size_choices)
+    if kernel_size == None:
+        kernel_size = np.random.choice(kernel_size_choices)
 
     # Choose beta or sigma for the kernel if applicable
     if kernel_choice == "generalized_gaussian":

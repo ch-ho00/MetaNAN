@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : DegAE_0.3annealCapDiscrimTarget_weightSumFilter0.9998_perImg_ftEmbed_embedLoss1e3_adv1e-4_reconst1e-2_denoise
+expname                     : DegAE_revised_0.3annealCapDiscrimTarget_weightSumFilter0.9998_perImg_ftEmbed_embedLoss1e3_adv5e-3_reconst1e-3_novelView
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -30,8 +30,8 @@ bpn_prenet                  : True
 bpn_per_img                 : True
 ft_embed_fc                 : True
 cond_renderer               : True
-lambda_adv                  : 0.0001
-lambda_reconst_loss         : 0.01
+lambda_adv                  : 0.005
+lambda_reconst_loss         : 0.001
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
@@ -54,7 +54,7 @@ no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True
 
-include_target              : True  # set to False if you want to synthesize images rather than denoise the images
+include_target              : False  # set to False if you want to synthesize images rather than denoise the images
 eval_gain                    : [20, 16, 8]
 std                         : [-3.0, -0.5, -2.0, -0.5]
 
