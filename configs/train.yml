@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : DegAE_unfreezeLast2_revised_0.3annealCapDiscrimTarget_weightSumFilter0.9998_perImg_ftEmbed_embedLoss1e3_adv5e-3_randKerreconst1e-2
+expname                     : DegAE_unfreezeLast1_0.3annealCapDiscrimTarget_weightSumFilter0.9998_perImg_ftEmbed_embedLoss1e3 #_adv5e-3_randKerreconst1e-2
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -30,8 +30,8 @@ bpn_prenet                  : True
 bpn_per_img                 : True
 ft_embed_fc                 : True
 cond_renderer               : True
-lambda_adv                  : 0.005
-lambda_reconst_loss         : 0.01
+lambda_adv                  : 0.0
+lambda_reconst_loss         : 0.0
 unfreeze_last_degae         : True #False
 
 ### TESTING

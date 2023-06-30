@@ -207,9 +207,7 @@ class NANScheme(nn.Module):
                                 {'params': self.feature_conv_3.parameters(), 'lr': self.args.lrate_feature}]
                 if self.args.unfreeze_last_degae:
                     params_list += [ {'params': self.degae.encoder.upsample_3.parameters(), 'lr': self.args.lrate_feature * 1e-2},
-                                    {'params': self.degae.encoder.upsample_2.parameters(), 'lr': self.args.lrate_feature * 1e-2},
-                                    {'params': self.degae.encoder.decoderlayer_3.parameters(), 'lr': self.args.lrate_feature * 1e-2},
-                                    {'params': self.degae.encoder.decoderlayer_2.parameters(), 'lr': self.args.lrate_feature * 1e-2}]
+                                    {'params': self.degae.encoder.decoderlayer_3.parameters(), 'lr': self.args.lrate_feature * 1e-2}]
 
             if self.args.ft_embed_fc:
                 params_list += [{'params' : self.degae.degrep_extractor.degrep_conv.parameters(), 'lr':self.args.lrate_feature * 1e-2},
@@ -251,6 +249,11 @@ class NANScheme(nn.Module):
                 self.degae.encoder.decoderlayer_3.eval()
                 self.degae.encoder.decoderlayer_3.eval()
 
+                for param in self.degae.encoder.decoderlayer_3.parameters():
+                    param.requires_grad = False
+                for param in self.degae.encoder.upsample_3.parameters():
+                    param.requires_grad = False
+
         else:
             self.feature_net.eval()
             if self.args.meta_module:
@@ -281,6 +284,11 @@ class NANScheme(nn.Module):
                 self.degae.encoder.upsample_2.train()
                 self.degae.encoder.decoderlayer_3.train()
                 self.degae.encoder.decoderlayer_3.train()
+
+                for param in self.degae.encoder.decoderlayer_3.parameters():
+                    param.requires_grad = True
+                for param in self.degae.encoder.upsample_3.parameters():
+                    param.requires_grad = True
 
         else:
             self.feature_net.train()
