@@ -175,8 +175,12 @@ class Trainer:
                                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None,
                                                                 white_level=ray_batch['white_level'])
 
-        if not self.args.weightsum_filtered:
+        if not self.args.weightsum_filtered and not self.args.sum_filtered:
             org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
+        elif self.args.sum_filtered:
+            w = alpha ** global_step
+            org_src_rgbs_ = proc_src_rgbs
+            self.scalars_to_log['weight'] = w 
         else:
             w = alpha ** global_step
             org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
@@ -214,8 +218,8 @@ class Trainer:
             else:
                 delin_pred = de_linearize(proc_src_rgbs[0], train_data['white_level'][0].to(self.device))
                 delin_tar = de_linearize(ray_sampler.src_rgbs[0].to(self.device), train_data['white_level'][0].to(self.device))
-                reconst_loss = reconstruction_loss(delin_pred.permute(0,3,1,2), delin_tar.permute(0,3,1,2), self.device) * self.args.lambda_reconst_loss
-
+                reconst_loss = reconstruction_loss(delin_pred.permute(0,3,1,2), delin_tar.permute(0,3,1,2), self.device) 
+                reconst_loss = reconst_loss * self.args.lambda_reconst_loss * w
             loss += reconst_loss
             self.scalars_to_log['train/reconst_loss'] = reconst_loss
                         
