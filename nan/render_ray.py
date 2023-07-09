@@ -13,12 +13,14 @@
 # limitations under the License.
 from typing import Dict
 import torch
+import torch.nn as nn
 from collections import OrderedDict
 import torch.nn.functional as F
 
 from nan.model import NANScheme
 from nan.projection import Projector
 from nan.raw2output import RaysOutput
+from nan.feature_network import BasicBlock
 
 def stack_image(image, N=2, pad=7):
     b, c, h, w = image.size()
@@ -116,6 +118,62 @@ def sample_pdf(bins, weights, N_samples, det=False):
     return samples
 
 
+
+# Positional encoding (section 5.1)
+class Embedder(nn.Module):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.kwargs = kwargs
+        d = self.kwargs['input_dims']
+        out_dim = 0
+        if self.kwargs['include_input']:
+            out_dim += d
+
+        max_freq = self.kwargs['max_freq_log2']
+        N_freqs = self.kwargs['num_freqs']
+
+        if self.kwargs['log_sampling']:
+            self.freq_bands = 2. ** torch.linspace(0., max_freq, steps=N_freqs)
+        else:
+            self.freq_bands = torch.linspace(2. ** 0., 2. ** max_freq, steps=N_freqs)
+
+        for freq in self.freq_bands:
+            for p_fn in self.kwargs['periodic_fns']:
+                out_dim += d
+
+        self.out_dim = out_dim
+
+    def forward(self, inputs):
+        # print(f"input device: {inputs.device}, freq_bands device: {self.freq_bands.device}")
+        self.freq_bands = self.freq_bands.type_as(inputs)
+        outputs = []
+        if self.kwargs['include_input']:
+            outputs.append(inputs)
+
+        for freq in self.freq_bands:
+            for p_fn in self.kwargs['periodic_fns']:
+                outputs.append(p_fn(inputs * freq))
+        return torch.cat(outputs, -1)
+
+
+def get_embedder(multires, i=0, input_dim=3):
+    if i == -1:
+        return nn.Identity(), 3
+
+    embed_kwargs = {
+        'include_input': True,
+        'input_dims': input_dim,
+        'max_freq_log2': multires - 1,
+        'num_freqs': multires,
+        'log_sampling': True,
+        'periodic_fns': [torch.sin, torch.cos],
+    }
+
+    embedder_obj = Embedder(**embed_kwargs)
+    return embedder_obj, embedder_obj.out_dim
+
+
+
 class RayRender:
     """
     Object that handle the actual rendering:
@@ -137,6 +195,21 @@ class RayRender:
         self.det = args.det
         self.white_bkgd = args.white_bkgd
 
+        if self.model.args.blur_render:
+            self.num_kernel_pt = 5
+            self.img_embed_conv = BasicBlock(128, 128)
+            self.pattern_pos_fc = nn.Sequential(
+                nn.Linear(512, 128),
+                nn.ELU(inplace=True),
+                nn.Linear(128, 2 * self.num_kernel_pt)
+            )
+            self.in_embed_fn, self.in_embed_cnl = get_embedder(2, input_dim=2)
+            self.spatial_embed_fn, self.spatial_embed_cnl = get_embedder(2, input_dim=2)            
+            self.blur_kernel_fc = nn.Sequential(
+                nn.Linear(128, 64),
+                nn.Linear(64, 5)
+            )
+
         # For debug purposes
         if save_pixel is not None:
             y, x = tuple(zip(*save_pixel))
@@ -154,6 +227,47 @@ class RayRender:
             idx_in_batch, idx_in_all = torch.where(row_detection)
             if len(idx_in_batch) > 0:
                 return tuple(zip(*(idx_in_batch.tolist(), self.save_pixels[:2:, idx_in_all].T.flip(1).tolist())))
+
+    def sample_along_blur_ray_coarse(self, ray_o, ray_d, depth_range, featmaps):
+        """
+        :param: ray_o: origin of the ray in scene coordinate system; tensor of shape [N_rays, 3]
+        :param: ray_d: homogeneous ray direction vectors in scene coordinate system; tensor of shape [N_rays, 3]
+        :param: depth_range: [near_depth, far_depth]
+        :param: inv_uniform: if True, uniformly sampling inverse depth
+        :param: det: if True, will perform deterministic sampling
+        :return: 3D point: tensor of shape [N_rays, N_samples, 3], z_vals: tensor of shape [N_rays, N_samples, 3]
+        """
+        # will sample inside [near_depth, far_depth]
+        # assume the nearest possible depth is at least (min_ratio * depth)
+        import pdb; pdb.set_trace()
+        near_depth_value = depth_range[0, 0]
+        far_depth_value = depth_range[0, 1]
+        assert 0 < near_depth_value < far_depth_value and far_depth_value > 0
+
+        near_depth = near_depth_value * torch.ones_like(ray_d[..., 0])
+        far_depth = far_depth_value * torch.ones_like(ray_d[..., 0])
+
+        if self.inv_uniform:
+            start = 1. / near_depth  # [N_rays,]
+            step = (1. / far_depth - start) / (self.N_samples - 1)
+            inv_z_vals = torch.stack([start + i * step for i in range(self.N_samples)], dim=1)  # [N_rays, N_samples]
+            z_vals = 1. / inv_z_vals
+        else:
+            start = near_depth
+            step = (far_depth - near_depth) / (self.N_samples - 1)
+            z_vals = torch.stack([start + i * step for i in range(self.N_samples)], dim=1)  # [N_rays, N_samples]
+
+        if not self.det:
+            # get intervals between samples
+            mids = .5 * (z_vals[:, 1:] + z_vals[:, :-1])
+            upper = torch.cat([mids, z_vals[:, -1:]], dim=-1)
+            lower = torch.cat([z_vals[:, 0:1], mids], dim=-1)
+            # uniform samples in those intervals
+            t_rand = torch.rand_like(z_vals)
+            z_vals = lower + (upper - lower) * t_rand  # [N_rays, N_samples]
+
+        pts = z_vals.unsqueeze(2) * ray_d.unsqueeze(1) + ray_o.unsqueeze(1)  # [N_rays, N_samples, 3]
+        return pts, z_vals
 
     def sample_along_ray_coarse(self, ray_o, ray_d, depth_range):
         """
@@ -225,7 +339,7 @@ class RayRender:
         return pts, z_vals
 
     def render_batch(self, ray_batch, proc_src_rgbs, featmaps, org_src_rgbs,
-                     sigma_estimate) -> Dict[str, RaysOutput]:
+                     sigma_estimate, blur_target=False) -> Dict[str, RaysOutput]:
         """
         :param sigma_estimate: (1, N, H, W, 3)
         :param org_src_rgbs: (1, N, H, W, 3)
@@ -253,9 +367,15 @@ class RayRender:
         # pts:    [R, S, 3]
         # z_vals: [R, S]
         # Sample points along ray for coarse phase
-        pts_coarse, z_vals_coarse = self.sample_along_ray_coarse(ray_o=ray_batch['ray_o'],
-                                                                 ray_d=ray_batch['ray_d'],
-                                                                 depth_range=ray_batch['depth_range'])
+        if self.model.args.blur_render and blur_target:
+            pts_coarse, z_vals_coarse = self.sample_along_blur_ray_coarse(ray_o=ray_batch['ray_o'],
+                                                                    ray_d=ray_batch['ray_d'],
+                                                                    depth_range=ray_batch['depth_range'],
+                                                                    featmaps=featmaps)            
+        else:
+            pts_coarse, z_vals_coarse = self.sample_along_ray_coarse(ray_o=ray_batch['ray_o'],
+                                                                    ray_d=ray_batch['ray_d'],
+                                                                    depth_range=ray_batch['depth_range'])
 
         # Process the rays and return the coarse phase output
         coarse_ray_out = self.process_rays_batch(ray_batch=ray_batch, pts=pts_coarse, z_vals=z_vals_coarse, save_idx=save_idx,
@@ -266,8 +386,8 @@ class RayRender:
         if self.fine_processing:
             # Sample points along ray for fine phase, based on the coarse output
             pts_fine, z_vals_fine = self.sample_along_ray_fine(coarse_out=coarse_ray_out,
-                                                               z_vals=z_vals_coarse,
-                                                               ray_batch=ray_batch)
+                                                            z_vals=z_vals_coarse,
+                                                            ray_batch=ray_batch)
 
             # Process the rays and return the fine phase output
             fine = self.process_rays_batch(ray_batch=ray_batch, pts=pts_fine, z_vals=z_vals_fine, save_idx=save_idx,
@@ -278,7 +398,7 @@ class RayRender:
         return batch_out
 
     def process_rays_batch(self, ray_batch, pts, z_vals, save_idx, level, proc_src_rgbs, featmaps,
-                           org_src_rgbs, sigma_estimate):
+                           org_src_rgbs, sigma_estimate, blur_target=False):
         """
         :param sigma_estimate: (1, N, H, W, 3)
         :param org_src_rgbs: (1, N, H, W, 3)
@@ -326,40 +446,31 @@ class RayRender:
         """
         conv1_weights = None
         orig_rgbs = src_rgbs
+        featmaps = {}
         if self.model.pre_net is not None:
             if self.model.args.bpn_prenet:
                 pad = 7
                 npatch_per_side = 2
-                if self.model.args.bpn_per_img:
-                    src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
-                    src_rgbs_stacked = stack_image(src_rgbs, N=npatch_per_side, pad=pad)
-                    src_rgbs = self.model.pre_net(src_rgbs_stacked, src_rgbs_stacked[:,None])[:,0]                    
-                    del src_rgbs_stacked
-                    src_rgbs = unstack_image(src_rgbs, total_n_patch=npatch_per_side**2, pad=pad)
-                else:
-                    src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
-                    src_rgbs_stacked = stack_image(src_rgbs, N=npatch_per_side, pad=pad)
-                    hw = src_rgbs_stacked.shape[-2:]
-                    src_rgbs_stacked = src_rgbs_stacked.reshape(self.model.args.num_source_views, npatch_per_side **2, 3, hw[0], hw[1]).permute(1,0,2,3,4)
-                    src_rgbs = self.model.pre_net(src_rgbs_stacked.reshape(npatch_per_side **2, self.model.args.num_source_views * 3, hw[0], hw[1]), src_rgbs_stacked)
-                    del src_rgbs_stacked
-                    src_rgbs = src_rgbs.transpose(0,1)
-                    src_rgbs = unstack_image(src_rgbs.reshape(-1,3,hw[0], hw[1]), total_n_patch=npatch_per_side**2, pad=pad)
+                src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
+                src_rgbs_stacked = stack_image(src_rgbs, N=npatch_per_side, pad=pad)
+                src_rgbs, bpn_feats = self.model.pre_net(src_rgbs_stacked, src_rgbs_stacked[:,None])                    
+                src_rgbs = src_rgbs[:,0]
+                del src_rgbs_stacked
+                src_rgbs = unstack_image(src_rgbs, total_n_patch=npatch_per_side**2, pad=pad)
+                bpn_feats = unstack_image(bpn_feats, total_n_patch=npatch_per_side**2, pad=1)
+                featmaps['bpn_feats'] = bpn_feats
                 torch.cuda.empty_cache()
             else:
                 src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
 
 
         noise_vec = None
-        if (self.model.args.degae_feat and self.model.args.meta_module) or self.model.args.cond_renderer:
+        if self.model.args.cond_renderer:
             with torch.no_grad():
-                if self.model.args.downscale_input_img:
-                    input_rgb = F.interpolate(orig_rgbs[0].permute(0,3,1,2), scale_factor=0.5)
-                else:
-                    H, W = orig_rgbs.shape[2:4]
-                    start_h = 0 if H < 384 else (H - 384) // 2
-                    start_w = 0 if W < 384 else (W - 384) // 2
-                    input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
+                H, W = orig_rgbs.shape[2:4]
+                start_h = 0 if H < 384 else (H - 384) // 2
+                start_w = 0 if W < 384 else (W - 384) // 2
+                input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
                 noise_vec = self.model.degae.degrep_extractor(input_rgb, white_level.to(orig_rgbs.device))
                 del input_rgb
                 torch.cuda.empty_cache()
@@ -374,10 +485,8 @@ class RayRender:
             degfeat = self.model.feature_conv_2(degfeat)
             feat    = self.model.feature_conv_3(degfeat)
 
-            featmaps = {
-                'coarse' : feat[:,:self.model.args.coarse_feat_dim],
-                'fine'   : feat[:,self.model.args.coarse_feat_dim:]
-            }
+            featmaps['coarse']  = feat[:,:self.model.args.coarse_feat_dim]
+            featmaps['fine']    = feat[:,self.model.args.coarse_feat_dim:]
             del degfeat
 
         src_rgbs = src_rgbs.permute(0, 2, 3, 1).unsqueeze(0)

@@ -82,15 +82,10 @@ class DeblurDataset(NoiseDataset, ABC):
         return load_llff_data(scene_path, load_imgs=False, factor=factor)
 
     def __len__(self):
-        if self.args.degae_training:
-            return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files) * len(self.args.eval_gain)
         return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files)
 
     def __getitem__(self, idx):
-        if self.args.degae_training:
-            return self.get_singleview_item(idx)            
-        else:
-            return self.get_multiview_item(idx)
+        return self.get_multiview_item(idx)
 
     def synfile2clean(self, rgb_file):
         noise_type = 'syn_motion' if 'synthetic_camera_motion_blur' in str(rgb_file) else 'syn_focus'
@@ -105,125 +100,32 @@ class DeblurDataset(NoiseDataset, ABC):
 
         return rgb_file, rgb_clean_file
 
-    def get_singleview_item(self, idx):
-        # Read target data:
-        eval_gain = self.args.eval_gain[idx // len(self.render_rgb_files)]
-        idx = idx % len(self.render_rgb_files)
-        rgb_file: Path = self.render_rgb_files[idx]
-        rgb_file , rgb_clean_file = self.synfile2clean(rgb_file)
-
-        # image (H, W, 3)
-        rgb_noisy = self.read_image(rgb_file)
-        rgb_clean = self.read_image(rgb_clean_file)
-
-        side = self.args.img_size
-        if self.mode in [Mode.train]:
-            crop_h = np.random.randint(low=0, high=768 - side)
-            crop_w =  np.random.randint(low=0, high=1024 - side)
-        else:
-            crop_h = 768 // 2
-            crop_w = 1024 // 2
-        rgb_noisy = rgb_noisy[crop_h:crop_h+side, crop_w:crop_w+side].transpose((2,0,1))[None]
-        rgb_clean = rgb_clean[crop_h:crop_h+side, crop_w:crop_w+side].transpose((2,0,1))[None]
-
-        idx_ref = idx
-        while idx == idx_ref:
-            idx_ref = random.choice(list(range(len(self.render_rgb_files))))        
-        rgb_file_ref: Path = self.render_rgb_files[idx]
-
-        noise_type = 'syn_motion' if 'synthetic_camera_motion_blur' in str(rgb_file) else 'syn_focus'
-        folder_name = 'camera_motion_blur' if noise_type == 'syn_motion' else 'defocus_blur'
-        noise_name = 'blur' if noise_type == 'syn_motion' else 'defocus'
-        rgb_file_ref        = str(rgb_file_ref).replace(str(self.folder_path) + '/', '')
-        rgb_clean_file_ref  = rgb_file_ref.replace(folder_name, 'gt').replace(noise_name, 'gt').replace('images_1', 'raw').replace('images', 'raw')
-        rgb_file_ref        = self.folder_path / rgb_file_ref
-        rgb_clean_file_ref  = self.folder_path / rgb_clean_file_ref
-
-        rgb_clean_ref = self.read_image(rgb_clean_file_ref)
-
-        crop_h = np.random.randint(low=0, high=768 - side)
-        crop_w =  np.random.randint(low=0, high=1024 -side)
-        rgb_clean_ref = rgb_clean_ref[crop_h:crop_h+side, crop_w:crop_w+side].transpose((2,0,1))[None]
-
-        # augment
-        if self.mode in [Mode.train]:
-            if random.random() < 0.5:
-                rgb_noisy = np.flip(rgb_noisy, axis=-1).copy()
-                rgb_clean = np.flip(rgb_clean, axis=-1).copy()
-            if random.random() < 0.5:
-                rgb_noisy = np.flip(rgb_noisy, axis=-2).copy()
-                rgb_clean = np.flip(rgb_clean, axis=-2).copy()
-
-            if random.random() < 0.5:
-                rgb_clean_ref = np.flip(rgb_clean_ref, axis=-1).copy()
-            if random.random() < 0.5:
-                rgb_clean_ref = np.flip(rgb_clean_ref, axis=-2).copy()
-
-            white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
-        else:
-            white_level = torch.Tensor([1])
-
-        # d1
-        if self.mode is Mode.train:
-            if self.blur_degrade and random.random() > 0.5:
-                rgb_d1 = self.apply_blur_kernel(torch.from_numpy(rgb_noisy), final_sinc=False).clamp(0,1)
-            else:
-                rgb_d1 = rgb_clean 
-
-            white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
-
-            rgb_d1 = re_linearize(rgb_d1, white_level)
-            clean_d1 = False
-
-            if random.random() > 0.5:
-                rgb_d1 , _ = self.add_noise(rgb_d1)
-            else:
-                clean_d1 = True                                    
-        else:
-            rgb_d1 = re_linearize(rgb_noisy, white_level)
-            rgb_d1, _ = self.add_noise_level(rgb_d1, eval_gain)                        
-
-        # d2
-        d2_rgbs = np.concatenate([rgb_clean, rgb_clean_ref], axis=0)
-        d2_rgbs = torch.from_numpy(d2_rgbs)
-        if self.mode is Mode.train:
-            if self.blur_degrade and random.random() > 0.5:
-                d2_rgbs = self.apply_blur_kernel(d2_rgbs, final_sinc=False).clamp(0,1)
-
-            d2_rgbs = re_linearize(d2_rgbs, white_level)
-
-            if random.random() > 0.5 or clean_d1:
-                d2_rgbs, _ = self.add_noise(d2_rgbs)
-                clean_d2 = False        
-
-        else:
-            d2_rgbs = re_linearize(d2_rgbs[:, :3], white_level)
-
-        rgb_d2, rgb_ref_d2 = d2_rgbs[0], d2_rgbs[1]
-        batch_dict = {
-                      'noisy_rgb'       : rgb_d1.squeeze(),
-                      'target_rgb'      : rgb_d2.squeeze(),
-                      'ref_rgb'         : rgb_ref_d2.squeeze(),
-                      'white_level'     : white_level
-        }
-
-
-        if self.mode is not Mode.train:
-            batch_dict['eval_gain'] = eval_gain
-
-        return batch_dict  
 
     def get_multiview_item(self, idx):
         # Read target data:
-        eval_gain = -1 # self.args.eval_gain[idx // len(self.render_rgb_files)]
+        eval_gain = 0 # self.args.eval_gain[idx // len(self.render_rgb_files)]
         idx = idx % len(self.render_rgb_files)
         rgb_file: Path = self.render_rgb_files[idx]
-        if 'synthetic' in str(rgb_file):
-            _, rgb_file = self.synfile2clean(rgb_file)
         
+        blur_target = True
+        scene_name = str(rgb_file).split('/')[-3]
+        holdout = self.scene_holdout[scene_name]
 
         # image (H, W, 3)
         rgb = self.read_image(rgb_file)
+        if self.mode == Mode.train:
+            if 'synthetic' not in str(rgb_file) and idx % holdout == 0:
+                blur_target = False            
+            elif 'synthetic' in str(rgb_file) and (random.random() > 0.5 or self.mode != Mode.train):
+                _, rgb_file_clean = self.synfile2clean(rgb_file)
+                rgb = self.read_image(rgb_file_clean)
+                blur_target = False            
+        else:
+            blur_target = False
+            if 'synthetic' in str(rgb_file):
+                _, rgb_file_clean = self.synfile2clean(rgb_file)
+                rgb = self.read_image(rgb_file_clean)
+        blur_target = True
 
         # Rotation | translation (4x4)
         # 0  0  0  | 1
@@ -242,10 +144,7 @@ class DeblurDataset(NoiseDataset, ABC):
         train_intrinsics = self.src_intrinsics[train_set_id]  # (N, 4, 4)
 
         if self.mode is Mode.train:
-            if rgb_file in train_rgb_files:
-                id_render = train_rgb_files.index(rgb_file)
-            else:
-                id_render = None
+            id_render = train_rgb_files.index(rgb_file)
             subsample_factor = np.random.choice(np.arange(1, 4), p=[0.2, 0.45, 0.35])
             num_select = self.num_source_views # + np.random.randint(low=-2, high=self.num_select_high)
             id_render = id_render
@@ -260,18 +159,12 @@ class DeblurDataset(NoiseDataset, ABC):
         src_rgbs = []
         src_cameras = []
         for src_id in nearest_pose_ids:
-            if src_id is None:
-                src_rgb = self.read_image(self.render_rgb_files[idx])
-                train_pose = self.render_poses[idx]
-                train_intrinsics_ = self.render_intrinsics[idx]
-            else:
-                src_rgb = self.read_image(train_rgb_files[src_id])
-                train_pose = train_poses[src_id]
-                train_intrinsics_ = train_intrinsics[src_id]
-
+            src_rgb = self.read_image(train_rgb_files[src_id])
             src_rgbs.append(src_rgb)
-            src_camera = self.create_camera_vector(src_rgb, train_intrinsics_, train_pose)
 
+            train_pose = train_poses[src_id]
+            train_intrinsics_ = train_intrinsics[src_id]
+            src_camera = self.create_camera_vector(src_rgb, train_intrinsics_, train_pose)
             src_cameras.append(src_camera)
 
         src_rgbs = np.stack(src_rgbs, axis=0) # (num_select, H, W, 3)
@@ -281,7 +174,7 @@ class DeblurDataset(NoiseDataset, ABC):
 
         gt_depth = 0
         depth_range = self.final_depth_range(depth_range)
-        return self.create_deblur_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain)
+        return self.create_deblur_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain, blur_target=blur_target)
 
     def get_nearest_pose_ids(self, render_pose, depth_range, train_poses, subsample_factor, id_render):
         return get_nearest_pose_ids(render_pose,
@@ -296,10 +189,12 @@ class DeblurDataset(NoiseDataset, ABC):
         near_depth = bds.min()
         far_depth = bds.max()
         intrinsics, c2w_mats = batch_parse_llff_poses(poses, hw=[768,1024])
-        i_clean = self.get_i_test(poses.shape[0], holdout)
-        i_blurry = self.get_i_train(poses.shape[0], i_clean)
-
-        i_render = (i_blurry if self.mode == Mode.train and 'synthetic' in str(scene_path) else i_clean)  if not self.args.degae_training else i_blurry
+        if self.mode == Mode.train:
+            i_render = list(range(poses.shape[0]))
+            i_blurry = list(range(poses.shape[0]))
+        else:
+            i_render = self.get_i_test(poses.shape[0], holdout)
+            i_blurry = self.get_i_train(poses.shape[0], i_render)
 
         # Source images
         self.src_intrinsics.append(intrinsics[i_blurry])

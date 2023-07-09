@@ -20,16 +20,21 @@ losses_weights              : [0,  1,  0,       0]
 workers                     : 0
 
 degae_feat                  : True
-degae_feat_ckpt             : ./ckpts/0619.pth
+degae_feat_ckpt             : ./ckpts/0619.pth #./ckpts/model_045000.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-meta_module                 : True
-downscale_input_img         : True
 weightsum_filtered          : True
-lambda_embed_loss           : 1000
+sum_filtered                : False
+lambda_embed_loss           : 10000
 bpn_prenet                  : True
 bpn_per_img                 : True
+ft_embed_fc                 : True
+cond_renderer               : True
+lambda_adv                  : 0.0
+lambda_reconst_loss         : 0.0
+unfreeze_last_degae         : False
+blur_render                 : True
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory

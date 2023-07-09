@@ -189,7 +189,8 @@ class Trainer:
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
                                                  org_src_rgbs=org_src_rgbs_,
-                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None)
+                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None,
+                                                 blur_target=train_data['blur_target'] if self.args.blur_render else False)
 
         # compute loss
         torch.cuda.empty_cache()
