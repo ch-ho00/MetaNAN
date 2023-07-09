@@ -175,14 +175,13 @@ class Trainer:
                                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None,
                                                                 white_level=ray_batch['white_level'])
 
+        w = alpha ** global_step
         if not self.args.weightsum_filtered and not self.args.sum_filtered:
             org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
         elif self.args.sum_filtered:
-            w = alpha ** global_step
             org_src_rgbs_ = proc_src_rgbs
             self.scalars_to_log['weight'] = w 
         else:
-            w = alpha ** global_step
             org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
             self.scalars_to_log['weight'] = w 
 

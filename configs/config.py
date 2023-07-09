@@ -115,6 +115,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--final_sinc_prob', type=float, default=0)
         parser.add_argument('--blur_degrade', default=False, action="store_true")
         parser.add_argument('--skip_condition', default=False, action="store_true")
+        parser.add_argument('--ray_diff_embed', default=False, action="store_true")
 
         ## DegAE to NAN 
         
