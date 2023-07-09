@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : DegAE_sumWeightFilter_RevisedCondRender_perImg_ftEmbed_embedLoss1e4_annealReconstLoss0_novelView #_adv5e-3_randKerreconst1e-2
+expname                     : DegAE_sumWeightFilter_CondRender_perImg_RevisedFtEmbed_embedLoss1e3_annealReconstLoss0_denoise #_adv5e-3_randKerreconst1e-2
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -24,9 +24,9 @@ degae_feat_ckpt             : ./ckpts/0619.pth #./ckpts/model_045000.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-weightsum_filtered          : False
+weightsum_filtered          : True
 sum_filtered                : False
-lambda_embed_loss           : 10000
+lambda_embed_loss           : 1000
 bpn_prenet                  : True
 bpn_per_img                 : True
 ft_embed_fc                 : True
@@ -57,7 +57,7 @@ no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True
 
-include_target              : False  # set to False if you want to synthesize images rather than denoise the images
+include_target              : True  # set to False if you want to synthesize images rather than denoise the images
 eval_gain                    : [20, 16, 8]
 std                         : [-3.0, -0.5, -2.0, -0.5]
 

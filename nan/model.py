@@ -267,7 +267,7 @@ class NANScheme(nn.Module):
             if self.pre_net is not None:
                 self.pre_net.eval()
 
-        if self.args.cond_renderer and self.args.ft_embed_fc:
+        if self.args.ft_embed_fc:
             self.degae.degrep_extractor.degrep_conv.eval()
             self.degae.degrep_extractor.degrep_fc.eval()
 
@@ -303,7 +303,7 @@ class NANScheme(nn.Module):
             if self.pre_net is not None:
                 self.pre_net.train()
 
-        if self.args.cond_renderer and self.args.ft_embed_fc:
+        if self.args.ft_embed_fc:
             self.degae.degrep_extractor.degrep_conv.train()
             self.degae.degrep_extractor.degrep_fc.train()
 
