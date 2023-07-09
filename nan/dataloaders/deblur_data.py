@@ -125,7 +125,6 @@ class DeblurDataset(NoiseDataset, ABC):
             if 'synthetic' in str(rgb_file):
                 _, rgb_file_clean = self.synfile2clean(rgb_file)
                 rgb = self.read_image(rgb_file_clean)
-        blur_target = True
 
         # Rotation | translation (4x4)
         # 0  0  0  | 1

@@ -168,6 +168,15 @@ class NANScheme(nn.Module):
                                     coarse_only=args.coarse_only).to(device)
 
 
+        if self.args.blur_render:
+            self.num_kernel_pt = 5
+            self.img_embed_conv = BasicBlock(128, 128).to(device)
+            self.blur_kernel_fc = nn.Sequential(
+                nn.Linear(128 + 512, 128),
+                nn.Linear(128, 5 * 5)
+            ).to(device)
+
+
         # create coarse NAN mlps
         self.net_coarse = self.nan_factory('coarse', device)
         self.net_fine = None
@@ -219,6 +228,11 @@ class NANScheme(nn.Module):
                 params_list.append({'params': self.noise_conv.parameters(), 'lr': self.args.lrate_feature})
                 params_list.append({'params': self.weight_generator.parameters(), 'lr': self.args.lrate_feature})
 
+        if self.args.blur_render:
+            params_list.append({'params': self.img_embed_conv.parameters(), 'lr': self.args.lrate_feature})
+            params_list.append({'params': self.blur_kernel_fc.parameters(), 'lr': self.args.lrate_feature})
+
+
         params_list.append( {'params': self.net_coarse.parameters(),  'lr': self.args.lrate_mlp})
 
         if self.net_fine is not None:
@@ -260,6 +274,10 @@ class NANScheme(nn.Module):
                 self.noise_conv.eval()
                 self.weight_generator.eval()
 
+        if self.args.blur_render:
+            self.img_embed_conv.eval()
+            self.blur_kernel_fc.eval()
+
         if self.net_fine is not None:
             self.net_fine.eval()
 
@@ -295,6 +313,11 @@ class NANScheme(nn.Module):
             if self.args.meta_module:
                 self.noise_conv.train()
                 self.weight_generator.train()
+
+        if self.args.blur_render:
+            self.img_embed_conv.train()
+            self.blur_kernel_fc.train()
+
 
         if self.net_fine is not None:
             self.net_fine.train()

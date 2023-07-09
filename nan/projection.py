@@ -99,9 +99,9 @@ class Projector:
         num_views = len(train_poses)
         query_pose = query_camera[-16:].reshape(-1, 4, 4).expand(num_views, 4, 4)  # [n_views, 4, 4]
         ray2tar_pose = (query_pose[:, :3, 3].unsqueeze(1) - xyz.unsqueeze(0))
-        ray2tar_pose /= (torch.norm(ray2tar_pose, dim=-1, keepdim=True) + 1e-6)
+        ray2tar_pose = ray2tar_pose / (torch.norm(ray2tar_pose, dim=-1, keepdim=True) + 1e-6)
         ray2train_pose = (train_poses[:, :3, 3].unsqueeze(1) - xyz.unsqueeze(0))
-        ray2train_pose /= (torch.norm(ray2train_pose, dim=-1, keepdim=True) + 1e-6)
+        ray2train_pose = ray2train_pose / (torch.norm(ray2train_pose, dim=-1, keepdim=True) + 1e-6)
         ray_diff = ray2tar_pose - ray2train_pose
         ray_diff_norm = torch.norm(ray_diff, dim=-1, keepdim=True)
         ray_diff_dot = torch.sum(ray2tar_pose * ray2train_pose, dim=-1, keepdim=True)

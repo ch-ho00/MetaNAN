@@ -21,6 +21,7 @@ from nan.model import NANScheme
 from nan.projection import Projector
 from nan.raw2output import RaysOutput
 from nan.feature_network import BasicBlock
+from nan.sample_ray import parse_camera
 
 def stack_image(image, N=2, pad=7):
     b, c, h, w = image.size()
@@ -195,21 +196,6 @@ class RayRender:
         self.det = args.det
         self.white_bkgd = args.white_bkgd
 
-        if self.model.args.blur_render:
-            self.num_kernel_pt = 5
-            self.img_embed_conv = BasicBlock(128, 128)
-            self.pattern_pos_fc = nn.Sequential(
-                nn.Linear(512, 128),
-                nn.ELU(inplace=True),
-                nn.Linear(128, 2 * self.num_kernel_pt)
-            )
-            self.in_embed_fn, self.in_embed_cnl = get_embedder(2, input_dim=2)
-            self.spatial_embed_fn, self.spatial_embed_cnl = get_embedder(2, input_dim=2)            
-            self.blur_kernel_fc = nn.Sequential(
-                nn.Linear(128, 64),
-                nn.Linear(64, 5)
-            )
-
         # For debug purposes
         if save_pixel is not None:
             y, x = tuple(zip(*save_pixel))
@@ -228,7 +214,7 @@ class RayRender:
             if len(idx_in_batch) > 0:
                 return tuple(zip(*(idx_in_batch.tolist(), self.save_pixels[:2:, idx_in_all].T.flip(1).tolist())))
 
-    def sample_along_blur_ray_coarse(self, ray_o, ray_d, depth_range, featmaps):
+    def sample_along_blur_ray_coarse(self, ray_batch, featmaps):
         """
         :param: ray_o: origin of the ray in scene coordinate system; tensor of shape [N_rays, 3]
         :param: ray_d: homogeneous ray direction vectors in scene coordinate system; tensor of shape [N_rays, 3]
@@ -239,13 +225,59 @@ class RayRender:
         """
         # will sample inside [near_depth, far_depth]
         # assume the nearest possible depth is at least (min_ratio * depth)
-        import pdb; pdb.set_trace()
+        device = featmaps['tar_bpn_feats'].device
+        h8, w8 = featmaps['tar_bpn_feats'].shape[-2:]
+        h, w = h8 * 8, w8 * 8
+        pixel_coords = ray_batch['xyz'][:,:2].float() 
+        pixel_coords[:,0] = 2 * (pixel_coords[:,0] / w - 0.5)
+        pixel_coords[:,1] = 2 * (pixel_coords[:,1] / h - 0.5)
+        pixel_coords = pixel_coords.to(device)
+        img_feats = self.model.img_embed_conv(featmaps['tar_bpn_feats'])
+        img_embed = F.grid_sample(img_feats, pixel_coords[None, None], mode='bilinear')
+        img_embed = img_embed.squeeze().permute(1,0)
+        img_embed = torch.cat([img_embed, featmaps['tar_noise_vec'].repeat(img_embed.shape[0], 1)], dim=-1)
+
+        offset_output = self.model.blur_kernel_fc(img_embed)
+        delta_trans, delta_pos, weight = torch.split(offset_output, [10, 10, 5], dim=-1)
+        delta_trans  = delta_trans.reshape(-1, self.model.num_kernel_pt, 2)
+        delta_pos    = delta_pos.reshape(-1, self.model.num_kernel_pt, 2)  
+        weight       = weight.reshape(-1, self.model.num_kernel_pt, 1)     
+        weight = torch.softmax(weight[..., 0], dim=-1)
+
+        delta_trans = delta_trans * 0.01
+
+        rays_x, rays_y = torch.split(ray_batch['xyz'][:,:2].float().to(device), [1,1], dim=-1)
+        W, H, K, poses = parse_camera(ray_batch['camera'].to(device))
+        K = K[0]
+        rays_x = (rays_x - K[0, 2] + delta_pos[..., 0]) / K[0, 0]
+        rays_y = (rays_y - K[1, 2] + delta_pos[..., 1]) / K[1, 1]
+        dirs = torch.stack([rays_x - delta_trans[..., 0],
+                            rays_y - delta_trans[..., 1],
+                            torch.ones_like(rays_x)], -1)
+
+        # Rotate ray directions from camera frame to the world frame
+        rays_d = torch.sum(dirs[..., None, :] * poses[..., None, :3, :3],
+                           -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
+
+        # Translate camera frame's origin to the world frame. It is the origin of all rays.
+        translation = torch.stack([
+            delta_trans[..., 0],
+            delta_trans[..., 1],
+            torch.zeros_like(rays_x),
+            torch.ones_like(rays_x)
+        ], dim=-1)
+        rays_o = torch.sum(translation[..., None, :] * poses[:, None, :3], dim=-1)
+
+        align = delta_pos[:, 0, :].abs().mean()
+        align += (delta_trans[:, 0, :].abs().mean() * 10)
+
+        depth_range = ray_batch['depth_range'].to(device)
         near_depth_value = depth_range[0, 0]
         far_depth_value = depth_range[0, 1]
         assert 0 < near_depth_value < far_depth_value and far_depth_value > 0
 
-        near_depth = near_depth_value * torch.ones_like(ray_d[..., 0])
-        far_depth = far_depth_value * torch.ones_like(ray_d[..., 0])
+        near_depth = near_depth_value * torch.ones_like(rays_d[..., 0, 0])
+        far_depth = far_depth_value * torch.ones_like(rays_d[..., 0, 0])
 
         if self.inv_uniform:
             start = 1. / near_depth  # [N_rays,]
@@ -266,8 +298,12 @@ class RayRender:
             t_rand = torch.rand_like(z_vals)
             z_vals = lower + (upper - lower) * t_rand  # [N_rays, N_samples]
 
-        pts = z_vals.unsqueeze(2) * ray_d.unsqueeze(1) + ray_o.unsqueeze(1)  # [N_rays, N_samples, 3]
-        return pts, z_vals
+        rays_o = rays_o.reshape(-1,3)
+        rays_d = rays_d.reshape(-1,3)
+        z_vals = z_vals[:,None].repeat(1,self.model.num_kernel_pt,1).reshape(-1, z_vals.shape[-1])        
+        pts = z_vals[...,None] * rays_d.unsqueeze(1) + rays_o.unsqueeze(1)  # [N_rays, N_samples, 3]
+        
+        return pts, z_vals, rays_o, rays_d, weight, align
 
     def sample_along_ray_coarse(self, ray_o, ray_d, depth_range):
         """
@@ -367,11 +403,11 @@ class RayRender:
         # pts:    [R, S, 3]
         # z_vals: [R, S]
         # Sample points along ray for coarse phase
+        blur_ray_weights = None 
         if self.model.args.blur_render and blur_target:
-            pts_coarse, z_vals_coarse = self.sample_along_blur_ray_coarse(ray_o=ray_batch['ray_o'],
-                                                                    ray_d=ray_batch['ray_d'],
-                                                                    depth_range=ray_batch['depth_range'],
-                                                                    featmaps=featmaps)            
+            pts_coarse, z_vals_coarse, rays_o, rays_d, blur_ray_weights, align = self.sample_along_blur_ray_coarse(ray_batch=ray_batch, featmaps=featmaps)            
+            ray_batch['ray_o'] = rays_o
+            ray_batch['ray_d'] = rays_d
         else:
             pts_coarse, z_vals_coarse = self.sample_along_ray_coarse(ray_o=ray_batch['ray_o'],
                                                                     ray_d=ray_batch['ray_d'],
@@ -380,7 +416,7 @@ class RayRender:
         # Process the rays and return the coarse phase output
         coarse_ray_out = self.process_rays_batch(ray_batch=ray_batch, pts=pts_coarse, z_vals=z_vals_coarse, save_idx=save_idx,
                                          level='coarse', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                         org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate)
+                                         org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, blur_target=blur_target, blur_ray_weights=blur_ray_weights)
         batch_out['coarse'] = coarse_ray_out
 
         if self.fine_processing:
@@ -392,13 +428,27 @@ class RayRender:
             # Process the rays and return the fine phase output
             fine = self.process_rays_batch(ray_batch=ray_batch, pts=pts_fine, z_vals=z_vals_fine, save_idx=save_idx,
                                            level='fine', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate)
-
+                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, blur_target=blur_target, blur_ray_weights=blur_ray_weights)
             batch_out['fine'] = fine
+            if self.model.args.blur_render and blur_target:
+                n_samples_coarse = batch_out['coarse'].weights.shape[-1]
+                n_samples_fine = batch_out['fine'].weights.shape[-1]
+                batch_out['coarse'].rgb = torch.sum(batch_out['coarse'].rgb.reshape(-1, self.model.num_kernel_pt, 3) * blur_ray_weights[...,None], dim=1)
+                batch_out['coarse'].weights = torch.sum(batch_out['coarse'].weights.reshape(-1, self.model.num_kernel_pt, n_samples_coarse) * blur_ray_weights[...,None], dim=1)
+                batch_out['coarse'].depth = torch.sum(batch_out['coarse'].depth.reshape(-1, self.model.num_kernel_pt) * blur_ray_weights, dim=1)
+                batch_out['coarse'].mask = torch.sum(batch_out['coarse'].mask.reshape(-1, self.model.num_kernel_pt), dim=1)
+
+                batch_out['fine'].rgb = torch.sum(batch_out['fine'].rgb.reshape(-1, self.model.num_kernel_pt, 3) * blur_ray_weights[...,None], dim=1)
+                batch_out['fine'].weights = torch.sum(batch_out['fine'].weights.reshape(-1, self.model.num_kernel_pt, n_samples_fine) * blur_ray_weights[...,None], dim=1)
+                batch_out['fine'].depth = torch.sum(batch_out['fine'].depth.reshape(-1, self.model.num_kernel_pt) * blur_ray_weights, dim=1)
+                batch_out['fine'].mask = torch.sum(batch_out['fine'].mask.reshape(-1, self.model.num_kernel_pt), dim=1)
+
+                batch_out['align_loss'] = align
+
         return batch_out
 
     def process_rays_batch(self, ray_batch, pts, z_vals, save_idx, level, proc_src_rgbs, featmaps,
-                           org_src_rgbs, sigma_estimate, blur_target=False):
+                           org_src_rgbs, sigma_estimate, blur_target=False, blur_ray_weights=None):
         """
         :param sigma_estimate: (1, N, H, W, 3)
         :param org_src_rgbs: (1, N, H, W, 3)
@@ -425,6 +475,7 @@ class RayRender:
                                                                org_rgb, sigma_est, featmaps['noise_vec'])
         ray_outputs = RaysOutput.raw2output(rgb_out, rho_out, z_vals, pts_mask, white_bkgd=self.white_bkgd)
 
+
         if save_idx is not None:
             debug_dict = {}
             for idx, pixel in save_idx:
@@ -449,7 +500,7 @@ class RayRender:
         featmaps = {}
         if self.model.pre_net is not None:
             if self.model.args.bpn_prenet:
-                pad = 7
+                pad = 8
                 npatch_per_side = 2
                 src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
                 src_rgbs_stacked = stack_image(src_rgbs, N=npatch_per_side, pad=pad)
@@ -466,14 +517,13 @@ class RayRender:
 
         noise_vec = None
         if self.model.args.cond_renderer:
-            with torch.no_grad():
-                H, W = orig_rgbs.shape[2:4]
-                start_h = 0 if H < 384 else (H - 384) // 2
-                start_w = 0 if W < 384 else (W - 384) // 2
-                input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
-                noise_vec = self.model.degae.degrep_extractor(input_rgb, white_level.to(orig_rgbs.device))
-                del input_rgb
-                torch.cuda.empty_cache()
+            H, W = orig_rgbs.shape[2:4]
+            start_h = 0 if H < 384 else (H - 384) // 2
+            start_w = 0 if W < 384 else (W - 384) // 2
+            input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
+            noise_vec = self.model.degae.degrep_extractor(input_rgb, white_level.to(orig_rgbs.device))
+            del input_rgb
+            torch.cuda.empty_cache()
 
         if not self.model.args.degae_feat:
             featmaps = self.model.feature_net(src_rgbs)

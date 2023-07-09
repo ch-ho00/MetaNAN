@@ -18,7 +18,7 @@ from nan.dataloaders.data_utils import cycle
 from nan.losses import l2_loss
 from nan.model import NANScheme
 from nan.render_image import render_single_image
-from nan.render_ray import RayRender
+from nan.render_ray import RayRender, stack_image, unstack_image
 from nan.sample_ray import RaySampler
 from nan.utils.eval_utils import mse2psnr, img2psnr
 from nan.utils.general_utils import img_HWC2CHW
@@ -69,22 +69,6 @@ class Trainer:
         # Create ray render object
         self.ray_render = RayRender(model=self.model, args=args, device=self.device)
 
-        # For adversarial Loss
-        if self.args.lambda_adv > 0:
-            self.discriminator = DiscriminatorUNet(in_channels=3, out_channels=1, channels=64).to(self.device)
-            self.adv_loss = nn.BCEWithLogitsLoss()
-
-            if args.discrim_ckpt_path != None:
-                discrim_ckpts = torch.load(args.discrim_ckpt_path)
-                self.discriminator.load_state_dict(discrim_ckpts['model'])
-                params_list = [{'params': self.discriminator.parameters(), 'lr': self.args.lrate_feature * 1e-2}]
-            else:
-                params_list = [{'params': self.discriminator.parameters(), 'lr': self.args.lrate_feature}]
-
-            self.d_optimizer = torch.optim.Adam(params_list)
-            self.d_scheduler = torch.optim.lr_scheduler.StepLR(self.d_optimizer,
-                                                        step_size=self.args.lrate_decay_steps,
-                                                        gamma=self.args.lrate_decay_factor)
 
         # Create criterion
         self.criterion = NANLoss(args)
@@ -159,6 +143,9 @@ class Trainer:
                                  rgb_path: list(B)}
         :return:
         """
+        if 'blur_target' not in train_data.keys():
+            train_data['blur_target'] = False
+            
         # Create object that generate and sample rays
         ray_sampler = RaySampler(train_data, self.device)
         N_rand = int(1.0 * self.args.N_rand * self.args.num_source_views / train_data['src_rgbs'][0].shape[0])
@@ -185,6 +172,19 @@ class Trainer:
             w = alpha ** global_step
             org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
             self.scalars_to_log['weight'] = w 
+
+        if train_data['blur_target']:
+            npatch_per_side = 2
+            pad = 8
+            tar_rgb = train_data['rgb_clean'].permute(0,3,1,2).to(self.device)
+            tar_rgb_stacked = stack_image(tar_rgb, N=npatch_per_side, pad=pad)
+            tar_rgb_reconst, bpn_feats = self.model.pre_net(tar_rgb_stacked, tar_rgb_stacked[:,None])                    
+            del tar_rgb_reconst
+            bpn_feats = unstack_image(bpn_feats, total_n_patch=npatch_per_side**2, pad=1)
+            featmaps['tar_bpn_feats'] = bpn_feats
+
+            noise_vec = self.model.degae.degrep_extractor(tar_rgb, ray_batch['white_level'].to(self.device))
+            featmaps['tar_noise_vec'] = noise_vec
 
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
@@ -223,29 +223,10 @@ class Trainer:
                 reconst_loss = reconst_loss * self.args.lambda_reconst_loss * w
             loss += reconst_loss
             self.scalars_to_log['train/reconst_loss'] = reconst_loss
-                        
-        if self.args.lambda_adv > 0:
-            w2 = max(w, 0.3)
-            if self.args.include_target:
-                target_rgb = ray_sampler.src_rgbs[0,:1] * w2 + train_data['rgb_clean'] * (1-w2)
-            else:
-                target_rgb =  train_data['rgb'] * w2 * + train_data['rgb_clean'] * (1 - w2)
-            target_rgb = target_rgb.to(self.device)
-            target_rgb = target_rgb.permute(0,3,1,2)
-            delin_pred = de_linearize(proc_src_rgbs[0].permute(0,3,1,2), train_data['white_level'][0].to(self.device))
-            delin_tar = de_linearize(target_rgb, train_data['white_level'][0].to(self.device))
 
-            real_label = torch.full([delin_tar.shape[0], 1, delin_tar.shape[-2], delin_tar.shape[-1]], 1.0, dtype=torch.float, device=self.device)
-            fake_label = torch.full([delin_pred.shape[0], 1, delin_pred.shape[-2], delin_pred.shape[-1]], 0.0, dtype=torch.float, device=self.device)
-
-
-            for d_parameters in self.discriminator.parameters():
-                d_parameters.requires_grad = False
-
-            adversarial_loss = self.adv_loss(self.discriminator(delin_pred), real_label.repeat(delin_pred.shape[0],1,1,1))
-            adversarial_loss = torch.mean(adversarial_loss) * self.args.lambda_adv
-            loss += adversarial_loss
-            self.scalars_to_log['train/adversarial_loss'] = adversarial_loss
+        if train_data['blur_target']:
+            loss += batch_out['align_loss'] * self.args.lambda_align_loss
+            self.scalars_to_log['train/align_loss'] = batch_out['align_loss'] * self.args.lambda_align_loss
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
@@ -253,24 +234,6 @@ class Trainer:
         self.model.scheduler.step()
         self.model.optimizer.zero_grad()
 
-
-        if self.args.lambda_adv > 0:
-            self.discriminator.zero_grad(set_to_none=True)
-            for d_parameters in self.discriminator.parameters():
-                d_parameters.requires_grad = True
-
-            self.d_optimizer.zero_grad()
-            gt_output = self.discriminator(delin_tar)
-            fake_output = self.discriminator(delin_pred.detach().clone())
-
-            d_loss_gt = self.adv_loss(gt_output, real_label)
-            d_loss_fake = self.adv_loss(fake_output, fake_label)
-
-            d_loss = torch.mean(d_loss_fake) + torch.mean(d_loss_gt)
-            d_loss.backward()
-            self.d_optimizer.step()
-            self.d_scheduler.step()
-            self.scalars_to_log['train/d_loss'] = d_loss
 
         self.scalars_to_log['lr_features'] = self.model.scheduler.get_last_lr()[0]
         self.scalars_to_log['lr_mlp'] = self.model.scheduler.get_last_lr()[1]
