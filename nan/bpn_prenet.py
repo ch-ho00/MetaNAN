@@ -296,5 +296,5 @@ class BPN(nn.Module):
         del kernels
         torch.cuda.empty_cache()
 
-        return pred_burst
+        return pred_burst, features
 

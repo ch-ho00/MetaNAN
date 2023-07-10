@@ -40,10 +40,6 @@ class BasicBlock(nn.Module):
         out = self.bn1(out)
         out = self.relu(out)
 
-        if scale != None:
-            out = out * scale.view(-1, out.shape[1], 1, 1) + shift.view(-1, out.shape[1], 1, 1)
-            if self.rand_noise:
-                out = out + (self.weight * torch.randn_like(self.weight)).reshape(1,-1,1,1)
         out = self.conv2(out)
         out = self.bn2(out)
 

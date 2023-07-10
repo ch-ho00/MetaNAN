@@ -127,6 +127,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--weightsum_filtered', default=False, action="store_true")
         parser.add_argument('--lambda_embed_loss', type=float, default=0)
         parser.add_argument('--lambda_reconst_loss', type=float, default=0)
+        parser.add_argument('--lambda_align_loss', type=float, default=0)
         parser.add_argument('--bpn_prenet', default=False, action="store_true")
         parser.add_argument('--bpn_per_img', default=False, action="store_true")
         parser.add_argument('--ft_embed_fc', default=False, action="store_true")
@@ -134,6 +135,8 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--ft_training', default=False, action="store_true")
         parser.add_argument('--sum_filtered', default=False, action="store_true")
         parser.add_argument('--unfreeze_last_degae', default=False, action="store_true")
+        parser.add_argument('--blur_render', default=False, action="store_true")
+        
         ## Plain AE to NAN
         parser.add_argument('--ssim_alpha', type=float, default=0)
         parser.add_argument('--lambda_tv_loss', type=float, default=0)

@@ -142,10 +142,11 @@ class BurstDataset(Dataset, ABC):
                         holdout_fn = [f for f in files if 'hold' in f][0]
                         holdout = int(holdout_fn.split("=")[-1])
                     else:
-                        holdout = 8
+                        holdout = 1 if self.mode == Mode.train else 8
                     self.scene_holdout[scene] = holdout
                     self.add_single_scene(cnt, Path(scene_root), holdout, noise_type=noise_type)
                     cnt += 1
+
         elif self.args.train_dataset == 'seanerf':
             self.scenes = ['Curasao',  'IUI3-RedSea',  'JapaneseGradens-RedSea',  'Panama']
             self.scenes.sort()
@@ -280,10 +281,6 @@ class NoiseDataset(BurstDataset, ABC):
         if self.args.include_target:
             # always include input image in the first idx - denoising task
             chosen_ids[0] = target_view
-        else:
-            # occasionally include input image in random index
-            if np.random.choice([False, True], p=[0.995, 0.005]) and self.mode == Mode.train:
-                chosen_ids[np.random.choice(len(chosen_ids))] = target_view
 
         return chosen_ids
 
@@ -424,8 +421,8 @@ class NoiseDataset(BurstDataset, ABC):
         return batch_dict
 
     def create_deblur_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
-                                gt_depth=None, eval_gain=1):
-        if self.mode in [Mode.train]: #, Mode.validation]:
+                                gt_depth=None, eval_gain=1, blur_target=True):
+        if self.mode in [Mode.train]:
             white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
         else:
             white_level = torch.Tensor([1])
@@ -451,7 +448,8 @@ class NoiseDataset(BurstDataset, ABC):
                       'src_cameras'   : torch.from_numpy(src_cameras),
                       'depth_range'   : depth_range,
                       'white_level'   : white_level,
-                      'eval_gain'     : eval_gain}
+                      'eval_gain'     : eval_gain,
+                      'blur_target'  : blur_target}
 
         if rgb_clean is not None:
             batch_dict['rgb_clean'] = rgb_clean

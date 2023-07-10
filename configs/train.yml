@@ -34,7 +34,6 @@ cond_renderer               : True
 lambda_adv                  : 0.0
 lambda_reconst_loss         : 0.0
 unfreeze_last_degae         : False
-# ray_diff_embed              : True
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
