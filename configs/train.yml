@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : DegAE_sumWeightFilter_CondRender_perImg_RevisedFtEmbed_embedLoss1e3_annealReconstLoss0_denoise #_adv5e-3_randKerreconst1e-2
+expname                     : DegAE_sumWeightFilter_CondRender_perImg_woFtEmbed_embedLoss1e3_annealReconstLoss0_denoise #_adv5e-3_randKerreconst1e-2
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -29,7 +29,7 @@ sum_filtered                : False
 lambda_embed_loss           : 1000
 bpn_prenet                  : True
 bpn_per_img                 : True
-ft_embed_fc                 : True
+ft_embed_fc                 : False
 cond_renderer               : True
 lambda_adv                  : 0.0
 lambda_reconst_loss         : 0.0

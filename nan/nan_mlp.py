@@ -56,67 +56,9 @@ def softmax3d(x, dim):
 
 import math
 
-# Positional encoding (section 5.1)
-class Embedder(nn.Module):
-    def __init__(self, **kwargs):
-        super().__init__()
-        self.kwargs = kwargs
-        d = self.kwargs['input_dims']
-        out_dim = 0
-        if self.kwargs['include_input']:
-            out_dim += d
-
-        max_freq = self.kwargs['max_freq_log2']
-        N_freqs = self.kwargs['num_freqs']
-
-        if self.kwargs['log_sampling']:
-            self.freq_bands = 2. ** torch.linspace(0., max_freq, steps=N_freqs)
-        else:
-            self.freq_bands = torch.linspace(2. ** 0., 2. ** max_freq, steps=N_freqs)
-
-        for freq in self.freq_bands:
-            for p_fn in self.kwargs['periodic_fns']:
-                out_dim += d
-
-        self.out_dim = out_dim
-
-    def forward(self, inputs):
-        # print(f"input device: {inputs.device}, freq_bands device: {self.freq_bands.device}")
-        self.freq_bands = self.freq_bands.type_as(inputs)
-        outputs = []
-        if self.kwargs['include_input']:
-            outputs.append(inputs)
-
-        for freq in self.freq_bands:
-            for p_fn in self.kwargs['periodic_fns']:
-                outputs.append(p_fn(inputs * freq))
-        return torch.cat(outputs, -1)
-
-
-def get_embedder(multires, i=0, input_dim=3):
-    if i == -1:
-        return nn.Identity(), 3
-
-    embed_kwargs = {
-        'include_input': True,
-        'input_dims': input_dim,
-        'max_freq_log2': multires - 1,
-        'num_freqs': multires,
-        'log_sampling': True,
-        'periodic_fns': [torch.sin, torch.cos],
-    }
-
-    embedder_obj = Embedder(**embed_kwargs)
-    return embedder_obj, embedder_obj.out_dim
-
 class CondSeqential(nn.Module):
-    def __init__(self, sequential_module, embedding_size=512, ray_diff_embed=False):
+    def __init__(self, sequential_module, embedding_size=512):
         super().__init__()
-        self.ray_diff_embed = ray_diff_embed
-        if ray_diff_embed:
-            self.dir_embed_fn, self.dir_embed_dim = get_embedder(2, input_dim=4)
-            embedding_size += self.dir_embed_dim
-
         self.embedding_size = embedding_size
         self.sequential_layer = sequential_module
         self.embedding_layer = nn.ModuleList()
@@ -126,14 +68,11 @@ class CondSeqential(nn.Module):
                 self.embedding_layer.append(nn.Linear(embedding_size, layer_sizes[i]))
         self.init_weights()
 
-    def forward(self, x, embedding, ray_diff):
+    def forward(self, x, embedding):
         linear_cnt = 0
         for i, layer in enumerate(self.sequential_layer):
             x = layer(x)
             if isinstance(layer, nn.Linear) and linear_cnt < len(self.embedding_layer):
-                if ray_diff != None and self.ray_diff_embed:
-                    ray_diff_embed = self.dir_embed_fn(ray_diff)
-                    embedding = torch.cat([embedding, ray_diff_embed], dim=-1)
                 embedded = self.embedding_layer[linear_cnt](embedding)
                 scale, shift = torch.chunk(embedded, 2, dim=1)
                 x = scale * x + shift
@@ -294,12 +233,12 @@ class NanMLP(nn.Module):
         torch.cuda.empty_cache()
 
         if self.args.cond_renderer:
-            x = self.base_fc(ext_feat, degrade_vec, ray_diff=ray_diff)  # ((32 + 3) x 3) --> MLP --> (32)
-            x_vis = self.vis_fc(x * weight, degrade_vec, ray_diff=ray_diff)
+            x = self.base_fc(ext_feat, degrade_vec)  # ((32 + 3) x 3) --> MLP --> (32)
+            x_vis = self.vis_fc(x * weight, degrade_vec)
             x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
             vis = torch.sigmoid(vis) * mask
             x = x + x_res
-            vis = self.vis_fc2(x * vis, degrade_vec, ray_diff=ray_diff) * mask
+            vis = self.vis_fc2(x * vis, degrade_vec) * mask
             
         else:
             x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32)
