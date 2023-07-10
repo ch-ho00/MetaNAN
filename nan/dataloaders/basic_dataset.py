@@ -11,7 +11,12 @@ from enum import Enum
 import numpy as np
 from torchvision import transforms as T
 from PIL import Image
-import os
+import os, random, math
+from basicsr.utils import DiffJPEG
+from basicsr.utils.img_process_util import filter2D
+from basicsr.data.degradations import circular_lowpass_kernel, random_mixed_kernels
+import itertools
+from pprint import pprint
 
 
 class Mode(Enum):
@@ -105,9 +110,16 @@ class BurstDataset(Dataset, ABC):
 
         if self.args.train_dataset == 'deblur':
             self.noise2folder = {
-                'cam_motion' : 'real_camera_motion_blur',
-                'defocus' : 'real_defocus_blur',
+                'syn_motion' : 'synthetic_camera_motion_blur',
+                'syn_defocus' : 'synthetic_defocus_blur'
             }
+            if not self.args.degae_training:
+                real_noises = {                
+                    'cam_motion' : 'real_camera_motion_blur',
+                    'defocus' : 'real_defocus_blur',
+                }
+                self.noise2folder.update(real_noises)
+
             self.noise_types = list(self.noise2folder.keys())
             self.scene_holdout = {}
             self.scene2noisetype = {}
@@ -125,12 +137,16 @@ class BurstDataset(Dataset, ABC):
                     self.scene2noisetype[scene] = noise_type    
                     scene_root = os.path.join(data_root, scene)
 
-                    files = os.listdir(scene_root)
-                    holdout_fn = [f for f in files if 'hold' in f][0]
-                    holdout = int(holdout_fn.split("=")[-1])
+                    if 'syn' not in noise_type:
+                        files = os.listdir(scene_root)
+                        holdout_fn = [f for f in files if 'hold' in f][0]
+                        holdout = int(holdout_fn.split("=")[-1])
+                    else:
+                        holdout = 1 if self.mode == Mode.train else 8
                     self.scene_holdout[scene] = holdout
-                    self.add_single_scene(cnt, Path(scene_root), holdout)
+                    self.add_single_scene(cnt, Path(scene_root), holdout, noise_type=noise_type)
                     cnt += 1
+
         elif self.args.train_dataset == 'seanerf':
             self.scenes = ['Curasao',  'IUI3-RedSea',  'JapaneseGradens-RedSea',  'Panama']
             self.scenes.sort()
@@ -160,6 +176,11 @@ class BurstDataset(Dataset, ABC):
             else:
                 print(f"loading {len(self.scenes_dirs)} scenes for {mode}")
             print(f"num of source views {self.num_source_views}")
+
+            self.scenes_dirs = [dir_ for dir_ in self.scenes_dirs if 'sparse' not in str(dir_)]
+            # if self.mode != Mode.train:
+            #     self.scenes_dirs.sort()
+            #     pprint(self.scenes_dirs)
 
             for i, scene_path in enumerate(self.scenes_dirs):
                 self.add_single_scene(i, scene_path)
@@ -260,10 +281,6 @@ class NoiseDataset(BurstDataset, ABC):
         if self.args.include_target:
             # always include input image in the first idx - denoising task
             chosen_ids[0] = target_view
-        else:
-            # occasionally include input image in random index
-            if np.random.choice([False, True], p=[0.995, 0.005]) and self.mode == Mode.train:
-                chosen_ids[np.random.choice(len(chosen_ids))] = target_view
 
         return chosen_ids
 
@@ -295,6 +312,60 @@ class NoiseDataset(BurstDataset, ABC):
         noise_rgb = rgb + noise
         sigma_estimate = self.get_std(noise_rgb.clamp(0, 1), sig_read, sig_shot)
         return noise_rgb, sigma_estimate
+
+    def apply_blur_kernel(self, rgb, final_sinc=False, params=None):
+        kernel_size = random.choice(self.kernel_range)
+        rand_params = True
+        if params != None:
+            omega_c, kernel, blur_sigma, betag_range, betap_range = params
+            rand_params = False
+        if not final_sinc:
+            if np.random.uniform() < self.args.sinc_prob:
+                # this sinc filter setting is for kernels ranging from [7, 21]
+                if kernel_size < 13:
+                    omega_c = np.random.uniform(np.pi / 3, np.pi)
+                else:
+                    omega_c = np.random.uniform(np.pi / 5, np.pi)
+                kernel = circular_lowpass_kernel(omega_c, kernel_size, pad_to=False)
+            else:
+                kernel = random_mixed_kernels(
+                    self.kernel_list if rand_params else [kernel],
+                    self.kernel_prob if rand_params else [1],
+                    kernel_size,
+                    self.blur_sigma if rand_params else blur_sigma,
+                    self.blur_sigma if rand_params else blur_sigma, [-math.pi, math.pi],
+                    self.betag_range if rand_params else betag_range,
+                    self.betap_range if rand_params else betap_range,
+                    noise_range=None)
+
+            # pad kernel
+            pad_size = (21 - kernel_size) // 2
+            kernel = np.pad(kernel, ((pad_size, pad_size), (pad_size, pad_size)))
+            kernel = kernel.astype(np.float32)
+            out = filter2D(rgb, torch.from_numpy(kernel[None].repeat(rgb.shape[0], 0)))
+
+        else:
+            # ------------------------------------- the final sinc kernel ------------------------------------- #
+            if np.random.uniform() < self.args.final_sinc_prob:
+                kernel_size = random.choice(self.kernel_range)
+                omega_c = np.random.uniform(np.pi / 3, np.pi)
+                sinc_kernel = circular_lowpass_kernel(omega_c, kernel_size, pad_to=21)
+                sinc_kernel = sinc_kernel.astype(np.float32)
+                sinc_kernel = torch.FloatTensor(sinc_kernel)
+            else:
+                sinc_kernel = self.pulse_tensor
+            out = filter2D(rgb, sinc_kernel[None].repeat(rgb.shape[0], 1, 1))
+
+        return out
+    
+    def apply_jpeg_compression(self, rgb):
+        # JPEG compression
+        jpeg_p = rgb.new_zeros(rgb.size(0)).uniform_(*self.args.jpeg_range)
+        rgb = torch.clamp(rgb, 0, 1)  # clamp to [0, 1], otherwise JPEGer will result in unpleasant artifacts
+        out = self.jpeger(rgb, quality=jpeg_p)
+        
+        return out 
+    
 
     @classmethod
     def get_std(cls, rgb, sig_read, sig_shot):
@@ -350,8 +421,8 @@ class NoiseDataset(BurstDataset, ABC):
         return batch_dict
 
     def create_deblur_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
-                                gt_depth=None, eval_gain=1):
-        if self.mode in [Mode.train]: #, Mode.validation]:
+                                gt_depth=None, eval_gain=1, blur_target=True):
+        if self.mode in [Mode.train]:
             white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
         else:
             white_level = torch.Tensor([1])
@@ -377,7 +448,8 @@ class NoiseDataset(BurstDataset, ABC):
                       'src_cameras'   : torch.from_numpy(src_cameras),
                       'depth_range'   : depth_range,
                       'white_level'   : white_level,
-                      'eval_gain'     : eval_gain}
+                      'eval_gain'     : eval_gain,
+                      'blur_target'  : blur_target}
 
         if rgb_clean is not None:
             batch_dict['rgb_clean'] = rgb_clean

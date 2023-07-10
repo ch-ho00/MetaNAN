@@ -117,10 +117,14 @@ def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True, se
     if seanerf:
         img0 = sorted((basedir/'images_wb').glob("*.[Jjp][Ppn][Gg]"))[0]
     else:
-        img0 = sorted((basedir/'images').glob("*.[Jjp][Ppn][Gg]"))[0]
+        try:
+            img0 = sorted((basedir/'images').glob("*.[Jjp][Ppn][Gg]"))[0]
+            sfx = ''
+        except:
+            img0 = sorted((basedir/'images_1').glob("*.[Jjp][Ppn][Gg]"))[0]
+            sfx = '_1'
     sh = imageio.imread(img0).shape
 
-    sfx = ''
 
     if factor is not None and factor != 1:
         sfx = '_{}'.format(factor)

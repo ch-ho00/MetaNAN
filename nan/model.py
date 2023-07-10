@@ -144,10 +144,10 @@ class NANScheme(nn.Module):
         # create feature extraction network
         self.degae_feat = args.degae_feat
         if args.degae_feat or args.lambda_embed_loss > 0 or args.cond_renderer:
-            assert args.degae_feat_ckpt != None
             self.degae = DegAE(args, train_scratch=False)
-            checkpoint = torch.load(args.degae_feat_ckpt, map_location=lambda storage, loc: storage)
-            self.degae.load_state_dict(checkpoint["model"])
+            if args.degae_feat_ckpt != None:
+                checkpoint = torch.load(args.degae_feat_ckpt, map_location=lambda storage, loc: storage)
+                self.degae.load_state_dict(checkpoint["model"])
             
             for param in self.degae.parameters():
                 param.requires_grad = False
@@ -160,24 +160,19 @@ class NANScheme(nn.Module):
                 self.feature_conv_2 = BasicBlock(dim_, dim_, stride=2, downsample=True,  rand_noise=True).to(device)
                 self.feature_conv_3 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=True).to(device)
 
-                if self.args.meta_module:
-                    self.cond_scale1 = nn.Linear(512, dim_, bias=True).to(device)
-                    self.cond_shift1 = nn.Linear(512, dim_, bias=True).to(device)
-
-                    self.cond_scale2 = nn.Linear(512, dim_, bias=True).to(device)
-                    self.cond_shift2 = nn.Linear(512, dim_, bias=True).to(device)
-
-                    self.cond_scale3 = nn.Linear(512, dim_, bias=True).to(device)
-                    self.cond_shift3 = nn.Linear(512, dim_, bias=True).to(device)
-
-                    self.cond_scale4 = nn.Linear(512, dim_, bias=True).to(device)
-                    self.cond_shift4 = nn.Linear(512, dim_, bias=True).to(device)
 
         if not args.degae_feat:
             self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
                                     fine_out_ch=args.fine_feat_dim,
                                     coarse_only=args.coarse_only).to(device)
 
+        if self.args.blur_render:
+            self.num_kernel_pt = 5
+            self.img_embed_conv = BasicBlock(128, 128).to(device)
+            self.blur_kernel_fc = nn.Sequential(
+                nn.Linear(128 + 512, 128),
+                nn.Linear(128, 5 * 5)
+            ).to(device)
 
         # create coarse NAN mlps
         self.net_coarse = self.nan_factory('coarse', device)
@@ -215,25 +210,13 @@ class NANScheme(nn.Module):
                 params_list += [ {'params': self.feature_conv_0.parameters(), 'lr': self.args.lrate_feature},
                                 {'params': self.feature_conv_1.parameters(), 'lr': self.args.lrate_feature},
                                 {'params': self.feature_conv_2.parameters(), 'lr': self.args.lrate_feature},
-                                {'params': self.feature_conv_3.parameters(), 'lr': self.args.lrate_feature}]        
-            if self.args.meta_module:
-                params_list += [{'params' : self.cond_shift1.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_scale1.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_scale2.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_shift2.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_scale3.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_shift3.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_shift4.parameters(), 'lr':self.args.lrate_feature},
-                                {'params' : self.cond_scale4.parameters(), 'lr':self.args.lrate_feature}]            
+                                {'params': self.feature_conv_3.parameters(), 'lr': self.args.lrate_feature}]                  
             if self.args.ft_embed_fc:
                 params_list += [{'params' : self.degae.degrep_extractor.degrep_conv.parameters(), 'lr':self.args.lrate_feature * 1e-2},
                                 {'params' : self.degae.degrep_extractor.degrep_fc.parameters(),   'lr':self.args.lrate_feature * 1e-2}]
                     
         else:
             params_list = [{'params': self.feature_net.parameters(), 'lr': self.args.lrate_feature}]
-            if self.args.meta_module:
-                params_list.append({'params': self.noise_conv.parameters(), 'lr': self.args.lrate_feature})
-                params_list.append({'params': self.weight_generator.parameters(), 'lr': self.args.lrate_feature})
 
         params_list.append( {'params': self.net_coarse.parameters(),  'lr': self.args.lrate_mlp})
 
@@ -243,6 +226,10 @@ class NANScheme(nn.Module):
         if not self.args.frozen_prenet:
             if self.args.pre_net:
                 params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
+
+        if self.args.blur_render:
+            params_list.append({'params': self.img_embed_conv.parameters(), 'lr': self.args.lrate_feature})
+            params_list.append({'params': self.blur_kernel_fc.parameters(), 'lr': self.args.lrate_feature})
 
 
         optimizer = torch.optim.Adam(params_list)
@@ -260,23 +247,9 @@ class NANScheme(nn.Module):
             self.feature_conv_2.eval()        
             self.feature_conv_3.eval()        
 
-            if self.args.meta_module:
-                self.cond_scale1.eval()       
-                self.cond_shift1.eval()       
 
-                self.cond_scale2.eval()       
-                self.cond_shift2.eval()       
-
-                self.cond_scale3.eval()       
-                self.cond_shift3.eval()       
-
-                self.cond_scale4.eval()       
-                self.cond_shift4.eval()       
         else:
             self.feature_net.eval()
-            if self.args.meta_module:
-                self.noise_conv.eval()
-                self.weight_generator.eval()
 
         if self.net_fine is not None:
             self.net_fine.eval()
@@ -285,10 +258,13 @@ class NANScheme(nn.Module):
             if self.pre_net is not None:
                 self.pre_net.eval()
 
-        if self.args.cond_renderer and self.args.ft_embed_fc:
+        if self.args.ft_embed_fc:
             self.degae.degrep_extractor.degrep_conv.eval()
             self.degae.degrep_extractor.degrep_fc.eval()
 
+        if self.args.blur_render:
+            self.img_embed_conv.eval()
+            self.blur_kernel_fc.eval()
 
     def switch_to_train(self):
         self.net_coarse.train()
@@ -298,23 +274,8 @@ class NANScheme(nn.Module):
             self.feature_conv_2.train()        
             self.feature_conv_3.train()        
 
-            if self.args.meta_module:
-                self.cond_scale1.train()       
-                self.cond_shift1.train()       
-                
-                self.cond_scale2.train()       
-                self.cond_shift2.train()       
-
-                self.cond_scale3.train()       
-                self.cond_shift3.train()       
-                
-                self.cond_scale4.train()       
-                self.cond_shift4.train()       
         else:
             self.feature_net.train()
-            if self.args.meta_module:
-                self.noise_conv.train()
-                self.weight_generator.train()
 
         if self.net_fine is not None:
             self.net_fine.train()
@@ -323,9 +284,13 @@ class NANScheme(nn.Module):
             if self.pre_net is not None:
                 self.pre_net.train()
 
-        if self.args.cond_renderer and self.args.ft_embed_fc:
+        if self.args.ft_embed_fc:
             self.degae.degrep_extractor.degrep_conv.train()
             self.degae.degrep_extractor.degrep_fc.train()
+
+        if self.args.blur_render:
+            self.img_embed_conv.train()
+            self.blur_kernel_fc.train()
 
 
     def save_model(self, filename):

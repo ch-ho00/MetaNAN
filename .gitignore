@@ -1,7 +1,8 @@
+eval_result/
 test_sanity/
-results/
+results*/
 degrad_ae*/
-ckpts/
+ckpts*/
 logs*/
 logs/
 out*/

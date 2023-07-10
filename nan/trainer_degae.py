@@ -50,7 +50,7 @@ class Trainer:
         self.save_ymls(args, sys.argv[1:], self.exp_out_dir)
 
         # create training dataset
-        args.eval_gain = [1,20,16,8,4,2]
+        args.eval_gain = [0,1,20,16]
         self.train_dataset, self.train_sampler = create_training_dataset(args)
         # currently only support batch_size=1 (i.e., one set of target and source views) for each GPU node
         # please use distributed parallel on multiple GPUs to train multiple target views per batch
@@ -68,6 +68,7 @@ class Trainer:
 
         self.model = DegAE(args, train_scratch=True)
 
+
         # For perceptual Loss
         self.vgg_loss = VGG().to(self.device)
         self.vgg_mean = torch.Tensor([0.485, 0.456, 0.406]).to(self.device)
@@ -77,13 +78,22 @@ class Trainer:
         if self.args.lambda_adv > 0:
             self.discriminator = DiscriminatorUNet(in_channels=3, out_channels=1, channels=64).to(self.device)
             self.adv_loss = nn.BCEWithLogitsLoss()
-            params_list = [{'params': self.discriminator.parameters(), 'lr': self.args.lrate_feature}]
+            params_list = [{'params': self.discriminator.parameters(), 'lr': self.args.lrate_feature * (1e-1 if self.args.ft_training else 1)}]
             self.d_optimizer = torch.optim.Adam(params_list)
             self.d_scheduler = torch.optim.lr_scheduler.StepLR(self.d_optimizer,
                                                         step_size=self.args.lrate_decay_steps,
                                                         gamma=self.args.lrate_decay_factor)
 
 
+        if args.ckpt_path != None:
+            ckpts = torch.load(args.ckpt_path)
+            self.model.load_state_dict(ckpts['model'])
+
+            if args.lambda_adv > 0:
+                assert args.discrim_ckpt_path != None
+                discrim_ckpts = torch.load(args.discrim_ckpt_path)
+                self.discriminator.load_state_dict(discrim_ckpts['model'])
+                
         # tb_dir will contain tensorboard files and later evaluation results
         tb_dir = LOG_DIR / args.expname
         if args.local_rank == 0:
@@ -163,7 +173,7 @@ class Trainer:
         """
         for k in train_data.keys():
             train_data[k] = train_data[k].to(self.device)
-            
+
         reconst_signal = self.model(train_data)
         self.model.optimizer.zero_grad()
 
@@ -217,9 +227,9 @@ class Trainer:
         self.scalars_to_log['train/psnr'] = mse2psnr(l2_loss.detach().cpu())
 
 
-        self.discriminator.zero_grad(set_to_none=True)
 
         if self.args.lambda_adv > 0:
+            self.discriminator.zero_grad(set_to_none=True)
             for d_parameters in self.discriminator.parameters():
                 d_parameters.requires_grad = True
 
@@ -256,10 +266,22 @@ class Trainer:
                 print(f"Saving checkpoints at {global_step} to {self.exp_out_dir}...")
                 self.last_weights_path = self.exp_out_dir / f"model_{global_step:06d}.pth"
                 self.model.save_model(self.last_weights_path)
-                files = sorted(self.exp_out_dir.glob("*.pth"), key=os.path.getctime)
-                rm_files = files[0:max(0, len(files) - max_keep)]
+                if self.args.lambda_adv > 0:
+                    last_weights_path_discrim = self.exp_out_dir / f"discrim_{global_step:06d}.pth"
+                    self.discriminator.save_model(last_weights_path_discrim, self.d_optimizer, self.d_scheduler)
+
+                model_files = sorted(self.exp_out_dir.glob("*.pth"), key=os.path.getctime)
+                model_files = [f for f in model_files if 'model' in str(f)]
+                rm_files = model_files[0:max(0, len(model_files) - max_keep)]
                 for f in rm_files:
                     f.unlink()
+
+                if self.args.lambda_adv > 0:
+                    discrim_files = sorted(self.exp_out_dir.glob("*.pth"), key=os.path.getctime)
+                    discrim_files = [f for f in discrim_files if 'discrim' in str(f)]
+                    rm_files = discrim_files[0:max(0, len(discrim_files) - max_keep)]
+                    for f in rm_files:
+                        f.unlink()
 
             # log images of training and validation
             if global_step % self.args.i_img == 0: #or global_step == self.model.start_step + 1:
@@ -272,7 +294,6 @@ class Trainer:
         delin_pred = de_linearize(reconst_signal, batch_data['white_level']).clamp(0,1)
         delin_tar = de_linearize(batch_data['target_rgb'], batch_data['white_level']).clamp(0,1)
         delin_ref = de_linearize(batch_data['ref_rgb'], batch_data['white_level']).clamp(0,1)
-        delin_clean = de_linearize(batch_data['clean_rgb'], batch_data['white_level']).clamp(0,1)
         delin_noisy = de_linearize(batch_data['noisy_rgb'], batch_data['white_level']).clamp(0,1)
 
         if 'eval_gain' in batch_data.keys():
@@ -281,9 +302,10 @@ class Trainer:
             eval_gain = 0
         
         if visualize:
-            self.writer.add_image(prefix + f'target_rgb_gain{eval_gain}_{idx}', delin_tar[0].detach().cpu(), global_step)
             self.writer.add_image(prefix + f'reconst_rgb_gain{eval_gain}_{idx}', delin_pred[0].detach().cpu(), global_step)
-            self.writer.add_image(prefix + f'input_rgb_gain{eval_gain}_{idx}', delin_noisy[0].detach().cpu(), global_step)
+            if global_step < 5 or 'train' in prefix:
+                self.writer.add_image(prefix + f'target_rgb_gain_{idx}', delin_tar[0].detach().cpu(), global_step)
+                self.writer.add_image(prefix + f'input_rgb_gain{eval_gain}_{idx}', delin_noisy[0].detach().cpu(), global_step)
 
 
         l2_loss = F.mse_loss(delin_tar, delin_pred, reduction='mean')
@@ -293,23 +315,31 @@ class Trainer:
     def log_images(self, train_data, global_step):
         print('Logging a random validation view...')
         val_result = {}
+        psnr_results = {}
+        val_interval = 1
+
         for val_idx in range(len(self.val_dataset)):
             curr_idx = val_idx % len(self.val_dataset.render_rgb_files)
-            if curr_idx > 5 and curr_idx < len(self.val_dataset.render_rgb_files) - 5:
-                continue            
+            if curr_idx % 15 == 0:
+                visualize = True
+            elif curr_idx % val_interval == 0 :
+                visualize = False
+            else:
+                continue
+
             val_data = self.val_dataset[val_idx]
             val_data = {k : val_data[k][None].to(self.device) if isinstance(val_data[k], torch.Tensor) else val_data[k] for k in val_data.keys()}
-            val_psnr = self.log_view_to_tb(global_step, val_data, prefix='val/', idx=curr_idx , visualize=curr_idx == 0 or curr_idx == len(self.val_dataset.render_rgb_files)-1)
+            psnr = self.log_view_to_tb(global_step, val_data, prefix='val/', idx=curr_idx , visualize=visualize)
             eval_gain = val_data['eval_gain']
-            if eval_gain not in val_result.keys():
-                val_result[eval_gain] = [val_psnr]
+            if eval_gain in psnr_results.keys():
+                psnr_results[eval_gain].append(psnr)
             else:
-                val_result[eval_gain] += [val_psnr]
-            torch.cuda.empty_cache()
+                psnr_results[eval_gain] = [psnr]
 
-        for gain_level in val_result.keys():
-            self.writer.add_scalar(f'val/psnr_gain{gain_level}', np.mean(val_result[gain_level]), global_step)
+            torch.cuda.empty_cache()
+            # print("Val # img", val_idx)
+        for k in psnr_results.keys():
+            self.writer.add_scalar('val/' + f'psnr_gain{k}', np.mean(psnr_results[k]), global_step)
             
         self.log_view_to_tb(global_step, train_data, prefix=f'train/', visualize=True)
-
 

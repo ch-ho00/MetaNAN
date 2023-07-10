@@ -129,6 +129,10 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--ft_embed_fc', default=False, action="store_true")
         parser.add_argument('--cond_renderer', default=False, action="store_true")
 
+        # blur render
+        parser.add_argument('--blur_render', default=False, action="store_true")
+        parser.add_argument('--lambda_align_loss', type=float, default=0)
+
         ## Plain AE to NAN
         parser.add_argument('--ssim_alpha', type=float, default=0)
         parser.add_argument('--lambda_tv_loss', type=float, default=0)

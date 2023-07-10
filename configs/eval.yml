@@ -1,7 +1,25 @@
 ### INPUT
 
-ckpt_path     : out/reproduce__NAN/model_255000.pth
-distributed   : False
+# ckpt_path     : out/reproduce__NAN/model_255000.pth
+ckpt_path                   : ckpts_test/nan_plain_230000.pth
+# ckpt_path                   : ckpts_test/DegAE_AllCondRenderer_preBPN_weightSumFilter_perImg_ftEmbed_embedLoss1e3_200000.pth
+distributed                 : False
+no_load_opt                 : True
+no_load_scheduler           : True
+include_target              : True
+##
+views_attn                  : True
+kernel_size                 : [3, 3]
+pre_net                     : True
+noise_feat                  : True
+rgb_weights                 : True
+
+##
+degae_feat                  : False #True
+weightsum_filtered          : False #True
+bpn_prenet                  : False #True
+bpn_per_img                 : False #True
+cond_renderer               : False #True
 
 ## dataset
 eval_dataset : llff_test

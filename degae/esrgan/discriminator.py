@@ -6,6 +6,9 @@ from torchvision import models, transforms
 from torchvision.models.feature_extraction import create_feature_extractor
 
 
+def de_parallel(model):
+    return model.module if hasattr(model, 'module') else model
+
 class DiscriminatorUNet(nn.Module):
     def __init__(
             self,
@@ -51,6 +54,13 @@ class DiscriminatorUNet(nn.Module):
             nn.LeakyReLU(0.2, True),
         )
         self.conv4 = nn.Conv2d(channels, out_channels, (3, 3), (1, 1), (1, 1))
+
+    def save_model(self, filename, optimizer, scheduler):
+        to_save = {'optimizer'  : optimizer.state_dict(),
+                   'scheduler'  : scheduler.state_dict(),
+                   'model' : de_parallel(self).state_dict()}
+        torch.save(to_save, filename)
+
 
     def forward(self, x: Tensor) -> Tensor:
         return self._forward_impl(x)
