@@ -464,17 +464,20 @@ class RayRender:
 
         noise_vec = None
         if self.model.args.cond_renderer or self.model.args.lambda_embed_loss > 0:
-            H, W = orig_rgbs.shape[2:4]
-            start_h = 0 if H < 384 else (H - 384) // 2
-            start_w = 0 if W < 384 else (W - 384) // 2
-            input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
-            noise_vec = self.model.degae.degrep_extractor(input_rgb, white_level.to(orig_rgbs.device))
-            del input_rgb
-            torch.cuda.empty_cache()
+            with torch.no_grad():
+                if self.model.args.downscale_input_img:
+                    input_rgb = F.interpolate(orig_rgbs[0].permute(0,3,1,2), scale_factor=0.5)
+                else:
+                    H, W = orig_rgbs.shape[2:4]
+                    start_h = 0 if H < 384 else (H - 384) // 2
+                    start_w = 0 if W < 384 else (W - 384) // 2
+                    input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
+                noise_vec = self.model.degae.degrep_extractor(input_rgb, white_level.to(orig_rgbs.device))
+                del input_rgb
+                torch.cuda.empty_cache()
 
         if not self.model.args.degae_feat:
             featmaps = self.model.feature_net(src_rgbs)
-            src_rgbs = src_rgbs.permute(0, 2, 3, 1).unsqueeze(0)
         else:
             with torch.no_grad():
                 degfeat = self.model.degae.encoder(orig_rgbs[0].permute(0,3,1,2), img_wh=torch.Tensor([orig_rgbs.shape[-2], orig_rgbs.shape[-3]]).int().to(orig_rgbs.device))    

@@ -159,7 +159,7 @@ class Trainer:
                                                                 white_level=ray_batch['white_level'])
 
         w = alpha ** global_step
-        if not self.args.weightsum_filtered and not self.args.sum_filtered:
+        if not self.args.weightsum_filtered:
             org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
         else:
             org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w

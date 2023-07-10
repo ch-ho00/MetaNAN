@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : DegAE_rerun2_embedLoss1e3_denoise # MetaDegAE #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : test #DegAE_revisedCondRender_woDownScaleImg_woFtEmbed_embedLoss1e3_denoise # MetaDegAE #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -25,6 +25,7 @@ coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
 weightsum_filtered          : True
+downscale_input_img         : False
 lambda_embed_loss           : 1000 #1000
 bpn_prenet                  : True
 bpn_per_img                 : True
@@ -49,6 +50,7 @@ i_weights                   : 5000
 
 ### additional
 #ckpt_path                   : out/NAN/model_255000.pth   # use this if you want to train from a specific checkpoint.
+# ckpt_path                   : /disk1/chanho/3d/MetaNAN/ckpts_test/model_205000.pth
 no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True

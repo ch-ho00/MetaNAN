@@ -63,8 +63,8 @@ class CondSeqential(nn.Module):
         self.sequential_layer = sequential_module
         self.embedding_layer = nn.ModuleList()
         layer_sizes = [layer.out_features * 2 for layer in self.sequential_layer if isinstance(layer, nn.Linear)][:-1]
-        if len(layer_sizes) > 1:
-            for i in range(len(layer_sizes) - 1):
+        if len(layer_sizes) > 0:
+            for i in range(len(layer_sizes)):
                 self.embedding_layer.append(nn.Linear(embedding_size, layer_sizes[i]))
         self.init_weights()
 
@@ -166,11 +166,11 @@ class NanMLP(nn.Module):
         self.rgb_reduce_fn = self.rgb_reduce_factory()
 
         if self.args.cond_renderer:
-            self.base_fc         =  CondSeqential(self.base_fc        )
-            self.vis_fc          =  CondSeqential(self.vis_fc         )
-            self.vis_fc2         =  CondSeqential(self.vis_fc2        )
-            self.geometry_fc     =  CondSeqential(self.geometry_fc    )
-            self.out_geometry_fc =  CondSeqential(self.out_geometry_fc)
+            # self.base_fc         =  CondSeqential(self.base_fc        )
+            # self.vis_fc          =  CondSeqential(self.vis_fc         )
+            # self.vis_fc2         =  CondSeqential(self.vis_fc2        )
+            # self.geometry_fc     =  CondSeqential(self.geometry_fc    )
+            # self.out_geometry_fc =  CondSeqential(self.out_geometry_fc)
             self.rgb_fc          =  CondSeqential(self.rgb_fc         )
 
         # positional encoding
@@ -231,21 +231,21 @@ class NanMLP(nn.Module):
         ext_feat, weight = self.compute_extended_features(ray_diff, rgb_feat, mask, num_valid_obs, sigma_est, degrade_vec=degrade_vec)
         torch.cuda.empty_cache()
 
-        if self.args.cond_renderer:
-            x = self.base_fc(ext_feat, degrade_vec)  # ((32 + 3) x 3) --> MLP --> (32)
-            x_vis = self.vis_fc(x * weight, degrade_vec)
-            x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
-            vis = torch.sigmoid(vis) * mask
-            x = x + x_res
-            vis = self.vis_fc2(x * vis, degrade_vec) * mask
+        # if self.args.cond_renderer:
+        #     x = self.base_fc(ext_feat, degrade_vec)  # ((32 + 3) x 3) --> MLP --> (32)
+        #     x_vis = self.vis_fc(x * weight, degrade_vec)
+        #     x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
+        #     vis = torch.sigmoid(vis) * mask
+        #     x = x + x_res
+        #     vis = self.vis_fc2(x * vis, degrade_vec) * mask
             
-        else:
-            x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32)
-            x_vis = self.vis_fc(x * weight)
-            x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
-            vis = torch.sigmoid(vis) * mask
-            x = x + x_res
-            vis = self.vis_fc2(x * vis) * mask
+        # else:
+        x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32)
+        x_vis = self.vis_fc(x * weight)
+        x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
+        vis = torch.sigmoid(vis) * mask
+        x = x + x_res
+        vis = self.vis_fc2(x * vis) * mask
 
         torch.cuda.empty_cache()
 
@@ -297,10 +297,10 @@ class NanMLP(nn.Module):
         rho_globalfeat = torch.cat([mean.squeeze(2), var.squeeze(2), weight.mean(dim=2)],
                                    dim=-1)  # [n_rays, n_samples, 32*2+1]
 
-        if self.args.cond_renderer:
-            globalfeat = self.geometry_fc(rho_globalfeat, degrade_vec)  # [n_rays, n_samples, 16]        
-        else:
-            globalfeat = self.geometry_fc(rho_globalfeat)  # [n_rays, n_samples, 16]
+        # if self.args.cond_renderer:
+        #     globalfeat = self.geometry_fc(rho_globalfeat, degrade_vec)  # [n_rays, n_samples, 16]        
+        # else:
+        globalfeat = self.geometry_fc(rho_globalfeat)  # [n_rays, n_samples, 16]
 
         # positional encoding
         globalfeat = globalfeat + self.pos_encoding
@@ -308,10 +308,10 @@ class NanMLP(nn.Module):
         # ray attention
         globalfeat, _ = self.ray_attention(globalfeat, globalfeat, globalfeat,
                                            mask=num_valid_obs > 1)  # [n_rays, n_samples, 16]
-        if self.args.cond_renderer:
-           rho = self.out_geometry_fc(globalfeat, degrade_vec)  # [n_rays, n_samples, 1]        
-        else:
-           rho = self.out_geometry_fc(globalfeat)  # [n_rays, n_samples, 1]
+        # if self.args.cond_renderer:
+        #    rho = self.out_geometry_fc(globalfeat, degrade_vec)  # [n_rays, n_samples, 1]        
+        # else:
+        rho = self.out_geometry_fc(globalfeat)  # [n_rays, n_samples, 1]
         rho_out = rho.masked_fill(num_valid_obs < 1, 0.)  # set the rho of invalid point to zero
 
         return rho_out, rho_globalfeat
