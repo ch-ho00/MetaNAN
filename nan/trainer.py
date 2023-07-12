@@ -27,7 +27,7 @@ from nan.utils.io_utils import print_link, colorize
 from nan.ssim_l1_loss import MS_SSIM_L1_LOSS
 import torch.nn.functional as F
 
-alpha=0.9997
+alpha=0.9998
 
 class Trainer:
     def __init__(self, args):
@@ -187,10 +187,15 @@ class Trainer:
         # compute loss
         torch.cuda.empty_cache()
         self.model.optimizer.zero_grad()
-        loss = self.criterion(batch_out['coarse'], ray_batch, self.scalars_to_log)
+        loss = 0
+        coarse_loss = self.criterion(batch_out['coarse'], ray_batch, self.scalars_to_log)
+        self.scalars_to_log['train/coarse_loss'] = coarse_loss
+        loss += coarse_loss
 
         if batch_out['fine'] is not None:
-            loss += self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
+            fine_loss = self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
+            self.scalars_to_log['train/fine_loss'] = fine_loss
+            loss += fine_loss
 
         if self.args.lambda_embed_loss > 0:
             clean_down = train_data['rgb_clean'].permute(0,3,1,2).to(self.device) # F.interpolate(train_data['rgb_clean'].permute(0,3,1,2).to(self.device), scale_factor=0.25, mode='bilinear')
@@ -199,6 +204,7 @@ class Trainer:
             clean_embed_vec = self.model.degae.degrep_extractor(clean_down, white_level=ray_batch['white_level'].to(self.device))
             reconst_embed_vec = self.model.degae.degrep_extractor(reconst_down, white_level=ray_batch['white_level'].to(self.device))
 
+            # embed_loss = F.mse_loss(reconst_embed_vec[0], clean_embed_vec[0])
             embed_loss = F.mse_loss(reconst_embed_vec, clean_embed_vec.repeat(reconst_embed_vec.shape[0], 1))
             loss += embed_loss * self.args.lambda_embed_loss
             self.scalars_to_log['train/embed-loss'] = embed_loss * self.args.lambda_embed_loss

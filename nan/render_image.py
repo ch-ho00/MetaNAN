@@ -23,7 +23,7 @@ from nan.raw2output import RaysOutput
 from nan.sample_ray import RaySampler
 
 
-alpha=0.9996
+alpha=0.9998
 
 def render_single_image(ray_sampler: RaySampler,
                         model,

@@ -463,7 +463,7 @@ class RayRender:
 
 
         noise_vec = None
-        if self.model.args.cond_renderer or self.model.args.lambda_embed_loss > 0:
+        if self.model.args.cond_renderer:
             with torch.no_grad():
                 if self.model.args.downscale_input_img:
                     input_rgb = F.interpolate(orig_rgbs[0].permute(0,3,1,2), scale_factor=0.5)

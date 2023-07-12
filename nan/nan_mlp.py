@@ -63,8 +63,8 @@ class CondSeqential(nn.Module):
         self.sequential_layer = sequential_module
         self.embedding_layer = nn.ModuleList()
         layer_sizes = [layer.out_features * 2 for layer in self.sequential_layer if isinstance(layer, nn.Linear)][:-1]
-        if len(layer_sizes) > 0:
-            for i in range(len(layer_sizes)):
+        if len(layer_sizes) > 1:
+            for i in range(len(layer_sizes) -1):
                 self.embedding_layer.append(nn.Linear(embedding_size, layer_sizes[i]))
         self.init_weights()
 
@@ -237,8 +237,7 @@ class NanMLP(nn.Module):
         #     x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
         #     vis = torch.sigmoid(vis) * mask
         #     x = x + x_res
-        #     vis = self.vis_fc2(x * vis, degrade_vec) * mask
-            
+        #     vis = self.vis_fc2(x * vis, degrade_vec) * mask        
         # else:
         x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32)
         x_vis = self.vis_fc(x * weight)
