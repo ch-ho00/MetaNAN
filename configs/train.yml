@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : DegAE_run2_OrigCondRender_woDownScaleImg_woFtEmbed_AnnealEmbedLoss1e4_denoise # MetaDegAE #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : degae_run_preBPN_weightSum_embedLoss0_ftEmbed_reviseCondRender_ablation
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -26,11 +26,11 @@ fine_feat_dim               : 32
 img_size                    : 256
 weightsum_filtered          : True
 downscale_input_img         : False
-lambda_embed_loss           : 10000
-bpn_prenet                  : True
-bpn_per_img                 : True
-ft_embed_fc                 : False
-cond_renderer               : True
+lambda_embed_loss           : 0.0
+bpn_prenet                  : True 
+bpn_per_img                 : True 
+ft_embed_fc                 : True
+cond_renderer               : True 
 
 
 ### TESTING

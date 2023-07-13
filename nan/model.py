@@ -148,10 +148,15 @@ class NANScheme(nn.Module):
             if args.degae_feat_ckpt != None:
                 checkpoint = torch.load(args.degae_feat_ckpt, map_location=lambda storage, loc: storage)
                 self.degae.load_state_dict(checkpoint["model"])
-            
-            for param in self.degae.parameters():
-                param.requires_grad = False
-            self.degae.eval()
+
+
+            for name, param in self.degae.named_parameters():
+                if 'degrep_extractor.degrep_fc' in name and self.args.ft_embed_fc:
+                    param.requires_grad = True
+                else:                    
+                    param.requires_grad = False
+                # print(name, param.requires_grad, param.shape,)
+
 
             if args.degae_feat:
                 dim_ = self.args.fine_feat_dim + self.args.coarse_feat_dim
@@ -212,8 +217,7 @@ class NANScheme(nn.Module):
                                 {'params': self.feature_conv_2.parameters(), 'lr': self.args.lrate_feature},
                                 {'params': self.feature_conv_3.parameters(), 'lr': self.args.lrate_feature}]                  
             if self.args.ft_embed_fc:
-                params_list += [{'params' : self.degae.degrep_extractor.degrep_conv.parameters(), 'lr':self.args.lrate_feature * 1e-2},
-                                {'params' : self.degae.degrep_extractor.degrep_fc.parameters(),   'lr':self.args.lrate_feature * 1e-2}]
+                params_list += [{'params' : self.degae.degrep_extractor.degrep_fc.parameters(),   'lr':self.args.lrate_feature * 1e-2}]
                     
         else:
             params_list = [{'params': self.feature_net.parameters(), 'lr': self.args.lrate_feature}]
@@ -259,7 +263,6 @@ class NANScheme(nn.Module):
                 self.pre_net.eval()
 
         if self.args.ft_embed_fc:
-            self.degae.degrep_extractor.degrep_conv.eval()
             self.degae.degrep_extractor.degrep_fc.eval()
 
         if self.args.blur_render:
@@ -285,7 +288,6 @@ class NANScheme(nn.Module):
                 self.pre_net.train()
 
         if self.args.ft_embed_fc:
-            self.degae.degrep_extractor.degrep_conv.train()
             self.degae.degrep_extractor.degrep_fc.train()
 
         if self.args.blur_render:

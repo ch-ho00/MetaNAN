@@ -22,6 +22,7 @@ from nan.projection import Projector
 from nan.raw2output import RaysOutput
 from nan.feature_network import BasicBlock
 from nan.sample_ray import parse_camera
+from nan.dataloaders.basic_dataset import de_linearize
 
 
 def stack_image(image, N=2, pad=7):
@@ -464,17 +465,20 @@ class RayRender:
 
         noise_vec = None
         if self.model.args.cond_renderer:
-            with torch.no_grad():
-                if self.model.args.downscale_input_img:
-                    input_rgb = F.interpolate(orig_rgbs[0].permute(0,3,1,2), scale_factor=0.5)
-                else:
-                    H, W = orig_rgbs.shape[2:4]
-                    start_h = 0 if H < 384 else (H - 384) // 2
-                    start_w = 0 if W < 384 else (W - 384) // 2
-                    input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
-                noise_vec = self.model.degae.degrep_extractor(input_rgb, white_level.to(orig_rgbs.device))
-                del input_rgb
-                torch.cuda.empty_cache()
+            H, W = orig_rgbs.shape[2:4]
+            start_h = 0 if H < 384 else (H - 384) // 2
+            start_w = 0 if W < 384 else (W - 384) // 2
+            input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
+            white_level = white_level.to(orig_rgbs.device)
+            if white_level.ndim == 2 and white_level.shape[0] == 1:
+                white_level = white_level[0].item()
+            x = de_linearize(input_rgb, white_level)
+            x = self.model.degae.degrep_extractor.srgan(x)
+            noise_vec = self.model.degae.degrep_extractor.degrep_conv(x)
+            noise_vec = F.adaptive_avg_pool2d(noise_vec, (1, 1))
+            noise_vec = self.model.degae.degrep_extractor.degrep_fc(noise_vec.reshape(-1,512))
+            del input_rgb, x
+            torch.cuda.empty_cache()
 
         if not self.model.args.degae_feat:
             featmaps = self.model.feature_net(src_rgbs)

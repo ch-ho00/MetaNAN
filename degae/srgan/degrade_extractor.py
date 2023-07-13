@@ -49,17 +49,16 @@ class DegFeatureExtractor(nn.Module):
             nn.Linear(512, 512),
             nn.LeakyReLU(0.2, inplace=True)
         ) 
-        if not train_scratch:
-            for d_parameters in self.degrep_fc.parameters():
-                d_parameters.requires_grad = False
-            self.degrep_fc.eval()
+        # if not train_scratch:
+        #     for d_parameters in self.degrep_fc.parameters():
+        #         d_parameters.requires_grad = False
+        #     self.degrep_fc.eval()
 
     def forward(self, x, white_level) -> Tensor:
         if white_level.ndim == 2 and white_level.shape[0] == 1:
             white_level = white_level[0].item()
         x = de_linearize(x, white_level) #.clamp(0,1)
-        with torch.no_grad():
-            x = self.srgan(x)
+        x = self.srgan(x)
         x = self.degrep_conv(x)
         x = F.adaptive_avg_pool2d(x, (1, 1))
         x = self.degrep_fc(x.reshape(-1,512))
