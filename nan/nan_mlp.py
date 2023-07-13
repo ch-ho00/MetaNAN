@@ -167,8 +167,8 @@ class NanMLP(nn.Module):
 
         if self.args.cond_renderer:
             self.base_fc         =  CondSeqential(self.base_fc        )
-            self.vis_fc          =  CondSeqential(self.vis_fc         )
-            self.vis_fc2         =  CondSeqential(self.vis_fc2        )
+            # self.vis_fc          =  CondSeqential(self.vis_fc         )
+            # self.vis_fc2         =  CondSeqential(self.vis_fc2        )
             # self.geometry_fc     =  CondSeqential(self.geometry_fc    )
             # self.out_geometry_fc =  CondSeqential(self.out_geometry_fc)
             # self.rgb_fc          =  CondSeqential(self.rgb_fc         )
@@ -233,18 +233,18 @@ class NanMLP(nn.Module):
 
         if self.args.cond_renderer:
             x = self.base_fc(ext_feat, degrade_vec)  # ((32 + 3) x 3) --> MLP --> (32)
-            x_vis = self.vis_fc(x * weight, degrade_vec)
-            x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
-            vis = torch.sigmoid(vis) * mask
-            x = x + x_res
-            vis = self.vis_fc2(x * vis, degrade_vec) * mask        
+            # x_vis = self.vis_fc(x * weight, degrade_vec)
+            # x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
+            # vis = torch.sigmoid(vis) * mask
+            # x = x + x_res
+            # vis = self.vis_fc2(x * vis, degrade_vec) * mask        
         else:
             x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32)
-            x_vis = self.vis_fc(x * weight)
-            x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
-            vis = torch.sigmoid(vis) * mask
-            x = x + x_res
-            vis = self.vis_fc2(x * vis) * mask
+        x_vis = self.vis_fc(x * weight)
+        x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
+        vis = torch.sigmoid(vis) * mask
+        x = x + x_res
+        vis = self.vis_fc2(x * vis) * mask
 
         torch.cuda.empty_cache()
 

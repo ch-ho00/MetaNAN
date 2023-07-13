@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : degae_run_preBPN_weightSum_embedLoss0_ftEmbed_reviseCondRender_ablation
+expname                     : degae_preBPN_weightSum_embedLoss0_ftEmbed_reviseCondRenderOnlyBaseFc_ablation
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
