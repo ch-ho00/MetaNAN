@@ -62,9 +62,9 @@ class CondSeqential(nn.Module):
         self.embedding_size = embedding_size
         self.sequential_layer = sequential_module
         self.embedding_layer = nn.ModuleList()
-        layer_sizes = [layer.out_features * 2 for layer in self.sequential_layer if isinstance(layer, nn.Linear)][:-1]
-        if len(layer_sizes) > 1:
-            for i in range(len(layer_sizes) -1):
+        layer_sizes = [layer.out_features for layer in self.sequential_layer if isinstance(layer, nn.Linear)][:1] # layer.out_features
+        if len(layer_sizes) > 0:
+            for i in range(len(layer_sizes)):
                 self.embedding_layer.append(nn.Linear(embedding_size, layer_sizes[i]))
         self.init_weights()
 
@@ -74,8 +74,7 @@ class CondSeqential(nn.Module):
             x = layer(x)
             if isinstance(layer, nn.Linear) and linear_cnt < len(self.embedding_layer):
                 embedded = self.embedding_layer[linear_cnt](embedding)
-                scale, shift = torch.chunk(embedded, 2, dim=1)
-                x = scale * x + shift
+                x = torch.cat([x, embedded.expand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], embedded.shape[0], embedded.shape[1])], dim=-1)
                 linear_cnt += 1
         return x
 

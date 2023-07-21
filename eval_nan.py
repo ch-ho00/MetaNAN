@@ -46,6 +46,9 @@ skip_forward = True
 args.eval_gain = [1,2,4,8,16,20] # 
 if not skip_forward:
     val_dataset = dataset_dict["llff_test"](args, Mode.validation, scenes=[])
+    print("###################################")
+    print(' Val Dataset Size = ', len(val_dataset))
+    print("#################################")
 
     load_ckpt = args.ckpt_path
     model = NANScheme.create(args)
@@ -97,6 +100,7 @@ if not skip_forward:
             pred_rgb = ret['fine'].rgb
             psnr_curr_img = img2psnr(de_linearize(pred_rgb.detach().cpu(), ray_sampler.white_level).clamp(0,1),
                                     de_linearize(gt_img[::args.render_stride, ::args.render_stride], ray_sampler.white_level).clamp(0,1))
+            print(gain_level, psnr_curr_img)
 
             render_result[idx][gain_level] = {
                 'psnr' : psnr_curr_img,

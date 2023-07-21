@@ -452,6 +452,7 @@ class RayRender:
                 src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
                 src_rgbs_stacked = stack_image(src_rgbs, N=npatch_per_side, pad=pad)
                 src_rgbs, bpn_feats = self.model.pre_net(src_rgbs_stacked, src_rgbs_stacked[:,None])                    
+                # src_rgbs, bpn_feats = self.model.pre_net(src_rgbs, src_rgbs[:,None])                    
                 src_rgbs = src_rgbs[:,0]
                 del src_rgbs_stacked
                 src_rgbs = unstack_image(src_rgbs, total_n_patch=npatch_per_side**2, pad=pad)

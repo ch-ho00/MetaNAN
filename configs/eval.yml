@@ -1,7 +1,8 @@
 ### INPUT
 
-# ckpt_path     : out/reproduce__NAN/model_255000.pth
-ckpt_path                   : ckpts_test/nan_plain_230000.pth
+ckpt_path     : ckpts_test/orig_nan_255000.pth
+# ckpt_path                   :  ckpts_test/degae_ablation_255000.pth
+# ckpt_path                   :  ckpts_test/degae_preBPN_weightsum_ablation_255000.pth
 # ckpt_path                   : ckpts_test/DegAE_AllCondRenderer_preBPN_weightSumFilter_perImg_ftEmbed_embedLoss1e3_200000.pth
 distributed                 : False
 no_load_opt                 : True

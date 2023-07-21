@@ -278,6 +278,7 @@ class COLMAPDataset(NoiseDataset, ABC):
                 id_render = train_rgb_files.index(rgb_file)
             else:
                 id_render = None
+            # subsample_factor = np.random.choice(np.arange(1, 3), p=[0.75, 0.25])
             subsample_factor = np.random.choice(np.arange(1, 4), p=[0.2, 0.45, 0.35])
             num_select = self.num_source_views # + np.random.randint(low=-2, high=self.num_select_high)
             id_render = id_render
@@ -370,9 +371,9 @@ class LLFFTestDataset(COLMAPDataset):
 
     def apply_transform(self, rgb, camera, src_rgbs, src_cameras):
         if self.mode is Mode.train and self.random_crop:
-            crop_h = np.random.randint(low=250, high=750) // 128 * 128
+            crop_h = np.random.randint(low=320, high=750) // 128 * 128
             crop_h = crop_h + 1 if crop_h % 2 == 1 else crop_h
-            crop_w = int(275 * 475 / crop_h // 128 * 128)
+            crop_w = int(400 * 600 / crop_h // 128 * 128) # 350 * 550
             crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
             rgb, camera, src_rgbs, src_cameras = random_crop(rgb, camera, src_rgbs, src_cameras,
                                                              (crop_h, crop_w))

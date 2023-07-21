@@ -41,7 +41,7 @@ def parallel(model, local_rank):
 
 class Gaussian2D(nn.Conv2d):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: Tuple[int, int], sigma: Tuple[float, float]):
-        super().__init__(in_channels, out_channels, kernel_size, padding='same', bias=False)
+        super().__init__(in_channels, out_channels, kernel_size, padding='same', bias=True)
 
         gauss_kernel: torch.Tensor = kornia.filters.get_gaussian_kernel2d(kernel_size, sigma)
         new_weight = torch.zeros_like(self.weight)
@@ -210,7 +210,7 @@ class NANScheme(nn.Module):
                 params_list += [ {'params': self.feature_conv_0.parameters(), 'lr': self.args.lrate_feature},
                                 {'params': self.feature_conv_1.parameters(), 'lr': self.args.lrate_feature},
                                 {'params': self.feature_conv_2.parameters(), 'lr': self.args.lrate_feature},
-                                {'params': self.feature_conv_3.parameters(), 'lr': self.args.lrate_feature}]                  
+                                {'params': self.feature_conv_3.parameters(), 'lr': self.args.lrate_feature}]     
             if self.args.ft_embed_fc:
                 params_list += [{'params' : self.degae.degrep_extractor.degrep_conv.parameters(), 'lr':self.args.lrate_feature * 1e-2},
                                 {'params' : self.degae.degrep_extractor.degrep_fc.parameters(),   'lr':self.args.lrate_feature * 1e-2}]
