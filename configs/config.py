@@ -132,6 +132,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         # blur render
         parser.add_argument('--blur_render', default=False, action="store_true")
         parser.add_argument('--lambda_align_loss', type=float, default=0)
+        parser.add_argument("--num_latent", type=int, default=5)
 
         ## Plain AE to NAN
         parser.add_argument('--ssim_alpha', type=float, default=0)

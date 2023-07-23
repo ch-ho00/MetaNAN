@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 # BPN basic block: SingleConv
 class SingleConv(nn.Module):
     def __init__(self, in_ch, out_ch):
@@ -110,25 +109,21 @@ class KernelConv(nn.Module):
 
 
 class BPN(nn.Module):
-    def __init__(self, color=True, burst_length=8, blind_est=True,
-                 kernel_size=7, basis_size=64, upMode='bilinear', bpn_per_img=False):
+    def __init__(self, color=True, burst_length=1, blind_est=True,
+                 kernel_size=7, basis_size=32, upMode='bilinear', bpn_per_img=True, n_latent_layers=None):
         super(BPN, self).__init__()
-        self.burst_length = burst_length
         self.blind_est = blind_est
         self.kernel_size = kernel_size
         self.basis_size = basis_size
         self.upMode = upMode
         self.color_channel = 3 if color else 1
-        self.bpn_per_img = bpn_per_img
-        if bpn_per_img:
-            self.in_channel = self.color_channel
-            self.burst_length = 1   
-        else:
-            self.in_channel = self.color_channel * (
-                self.burst_length if self.blind_est else self.burst_length + 1)
+        self.in_channel = self.color_channel
+        self.burst_length = 1   
+        self.n_latent_layers = n_latent_layers if n_latent_layers != None else 1
+        self.color_channel = self.color_channel 
         factor = 1
-        self.coeff_channel = self.basis_size
-        self.basis_channel = self.color_channel * self.burst_length * self.basis_size
+        self.coeff_channel = self.basis_size * self.n_latent_layers
+        self.basis_channel = self.color_channel * self.burst_length * self.basis_size * self.n_latent_layers
 
         # Layer definition in each block
         # Encoder
@@ -152,6 +147,14 @@ class BPN(nn.Module):
         self.basis_conv1 = CutEdgeConv(64 // factor, 64 // factor)
         self.basis_conv3 = SingleConv( 64 // factor, self.basis_channel)
         self.out_basis = nn.Softmax(dim=1)
+
+        # # Decoder for weight
+        # if self.n_latent_layers
+        # self.weight_conv = SingleConv((128 * self.n_latent_layers) // factor, (32  * self.n_latent_layers) // factor)
+        # self.weight_conv1 = UpBlock((32 * self.n_latent_layers) // factor,    16 // factor)
+        # self.weight_conv2 = UpBlock((16 * self.n_latent_layers) // factor,    8 // factor)
+        # self.weight_conv3 = UpBlock(8  // factor ,   1 // factor)
+
 
         # Predict clean images by using local convolutions with kernels
         self.kernel_conv = KernelConv(self.kernel_size)
@@ -258,8 +261,15 @@ class BPN(nn.Module):
         del up_coeff_conv3
         coeff3 = self.coeff_conv3(coeff1)
         del coeff1 
-        coeff = self.out_coeff(coeff3)
+
+        if self.n_latent_layers > 1:
+            coeffs = []
+            for img_idx in range(self.n_latent_layers):
+                coeffs.append(self.out_coeff(coeff3[:,self.basis_size * img_idx: self.basis_size * (img_idx + 1)]))
+        else:
+            coeff = self.out_coeff(coeff3)
         del coeff3
+
         
         # up sampling with pooled-skip connection, for basis
         up_basis_conv1 = self.up_basis_conv1(torch.cat([self.pool_before_cat(
@@ -278,23 +288,67 @@ class BPN(nn.Module):
         basis1 = self.basis_conv1(up_basis_conv3)
         del up_basis_conv3
         basis3 = self.basis_conv3(basis1).view(basis1.size(0),
-                                               self.basis_size,
+                                               self.basis_size * self.n_latent_layers,
                                                self.burst_length,
                                                self.color_channel,
                                                self.kernel_size,
                                                self.kernel_size)
         del basis1
-        basis = self.out_basis(basis3)
+        if self.n_latent_layers > 1:
+            basis = torch.zeros_like(basis3)
+            pred_imgs = []
+            for img_idx in range(self.n_latent_layers):
+                img_basis = self.out_coeff(basis3[:,self.basis_size * img_idx: self.basis_size * (img_idx + 1)])
+                kernels = self.kernel_predict(coeffs[img_idx], img_basis, 
+                                            coeffs[img_idx].size(0), self.burst_length, self.kernel_size,
+                                            self.color_channel)
+                pred_burst = self.kernel_conv(data, kernels)
+                pred_imgs.append(pred_burst)
+            pred_imgs = torch.cat(pred_imgs, dim=1)
+            torch.cuda.empty_cache()
+            return pred_imgs, features
+        else:
+            basis = self.out_basis(basis3)
         del basis3
         # kernel prediction
         kernels = self.kernel_predict(coeff, basis, coeff.size(0),
-                                      self.burst_length, self.kernel_size,
-                                      self.color_channel)
+                                    self.burst_length, self.kernel_size,
+                                    self.color_channel)
         del coeff, basis
         # clean burst prediction
         pred_burst = self.kernel_conv(data, kernels)
         del kernels
         torch.cuda.empty_cache()
 
-        return pred_burst, features
+        return pred_burst[:,0], features
 
+
+
+class DeblurBPN(nn.Module):
+    def __init__(self, n_latent_layers):
+        super(DeblurBPN, self).__init__()
+
+        self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=16)
+        self.offset_fc = nn.Sequential(
+            nn.Linear(128 * 9, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 6)
+        )
+
+    def forward(self, input_imgs):
+        '''
+        Input
+            (B,V,3,H,W)
+        Output
+            (B, n_latent_layers, 3, H, W)
+            (B,6)
+        '''
+
+        pred_latent_imgs, feature = self.bpn(input_imgs, input_imgs[:,None])
+        down_feat = F.adaptive_avg_pool2d(feature, (3,3))
+        vec = down_feat.reshape(-1,128 * 9)
+        pred_offset = self.offset_fc(vec)
+
+        return pred_latent_imgs, pred_offset

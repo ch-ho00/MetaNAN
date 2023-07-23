@@ -108,7 +108,7 @@ class Projector:
         ray_diff = ray_diff.reshape((num_views,) + original_shape + (4,))
         return ray_diff
 
-    def compute(self, xyz, query_camera, src_imgs, org_src_imgs, sigma_estimate, src_cameras, featmaps):
+    def compute(self, xyz, query_camera, src_imgs, org_src_imgs, sigma_estimate, src_cameras, featmaps, latent_info=None):
         """ Given 3D points and the camera of the target and src views,
         computing the rgb values of the incident pixels and their kxk environment.
 
@@ -164,6 +164,22 @@ class Projector:
         feat_sampled = F.grid_sample(featmaps, norm_xys, align_corners=True)
         feat_sampled = feat_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, d]
         rgb_feat_sampled = torch.cat([rgbs_sampled, feat_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
+
+        if latent_info != None:
+            latent_cameras, latent_rgbs = latent_info
+            n_src, n_latent = latent_rgbs.shape[:2]
+            h, w =  latent_rgbs.shape[-2:]
+            latent_cameras = latent_cameras.reshape(-1, 34)
+            latent_rgbs = latent_rgbs.reshape(-1, 3, h, w)
+
+            # compute the projection of the query points to each latent image
+            latent_xys, latent_masks = self.compute_projections(xyz, latent_cameras)  # [n_views, n_rays, n_samples * prod(kernel_size), 2]
+            norm_latent_xys = self.normalize(latent_xys, h, w)  # [n_views, n_rays, n_samples, 2]
+            latent_rgb_sampled = F.grid_sample(latent_rgbs, norm_latent_xys, align_corners=True)
+            latent_rgb_sampled = latent_rgb_sampled.reshape(n_src,n_latent, 3, latent_rgb_sampled.shape[-2], latent_rgb_sampled.shape[-1])
+            latent_rgb_sampled = latent_rgb_sampled.reshape(n_src, -1, latent_rgb_sampled.shape[-2], latent_rgb_sampled.shape[-1])
+            latent_rgb_sampled = latent_rgb_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, 3]
+            rgb_feat_sampled = torch.cat([rgb_feat_sampled, latent_rgb_sampled], dim=-1)
 
         rgb_feat_sampled = self.reshape_features(rgb_feat_sampled)
         feat_sampled = self.reshape_features(feat_sampled)

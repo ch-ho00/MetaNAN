@@ -108,7 +108,20 @@ class BurstDataset(Dataset, ABC):
         self.num_source_views = args.num_source_views
         self.random_crop = random_crop
 
-        if self.args.train_dataset == 'deblur':
+        if self.args.train_dataset == 'deblur_scene':
+            assert isinstance(args.train_scenes, list)
+            assert len(args.train_scenes) == 1
+            scene_root = os.path.join(DATA_DIR, self.dir_name, self.args.train_scenes[0])
+            if 'syn' not in scene_root:
+                files = os.listdir(scene_root)
+                holdout_fn = [f for f in files if 'hold' in f][0]
+                holdout = int(holdout_fn.split("=")[-1])
+            else:
+                holdout = 1 if self.mode == Mode.train else 8
+            self.holdout = holdout
+            self.add_single_scene(0, Path(scene_root), holdout)
+
+        elif self.args.train_dataset == 'deblur':
             self.noise2folder = {
                 'syn_motion' : 'synthetic_camera_motion_blur',
                 'syn_defocus' : 'synthetic_defocus_blur'
@@ -421,7 +434,7 @@ class NoiseDataset(BurstDataset, ABC):
         return batch_dict
 
     def create_deblur_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
-                                gt_depth=None, eval_gain=1, blur_target=True):
+                                gt_depth=None, eval_gain=1, blur_target=False):
         if self.mode in [Mode.train]:
             white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
         else:

@@ -165,19 +165,6 @@ class Trainer:
             org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
             self.scalars_to_log['weight'] = w 
 
-        if train_data['blur_target'] and self.args.blur_render:
-            npatch_per_side = 2
-            pad = 8
-            tar_rgb = train_data['rgb_clean'].permute(0,3,1,2).to(self.device)
-            tar_rgb_stacked = stack_image(tar_rgb, N=npatch_per_side, pad=pad)
-            tar_rgb_reconst, bpn_feats = self.model.pre_net(tar_rgb_stacked, tar_rgb_stacked[:,None])                    
-            del tar_rgb_reconst
-            bpn_feats = unstack_image(bpn_feats, total_n_patch=npatch_per_side**2, pad=1)
-            featmaps['tar_bpn_feats'] = bpn_feats
-
-            noise_vec = self.model.degae.degrep_extractor(tar_rgb, ray_batch['white_level'].to(self.device))
-            featmaps['tar_noise_vec'] = noise_vec
-
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
                                                  org_src_rgbs=org_src_rgbs_,
@@ -317,6 +304,13 @@ class Trainer:
                 reconst_img = ret['bpn_reconst'][0].permute(3,1,0,2).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
                 reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
                 self.writer.add_image(prefix + 'bpn_reconst'+ postfix, reconst_img, global_step)
+
+            if self.args.blur_render:
+                h, w = ret['latent_imgs'].shape[-2:]
+                vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['latent_imgs'][0].cpu()], dim=0)
+                reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
+                reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
+                self.writer.add_image(prefix + 'latent_imgs'+ postfix, reconst_img, global_step)
 
             del depth_im, rgb_im
         # write scalar

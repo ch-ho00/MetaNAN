@@ -23,8 +23,9 @@ from .realestate import *
 from .spaces_dataset import *
 from .nerf_synthetic import *
 from .deblur_data import *
-from .dtu_data import *
-from .seanerf_data import *
+from .deblur_scene_data import *
+# from .dtu_data import *
+# from .seanerf_data import *
 
 dataset_dict = {
     'spaces': SpacesFreeDataset,
@@ -37,8 +38,10 @@ dataset_dict = {
     'llff_test': LLFFTestDataset,
     'deblur_test' : DeblurTestDataset,
     'deblur'    : DeblurTrainDataset,
-    'dtu'       : DTUTrainDataset,
-    'dtu_test'  : DTUTestDataset,
-    'seanerf_test' : SeaNeRFTestDataset,
-    'seanerf' : SeaNeRFTrainDataset
+    'deblur_scene'         : DeblurSceneTrainDataset,
+    'deblur_scene_test'    : DeblurSceneTestDataset,
+    # 'dtu'       : DTUTrainDataset,
+    # 'dtu_test'  : DTUTestDataset,
+    # 'seanerf_test' : SeaNeRFTestDataset,
+    # 'seanerf' : SeaNeRFTrainDataset
 }

@@ -60,6 +60,8 @@ def render_single_image(ray_sampler: RaySampler,
 
     if model.args.bpn_prenet:
         all_ret['bpn_reconst'] = src_rgbs
+        if model.args.blur_render:
+            all_ret['latent_imgs'] = featmaps['latent_imgs']
 
 
     if args.N_importance > 0:

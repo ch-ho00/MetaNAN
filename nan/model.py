@@ -30,7 +30,7 @@ from nan.nan_mlp import NanMLP
 from nan.utils.io_utils import get_latest_file, print_link
 from degae.model import DegAE
 from degae.decoder import BasicBlock
-from nan.bpn_prenet import BPN
+from nan.bpn_prenet import BPN, DeblurBPN
 
 def de_parallel(model):
     return model.module if hasattr(model, 'module') else model
@@ -186,7 +186,10 @@ class NANScheme(nn.Module):
 
         if args.pre_net:
             if args.bpn_prenet:
-                self.pre_net = BPN(bpn_per_img=args.bpn_per_img).to(device)
+                if args.blur_render:
+                    self.pre_net = DeblurBPN(n_latent_layers=args.num_latent).to(device)
+                else:
+                    self.pre_net = BPN(bpn_per_img=args.bpn_per_img).to(device)
             else:
                 if args.weightsum_filtered:
                     self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(13, 13), sigma=(1.5, 1.5)).to(device)                

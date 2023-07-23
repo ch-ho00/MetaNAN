@@ -1,11 +1,11 @@
 ### INPUT
-expname                     : nan_plain_cleanTargetOnly_deblur #DegAE_blurRender_woCondRender_sumOrig_embedLoss1e4_deblur #MetaDegAE_cropCenterEmbed_weightsumFiltered_deblur #NAN_SrcFeatTransform_2e-2 #AE_preTransform_reconst_5x_anneal_5e-2_5e-2 #_2e-5 # AE_reconstNoisySrc_0_5e-1 #   #AE_wreconstVol_conv1x1_woSigmoid_1e-1_1e-1
+expname                     : nan_blurRender
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
 ## dataset
-train_dataset               : deblur
-eval_dataset                : deblur_test
+train_dataset               : deblur_scene
+eval_dataset                : deblur_scene_test
 eval_scenes                 : ['blurstair'] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
 
 ### TRAINING
@@ -25,15 +25,15 @@ coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
 weightsum_filtered          : False
-sum_filtered                : False
-lambda_embed_loss           : 0
-bpn_prenet                  : False #True
-bpn_per_img                 : False #True
+bpn_prenet                  : True
+bpn_per_img                 : True
 ft_embed_fc                 : False #True
 cond_renderer               : False
-lambda_reconst_loss         : 0.0
-blur_render                 : False
+blur_render                 : True
+train_scenes                : [real_camera_motion_blur/blurball]
 lambda_align_loss           : 0.0
+num_source_views            : 4
+num_latent                  : 5
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
@@ -45,7 +45,7 @@ inv_uniform                 : True
 white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 3000
+i_img                       : 2500
 i_print                     : 100
 i_tb                        : 20
 i_weights                   : 5000
