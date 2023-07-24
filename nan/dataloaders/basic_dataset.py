@@ -112,12 +112,7 @@ class BurstDataset(Dataset, ABC):
             assert isinstance(args.train_scenes, list)
             assert len(args.train_scenes) == 1
             scene_root = os.path.join(DATA_DIR, self.dir_name, self.args.train_scenes[0])
-            if 'syn' not in scene_root:
-                files = os.listdir(scene_root)
-                holdout_fn = [f for f in files if 'hold' in f][0]
-                holdout = int(holdout_fn.split("=")[-1])
-            else:
-                holdout = 1 if self.mode == Mode.train else 8
+            holdout = 8
             self.holdout = holdout
             self.add_single_scene(0, Path(scene_root), holdout)
 

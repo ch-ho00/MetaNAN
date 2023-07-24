@@ -1,12 +1,12 @@
 ### INPUT
-expname                     : nan_blurRender
+expname                     : nan_src3_deblur # _preBPN_latent4_blurRender_deblur
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
 ## dataset
 train_dataset               : deblur_scene
 eval_dataset                : deblur_scene_test
-eval_scenes                 : ['blurstair'] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
+# eval_scenes                 : ['blurstair'] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
 
 ### TRAINING
 n_iters                     : 255000
@@ -25,15 +25,15 @@ coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
 weightsum_filtered          : False
-bpn_prenet                  : True
-bpn_per_img                 : True
+bpn_prenet                  : False #True
+bpn_per_img                 : False #True
 ft_embed_fc                 : False #True
 cond_renderer               : False
-blur_render                 : True
-train_scenes                : [real_camera_motion_blur/blurball]
+blur_render                 : False #True
+train_scenes                : [blurfactory]
 lambda_align_loss           : 0.0
-num_source_views            : 4
-num_latent                  : 5
+num_source_views            : 3
+num_latent                  : 4
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory

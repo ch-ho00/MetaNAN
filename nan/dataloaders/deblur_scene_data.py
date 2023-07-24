@@ -111,10 +111,9 @@ class DeblurSceneDataset(NoiseDataset, ABC):
         holdout = self.holdout
 
         # image (H, W, 3)
-        rgb = self.read_image(rgb_file)
-        if 'synthetic' in str(rgb_file):
-            _, rgb_file_clean = self.synfile2clean(rgb_file)
-            rgb = self.read_image(rgb_file_clean)
+        assert '/images/' in str(rgb_file)
+        rgb_file_clean = str(rgb_file).replace('images', 'images_test')
+        rgb = self.read_image(rgb_file_clean)
         # Rotation | translation (4x4)
         # 0  0  0  | 1
         render_pose = self.render_poses[idx]
@@ -197,7 +196,7 @@ class DeblurSceneDataset(NoiseDataset, ABC):
 
 class DeblurSceneTestDataset(DeblurSceneDataset):
     name = 'deblur_scene_test'
-    dir_name = 'deblurnerf_dataset'
+    dir_name = 'badnerf'
     num_select_high = 2
     min_nearest_pose = 28
 
@@ -221,7 +220,7 @@ class DeblurSceneTestDataset(DeblurSceneDataset):
 
 class DeblurSceneTrainDataset(DeblurSceneTestDataset):
     name = 'deblur_scene'
-    dir_name = 'deblurnerf_dataset'
+    dir_name = 'badnerf'
     num_select_high = 3
     min_nearest_pose = 20
 
