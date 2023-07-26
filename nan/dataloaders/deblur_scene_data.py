@@ -113,7 +113,7 @@ class DeblurSceneDataset(NoiseDataset, ABC):
         # image (H, W, 3)
         assert '/images/' in str(rgb_file)
         rgb_file_clean = str(rgb_file).replace('images', 'images_test')
-        rgb = self.read_image(rgb_file_clean)
+        rgb = self.read_image(rgb_file_clean, multiple32=False)
         # Rotation | translation (4x4)
         # 0  0  0  | 1
         render_pose = self.render_poses[idx]
@@ -146,7 +146,7 @@ class DeblurSceneDataset(NoiseDataset, ABC):
         src_rgbs = []
         src_cameras = []
         for src_id in nearest_pose_ids:
-            src_rgb = self.read_image(train_rgb_files[src_id])
+            src_rgb = self.read_image(train_rgb_files[src_id], multiple32=False)
             src_rgbs.append(src_rgb)
 
             train_pose = train_poses[src_id]
@@ -175,7 +175,7 @@ class DeblurSceneDataset(NoiseDataset, ABC):
         print(scene_path, len(poses))
         near_depth = bds.min()
         far_depth = bds.max()
-        intrinsics, c2w_mats = batch_parse_llff_poses(poses, hw=[768,1024])
+        intrinsics, c2w_mats = batch_parse_llff_poses(poses)
         i_test = self.get_i_test(poses.shape[0], holdout)
         i_blurry = self.get_i_train(poses.shape[0], i_test)
         i_render = i_blurry if self.mode == Mode.train else i_test

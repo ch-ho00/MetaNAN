@@ -166,13 +166,6 @@ class NANScheme(nn.Module):
                                     fine_out_ch=args.fine_feat_dim,
                                     coarse_only=args.coarse_only).to(device)
 
-        if self.args.blur_render:
-            self.num_kernel_pt = 5
-            self.img_embed_conv = BasicBlock(128, 128).to(device)
-            self.blur_kernel_fc = nn.Sequential(
-                nn.Linear(128 + 512, 128),
-                nn.Linear(128, 5 * 5)
-            ).to(device)
 
         # create coarse NAN mlps
         self.net_coarse = self.nan_factory('coarse', device)
@@ -226,13 +219,12 @@ class NANScheme(nn.Module):
         if self.net_fine is not None:
             params_list.append({'params': self.net_fine.parameters(), 'lr': self.args.lrate_mlp})
 
-        if not self.args.frozen_prenet:
-            if self.args.pre_net:
-                params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
+        if self.args.blur_render and self.args.bpn_prenet:
+            params_list.append({'params': self.pre_net.bpn.parameters(), 'lr': self.args.lrate_feature})
+            params_list.append({'params': self.pre_net.offset_fc.parameters(), 'lr': self.args.lrate_mlp})                
+        elif self.args.pre_net:
+            params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
 
-        if self.args.blur_render:
-            params_list.append({'params': self.img_embed_conv.parameters(), 'lr': self.args.lrate_feature})
-            params_list.append({'params': self.blur_kernel_fc.parameters(), 'lr': self.args.lrate_feature})
 
 
         optimizer = torch.optim.Adam(params_list)
@@ -257,17 +249,13 @@ class NANScheme(nn.Module):
         if self.net_fine is not None:
             self.net_fine.eval()
 
-        if not self.args.frozen_prenet:
-            if self.pre_net is not None:
-                self.pre_net.eval()
+        if self.pre_net is not None:
+            self.pre_net.eval()
 
         if self.args.ft_embed_fc:
             self.degae.degrep_extractor.degrep_conv.eval()
             self.degae.degrep_extractor.degrep_fc.eval()
 
-        if self.args.blur_render:
-            self.img_embed_conv.eval()
-            self.blur_kernel_fc.eval()
 
     def switch_to_train(self):
         self.net_coarse.train()
@@ -283,17 +271,13 @@ class NANScheme(nn.Module):
         if self.net_fine is not None:
             self.net_fine.train()
 
-        if not self.args.frozen_prenet:
-            if self.pre_net is not None:
-                self.pre_net.train()
+        if self.pre_net is not None:
+            self.pre_net.train()
 
         if self.args.ft_embed_fc:
             self.degae.degrep_extractor.degrep_conv.train()
             self.degae.degrep_extractor.degrep_fc.train()
 
-        if self.args.blur_render:
-            self.img_embed_conv.train()
-            self.blur_kernel_fc.train()
 
 
     def save_model(self, filename):

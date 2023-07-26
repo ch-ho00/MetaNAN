@@ -15,6 +15,88 @@
 from math import prod
 import torch
 import torch.nn.functional as F
+import numpy as np
+
+def inbound(pixel_locations, h, w):
+    """
+    check if the pixel locations are in valid range
+    :param pixel_locations: [..., 2]
+    :param h: height
+    :param w: weight
+    :return: mask, bool, [...]
+    """
+    return (pixel_locations[..., 0] <= w - 1.) & \
+            (pixel_locations[..., 0] >= 0) & \
+            (pixel_locations[..., 1] <= h - 1.) & \
+            (pixel_locations[..., 1] >= 0)
+
+def generate_image_plane(hw, intrinsics, c2w):
+    """
+    :param H: image height
+    :param W: image width
+    :param intrinsics: 4 by 4 intrinsic matrix
+    :param c2w: 4 by 4 camera to world extrinsic matrix
+    :return: all rays of a target image: rays origin (H*W, 3), rays direction (H*W, 3), pixels coordinate + (1,) (H*W, 3)
+    """
+    H, W = hw
+    B = intrinsics.shape[0]
+    x, y = np.meshgrid(np.arange(W), np.arange(H))
+    x = x.reshape(-1).astype(dtype=np.float32) + 0.5    # add half pixel
+    y = y.reshape(-1).astype(dtype=np.float32) + 0.5
+    
+    pixels = np.stack((x, y, np.ones_like(x)), axis=0)      # (3, H*W)
+    pixels = torch.from_numpy(pixels).to(intrinsics.device)
+    batched_pixels = pixels.unsqueeze(0).repeat(B, 1, 1)    # (B,3,H*W)
+    
+    rays_d = (c2w[:, :3, :3].bmm(torch.inverse(intrinsics[:, :3, :3])).bmm(batched_pixels)).transpose(1, 2)
+    rays_o = c2w[:, :3, 3].unsqueeze(1).expand(-1, rays_d.shape[1], 3) #.reshape(-1, 3)  # B x HW x 3
+    rays_d = rays_d #.reshape(-1, 3)
+    batched_pixels = batched_pixels.transpose(1, 2) # (B, H*W, 3)
+    return rays_o, rays_d, batched_pixels.to(int)
+
+
+def warp_latent_imgs(all_latent_imgs, all_intrinsics, all_spline_pose):
+    """
+    N, V, H, W
+    N, 4, 4
+    N, n_spline, 3, 4
+    """
+    warped_imgs = []
+    masks = []
+    for latent_imgs, intrinsics, spline_pose in zip(all_latent_imgs, all_intrinsics, all_spline_pose):
+        hw = list(all_latent_imgs.shape[-2:])
+        B = spline_pose.shape[0]
+        output_img = torch.zeros_like(latent_imgs[:1])
+
+        rays_o, rays_d, batched_pixels = generate_image_plane(hw, intrinsics.repeat(B,1,1), spline_pose)
+        rays_d = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
+        xyz = rays_o + rays_d           # (B, H*W, 3)
+        xyz = xyz[:,:,None]             # (B, H*W, 1, 3)
+        n_rays, n_samples = xyz.shape[1:3]
+        xyz               = xyz.reshape(B, -1, 3)  # [B, n_points, 3], n_points = n_rays * n_samples
+        xyz_h             = torch.cat([xyz, torch.ones_like(xyz[..., :1])], dim=-1)  # [B, n_points, 4]
+
+        h, w           = hw
+        src_intrinsics = intrinsics.expand(B, 4, 4)  # [n_views, 4, 4]
+        tar_pose_4x4       = spline_pose[0:1].expand(B, 4, 4)  # [n_views, 4, 4]
+
+        projections = src_intrinsics.bmm(torch.inverse(tar_pose_4x4)).bmm(xyz_h.permute(0,2,1))  # [n_views, 4, n_points]
+        projections = projections.permute(0, 2, 1)  # [n_views, n_points, 4]
+        mask_in_front = projections[..., 2] > 0  # a point is invalid if behind the camera,  [n_views, n_points]
+
+        uv = projections[..., :2] / torch.clamp(projections[..., 2:3], min=1e-8)  # [n_views, n_points, 2]
+        uv = torch.clamp(uv, min=-1e6, max=1e6)
+        mask_inbound = inbound(uv, h, w)  # a point is invalid if out of the image
+        masks.append(mask_inbound)
+        # print(mask_inbound.shape, torch.sum(mask_inbound, dim=1) /mask_inbound.shape[1])
+        uv[...,0] =  2 * (uv[...,0] / (w - 1) - 0.5)
+        uv[...,1] =  2 * (uv[...,1] / (h - 1) - 0.5)
+
+        warped_img = F.grid_sample(latent_imgs, uv[:,None], mode='bilinear', padding_mode='zeros')
+        warped_img = warped_img.squeeze().reshape(-1, 3,int(hw[0]),int(hw[1]))
+        warped_imgs.append(warped_img)
+
+    return torch.stack(warped_imgs), torch.stack(masks).reshape(all_latent_imgs.shape[0], all_latent_imgs.shape[1],int(hw[0]),int(hw[1]))
 
 
 class Projector:
@@ -152,6 +234,10 @@ class Projector:
         else:
             sigma_estimate = None
 
+        if latent_info != None:
+            src_imgs = latent_info[0].reshape(-1, 3, h.int().item(), w.int().item())
+            org_src_imgs = latent_info[0].reshape(-1, 3, h.int().item(), w.int().item())
+
         # rgb sampling
         rgbs_sampled = F.grid_sample(src_imgs, norm_xys, align_corners=True)
         rgbs_sampled = rgbs_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, 3]
@@ -165,21 +251,6 @@ class Projector:
         feat_sampled = feat_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, d]
         rgb_feat_sampled = torch.cat([rgbs_sampled, feat_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
 
-        if latent_info != None:
-            latent_cameras, latent_rgbs = latent_info
-            n_src, n_latent = latent_rgbs.shape[:2]
-            h, w =  latent_rgbs.shape[-2:]
-            latent_cameras = latent_cameras.reshape(-1, 34)
-            latent_rgbs = latent_rgbs.reshape(-1, 3, h, w)
-
-            # compute the projection of the query points to each latent image
-            latent_xys, latent_masks = self.compute_projections(xyz, latent_cameras)  # [n_views, n_rays, n_samples * prod(kernel_size), 2]
-            norm_latent_xys = self.normalize(latent_xys, h, w)  # [n_views, n_rays, n_samples, 2]
-            latent_rgb_sampled = F.grid_sample(latent_rgbs, norm_latent_xys, align_corners=True)
-            latent_rgb_sampled = latent_rgb_sampled.reshape(n_src,n_latent, 3, latent_rgb_sampled.shape[-2], latent_rgb_sampled.shape[-1])
-            latent_rgb_sampled = latent_rgb_sampled.reshape(n_src, -1, latent_rgb_sampled.shape[-2], latent_rgb_sampled.shape[-1])
-            latent_rgb_sampled = latent_rgb_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, 3]
-            rgb_feat_sampled = torch.cat([rgb_feat_sampled, latent_rgb_sampled], dim=-1)
 
         rgb_feat_sampled = self.reshape_features(rgb_feat_sampled)
         feat_sampled = self.reshape_features(feat_sampled)

@@ -26,6 +26,8 @@ from nan.utils.io_utils import print_link, colorize
 # from pytorch_msssim import ms_ssim
 from nan.ssim_l1_loss import MS_SSIM_L1_LOSS
 import torch.nn.functional as F
+from nan.se3 import SE3_to_se3_N, get_spline_poses
+from nan.projection import warp_latent_imgs
 
 alpha=0.9998
 
@@ -158,8 +160,31 @@ class Trainer:
                                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None,
                                                                 white_level=ray_batch['white_level'])
 
+
+        if self.model.args.blur_render:
+            src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
+            src_se3_start = SE3_to_se3_N(src_poses)
+            src_se3_end = src_se3_start + featmaps['pred_offset']
+            src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=self.model.args.num_latent)
+            src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(self.model.args.num_source_views, self.model.args.num_latent, 1, 1)
+            src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
+            src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
+
+            H, W = ray_batch['src_cameras'][0,0,:2]
+            intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)
+            warped_imgs, warp_masks = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
+
+            src_spline_poses_4x4 = src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)            
+            src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
+            src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4], dim=-1)
+
+            ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
+
+
         w = alpha ** global_step
-        if not self.args.weightsum_filtered:
+        if self.args.sum_filtered:
+            org_src_rgbs_ = proc_src_rgbs
+        elif not self.args.weightsum_filtered:
             org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
         else:
             org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
@@ -202,6 +227,9 @@ class Trainer:
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
+        if self.args.blur_render and self.args.bpn_prenet:
+            torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_fc.parameters(), 0.1)
+            
         self.model.optimizer.step()
         self.model.scheduler.step()
         self.model.optimizer.zero_grad()
@@ -311,6 +339,12 @@ class Trainer:
                 reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
                 reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
                 self.writer.add_image(prefix + 'latent_imgs'+ postfix, reconst_img, global_step)
+
+                h, w = ret['warped_latent_imgs'].shape[-2:]
+                vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['warped_latent_imgs'][0].cpu()], dim=0)
+                reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
+                reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
+                self.writer.add_image(prefix + 'warped_latent_imgs'+ postfix, reconst_img, global_step)
 
             del depth_im, rgb_im
         # write scalar

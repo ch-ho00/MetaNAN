@@ -258,20 +258,6 @@ class RayRender:
         # pts:    [R, S, 3]
         # z_vals: [R, S]
         # Sample points along ray for coarse phase
-        if self.model.args.blur_render:
-            src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
-            src_se3_start = SE3_to_se3_N(src_poses)
-            src_se3_end = src_se3_start + featmaps['pred_offset']
-            src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=self.model.args.num_latent)
-            src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(self.model.args.num_source_views, self.model.args.num_latent, 1, 1)
-            src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
-            src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
-            src_spline_poses_4x4 = src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)
-            
-            src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
-            src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4], dim=-1)
-            featmaps['src_latent_cameras'] = src_latent_camera
-
         pts_coarse, z_vals_coarse = self.sample_along_ray_coarse(ray_o=ray_batch['ray_o'],
                                                                 ray_d=ray_batch['ray_d'],
                                                                 depth_range=ray_batch['depth_range'])
@@ -314,7 +300,7 @@ class RayRender:
         """
         latent_info = None
         if blur_render:
-            latent_info = [featmaps['src_latent_cameras'], featmaps['latent_imgs']]
+            latent_info = [featmaps['latent_imgs']]
 
         # Project the pts along the rays batch on all others views (src views)
         # based on the target camera and src cameras (intrinsics - K, rotation - R, translation - t)
@@ -376,21 +362,19 @@ class RayRender:
 
 
         noise_vec = None
+        H, W = orig_rgbs.shape[2:4]
         if self.model.args.cond_renderer:
             with torch.no_grad():
-                if self.model.args.downscale_input_img:
-                    input_rgb = F.interpolate(orig_rgbs[0].permute(0,3,1,2), scale_factor=0.5)
-                else:
-                    H, W = orig_rgbs.shape[2:4]
-                    start_h = 0 if H < 384 else (H - 384) // 2
-                    start_w = 0 if W < 384 else (W - 384) // 2
-                    input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
+                start_h = 0 if H < 384 else (H - 384) // 2
+                start_w = 0 if W < 384 else (W - 384) // 2
+                input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
                 noise_vec = self.model.degae.degrep_extractor(input_rgb, white_level.to(orig_rgbs.device))
                 del input_rgb
                 torch.cuda.empty_cache()
 
         if not self.model.args.degae_feat:
-            feature_dict = self.model.feature_net(src_rgbs)
+            process_rgb = src_rgbs if not self.model.args.blur_render else pred_latent_imgs.reshape(-1,3, H, W)
+            feature_dict = self.model.feature_net(process_rgb)
             featmaps.update(feature_dict)
         else:
             with torch.no_grad():

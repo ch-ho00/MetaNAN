@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.nn.init as init
 
 # BPN basic block: SingleConv
 class SingleConv(nn.Module):
@@ -295,11 +296,11 @@ class BPN(nn.Module):
                                                self.kernel_size)
         del basis1
         if self.n_latent_layers > 1:
-            basis = torch.zeros_like(basis3)
+            # basis = self.out_basis(basis3)
             pred_imgs = []
             for img_idx in range(self.n_latent_layers):
-                img_basis = self.out_coeff(basis3[:,self.basis_size * img_idx: self.basis_size * (img_idx + 1)])
-                kernels = self.kernel_predict(coeffs[img_idx], img_basis, 
+                img_basis = self.out_basis(basis3[:,self.basis_size * img_idx: self.basis_size * (img_idx + 1)])
+                kernels = self.kernel_predict(coeffs[img_idx], img_basis,
                                             coeffs[img_idx].size(0), self.burst_length, self.kernel_size,
                                             self.color_channel)
                 pred_burst = self.kernel_conv(data, kernels)
@@ -331,11 +332,17 @@ class DeblurBPN(nn.Module):
         self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=16)
         self.offset_fc = nn.Sequential(
             nn.Linear(128 * 9, 256),
-            nn.ReLU(),
+            nn.ELU(inplace=True),
             nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 6)
+            nn.ELU(inplace=True),
+            nn.Linear(128, 6),
+            nn.Tanh()
         )
+        
+        for m in self.offset_fc.modules():
+            if isinstance(m, nn.Linear):
+                init.normal_(m.weight, mean=0, std=1e-3)
+                init.normal_(m.bias, mean=0, std=1e-3)
 
     def forward(self, input_imgs):
         '''
