@@ -161,7 +161,7 @@ class DeblurSceneDataset(NoiseDataset, ABC):
 
         gt_depth = 0
         depth_range = self.final_depth_range(depth_range)
-        return self.create_deblur_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain)
+        return self.create_deblur_scene_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain)
 
     def get_nearest_pose_ids(self, render_pose, depth_range, train_poses, subsample_factor, id_render):
         return get_nearest_pose_ids(render_pose,

@@ -428,6 +428,38 @@ class NoiseDataset(BurstDataset, ABC):
 
         return batch_dict
 
+    def create_deblur_scene_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
+                                gt_depth=None, eval_gain=1, blur_target=False):
+        if rgb_clean is not None:
+            rgb_clean = torch.from_numpy(rgb_clean[..., :3])
+            # if self.mode is Mode.train:
+            #     rgb, _ = self.add_noise(rgb_clean)        
+            # else:
+            #     rgb, _ = self.add_noise_level(rgb_clean, eval_gain)                        
+        else:
+            rgb = None
+
+        src_rgbs = torch.from_numpy(src_rgbs[..., :3])
+
+        # if self.mode is Mode.train:
+        #     src_rgbs, sigma_est = self.add_noise(src_rgbs_clean)
+        # else:
+        #     src_rgbs, sigma_est = self.add_noise_level(src_rgbs_clean, eval_gain)
+                      
+        batch_dict = {'camera'        : torch.from_numpy(camera),
+                      'rgb_path'      : str(rgb_file),
+                      'src_rgbs'      : src_rgbs,
+                      'src_cameras'   : torch.from_numpy(src_cameras),
+                      'depth_range'   : depth_range,
+                      'eval_gain'     : eval_gain,
+                      'blur_target'  : blur_target}
+
+        if rgb_clean is not None:
+            batch_dict['rgb_clean'] = rgb_clean
+
+        return batch_dict
+
+
     def create_deblur_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
                                 gt_depth=None, eval_gain=1, blur_target=False):
         if self.mode in [Mode.train]:

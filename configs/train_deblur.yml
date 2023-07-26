@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_run2_allProj_perImgBasis_init1e-3_ELU_wTanh_src3_latent3 # _revised_plain_src3_deblur
+expname                     : test #nan_allProj_singleBasis_init1e-3_ELU_wTanh_src4_latent4 # _revised_plain_src3_deblur
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -33,8 +33,8 @@ cond_renderer               : False
 blur_render                 : True
 train_scenes                : [blurfactory]
 lambda_align_loss           : 0.0
-num_source_views            : 3
-num_latent                  : 2
+num_source_views            : 4
+num_latent                  : 4
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory

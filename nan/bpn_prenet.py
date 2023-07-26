@@ -124,7 +124,7 @@ class BPN(nn.Module):
         self.color_channel = self.color_channel 
         factor = 1
         self.coeff_channel = self.basis_size * self.n_latent_layers
-        self.basis_channel = self.color_channel * self.burst_length * self.basis_size * self.n_latent_layers
+        self.basis_channel = self.color_channel * self.burst_length * self.basis_size # * self.n_latent_layers
 
         # Layer definition in each block
         # Encoder
@@ -289,18 +289,18 @@ class BPN(nn.Module):
         basis1 = self.basis_conv1(up_basis_conv3)
         del up_basis_conv3
         basis3 = self.basis_conv3(basis1).view(basis1.size(0),
-                                               self.basis_size * self.n_latent_layers,
+                                               self.basis_size, # * self.n_latent_layers,
                                                self.burst_length,
                                                self.color_channel,
                                                self.kernel_size,
                                                self.kernel_size)
         del basis1
         if self.n_latent_layers > 1:
-            # basis = self.out_basis(basis3)
+            basis = self.out_basis(basis3)
             pred_imgs = []
             for img_idx in range(self.n_latent_layers):
-                img_basis = self.out_basis(basis3[:,self.basis_size * img_idx: self.basis_size * (img_idx + 1)])
-                kernels = self.kernel_predict(coeffs[img_idx], img_basis,
+                # img_basis = self.out_basis(basis3[:,self.basis_size * img_idx: self.basis_size * (img_idx + 1)])
+                kernels = self.kernel_predict(coeffs[img_idx], basis,
                                             coeffs[img_idx].size(0), self.burst_length, self.kernel_size,
                                             self.color_channel)
                 pred_burst = self.kernel_conv(data, kernels)

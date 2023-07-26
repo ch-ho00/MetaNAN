@@ -59,7 +59,7 @@ class RaySampler:
         self.render_stride                  = render_stride
         self.rgb_path                       = data['rgb_path']
         self.depth_range                    = data['depth_range']
-        self.white_level                    = data['white_level']
+        self.white_level                    = data['white_level'] if 'white_level' in data.keys() else None
         self.device                         = device
 
         self.rgb                            = data['rgb'] if 'rgb' in data.keys() else None
@@ -227,7 +227,7 @@ class RaySampler:
                 'selected_inds'  : select_inds,
                 'xyz'            : self.xy[select_inds],
                 'rgb'            : rgb,
-                'white_level'    : self.white_level.to(self.device)}
+                'white_level'    : self.white_level.to(self.device) if self.white_level is not None else None}
 
     def sample_ray_batch_from_pixel(self, pixel, clean=False):
         from random import shuffle

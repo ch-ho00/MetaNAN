@@ -221,7 +221,7 @@ class NANScheme(nn.Module):
 
         if self.args.blur_render and self.args.bpn_prenet:
             params_list.append({'params': self.pre_net.bpn.parameters(), 'lr': self.args.lrate_feature})
-            params_list.append({'params': self.pre_net.offset_fc.parameters(), 'lr': self.args.lrate_mlp})                
+            params_list.append({'params': self.pre_net.offset_fc.parameters(), 'lr': self.args.lrate_feature * 1e-2})                
         elif self.args.pre_net:
             params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
 

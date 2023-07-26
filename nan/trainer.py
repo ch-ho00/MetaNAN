@@ -209,17 +209,6 @@ class Trainer:
             self.scalars_to_log['train/fine_loss'] = fine_loss
             loss += fine_loss
 
-        if self.args.lambda_embed_loss > 0:
-            clean_down = train_data['rgb_clean'].permute(0,3,1,2).to(self.device) # F.interpolate(train_data['rgb_clean'].permute(0,3,1,2).to(self.device), scale_factor=0.25, mode='bilinear')
-            reconst_down = proc_src_rgbs[0].permute(0,3,1,2) # F.interpolate(proc_src_rgbs[0].permute(0,3,1,2), scale_factor=0.25, mode='bilinear')
-
-            clean_embed_vec = self.model.degae.degrep_extractor(clean_down, white_level=ray_batch['white_level'].to(self.device))
-            reconst_embed_vec = self.model.degae.degrep_extractor(reconst_down, white_level=ray_batch['white_level'].to(self.device))
-
-            # embed_loss = F.mse_loss(reconst_embed_vec[0], clean_embed_vec[0])
-            embed_loss = F.mse_loss(reconst_embed_vec, clean_embed_vec.repeat(reconst_embed_vec.shape[0], 1))
-            loss += embed_loss * self.args.lambda_embed_loss
-            self.scalars_to_log['train/embed-loss'] = embed_loss * self.args.lambda_embed_loss
 
         if train_data['blur_target'] and self.args.blur_render:
             loss += batch_out['align_loss'] * self.args.lambda_align_loss
@@ -261,13 +250,23 @@ class Trainer:
 
     def log_iteration(self, ray_batch_out, ray_batch_in, dt, global_step, epoch):
         # write mse and psnr stats
-        mse_error = l2_loss(de_linearize(ray_batch_out['coarse'].rgb, ray_batch_in['white_level']).clamp(0,1),
-                            de_linearize(ray_batch_in['rgb'], ray_batch_in['white_level']).clamp(0,1)).item()
+        if ray_batch_in['white_level'] != None:
+            mse_error = l2_loss(de_linearize(ray_batch_out['coarse'].rgb, ray_batch_in['white_level']).clamp(0,1),
+                                de_linearize(ray_batch_in['rgb'], ray_batch_in['white_level']).clamp(0,1)).item()
+        else:
+            mse_error = l2_loss(ray_batch_out['coarse'].rgb.clamp(0,1),
+                                ray_batch_in['rgb'].clamp(0,1)).item()
+
         self.scalars_to_log['train/coarse-loss'] = mse_error
         self.scalars_to_log['train/coarse-psnr-training-batch'] = mse2psnr(mse_error)
         if ray_batch_out['fine'] is not None:
-            mse_error = l2_loss(de_linearize(ray_batch_out['fine'].rgb, ray_batch_in['white_level']).clamp(0,1),
-                                de_linearize(ray_batch_in['rgb'], ray_batch_in['white_level']).clamp(0,1)).item()
+            if ray_batch_in['white_level'] != None:
+                mse_error = l2_loss(de_linearize(ray_batch_out['fine'].rgb, ray_batch_in['white_level']).clamp(0,1),
+                                    de_linearize(ray_batch_in['rgb'], ray_batch_in['white_level']).clamp(0,1)).item()
+            else:
+                mse_error = l2_loss(ray_batch_out['fine'].rgb.clamp(0,1),
+                                    ray_batch_in['rgb'].clamp(0,1)).item()
+
             self.scalars_to_log['train/fine-loss'] = mse_error
             self.scalars_to_log['train/fine-psnr-training-batch'] = mse2psnr(mse_error)
 
@@ -285,9 +284,6 @@ class Trainer:
             ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args, global_step=global_step)
 
         average_im = ray_sampler.src_rgbs.cpu()[0,0]
-        # src_rgbs = ray_sampler.src_rgbs.cpu()[0].permute(3,1,0,2).reshape(3,ray_sampler.src_rgbs.shape[2], -1)
-        # src_rgbs = de_linearize(src_rgbs, ray_sampler.white_level).clamp(min=0., max=1.)
-        # self.writer.add_image(prefix + 'src_imgs' + postfix, src_rgbs, global_step)
         if self.args.render_stride != 1:
             gt_img = gt_img[::render_stride, ::render_stride]
             average_im = average_im[::render_stride, ::render_stride]
@@ -317,7 +313,10 @@ class Trainer:
                 rgb_fine_[:, :rgb_fine.shape[-2], :rgb_fine.shape[-1]] = rgb_fine
                 rgb_im = torch.cat((rgb_im, rgb_fine_), dim=-1)
                 # rgb_im = rgb_im
-                rgb_im = de_linearize(rgb_im, ray_sampler.white_level).clamp(min=0., max=1.)
+                if ray_sampler.white_level != None:
+                    rgb_im = de_linearize(rgb_im, ray_sampler.white_level).clamp(min=0., max=1.)
+                else:
+                    rgb_im = rgb_im.clamp(min=0., max=1.)
                 depth_im = torch.cat((depth_im, ret['fine'].depth.detach().cpu()), dim=-1)
                 depth_im = img_HWC2CHW(colorize(depth_im, cmap_name='jet', append_cbar=True))
                 # acc_map = torch.cat((acc_map, torch.sum(ret['fine'].weights, dim=-1).detach().cpu()), dim=-1)
@@ -330,27 +329,39 @@ class Trainer:
             if self.args.bpn_prenet:
                 h, w, _ = ret['bpn_reconst'].shape[-3:]
                 reconst_img = ret['bpn_reconst'][0].permute(3,1,0,2).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
-                reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
+                if ray_sampler.white_level != None:
+                    reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
+                else:
+                    reconst_img = reconst_img.cpu().clamp(0,1)
                 self.writer.add_image(prefix + 'bpn_reconst'+ postfix, reconst_img, global_step)
 
             if self.args.blur_render:
                 h, w = ret['latent_imgs'].shape[-2:]
                 vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['latent_imgs'][0].cpu()], dim=0)
                 reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
-                reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
+                if ray_sampler.white_level != None:
+                    reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
+                else:
+                    reconst_img = reconst_img.cpu().clamp(0,1)
                 self.writer.add_image(prefix + 'latent_imgs'+ postfix, reconst_img, global_step)
 
                 h, w = ret['warped_latent_imgs'].shape[-2:]
                 vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['warped_latent_imgs'][0].cpu()], dim=0)
                 reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
-                reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
+                if ray_sampler.white_level != None:
+                    reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
+                else:
+                    reconst_img = reconst_img.cpu().clamp(0,1)
                 self.writer.add_image(prefix + 'warped_latent_imgs'+ postfix, reconst_img, global_step)
 
             del depth_im, rgb_im
         # write scalar
         pred_rgb = ret['fine'].rgb if ret['fine'] is not None else ret['coarse'].rgb
-        psnr_curr_img = img2psnr(de_linearize(pred_rgb.detach().cpu(), ray_sampler.white_level).clamp(0,1),
-                                 de_linearize(gt_img, ray_sampler.white_level).clamp(0,1))
+        if ray_sampler.white_level != None:
+            psnr_curr_img = img2psnr(de_linearize(pred_rgb.detach().cpu(), ray_sampler.white_level).clamp(0,1),
+                                    de_linearize(gt_img, ray_sampler.white_level).clamp(0,1))
+        else:
+            psnr_curr_img = img2psnr(pred_rgb.detach().cpu().clamp(0,1), gt_img.clamp(0,1))
 
         self.model.switch_to_train()
         del pred_rgb, ret
