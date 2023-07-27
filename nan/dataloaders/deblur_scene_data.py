@@ -142,15 +142,22 @@ class DeblurSceneDataset(NoiseDataset, ABC):
 
         nearest_pose_ids = self.get_nearest_pose_ids(render_pose, depth_range, train_poses, subsample_factor, id_render)
         nearest_pose_ids = self.choose_views(nearest_pose_ids, num_select, id_render)
-        assert None not in nearest_pose_ids
+        # assert None not in nearest_pose_ids
         src_rgbs = []
         src_cameras = []
         for src_id in nearest_pose_ids:
-            src_rgb = self.read_image(train_rgb_files[src_id], multiple32=False)
-            src_rgbs.append(src_rgb)
+            if src_id is None:
+                # print(self.render_rgb_files[idx])
+                src_rgb = self.read_image(self.render_rgb_files[idx], multiple32=False)
+                train_pose = self.render_poses[idx]
+                train_intrinsics_ = self.render_intrinsics[idx]
+            else:
+                # print(train_rgb_files[src_id])
+                src_rgb = self.read_image(train_rgb_files[src_id], multiple32=False)
+                train_pose = train_poses[src_id]
+                train_intrinsics_ = train_intrinsics[src_id]
 
-            train_pose = train_poses[src_id]
-            train_intrinsics_ = train_intrinsics[src_id]
+            src_rgbs.append(src_rgb)
             src_camera = self.create_camera_vector(src_rgb, train_intrinsics_, train_pose)
             src_cameras.append(src_camera)
 
@@ -202,10 +209,12 @@ class DeblurSceneTestDataset(DeblurSceneDataset):
 
     def apply_transform(self, rgb, camera, src_rgbs, src_cameras):
         if self.mode is Mode.train and self.random_crop:
-            crop_h = np.random.randint(low=250, high=750) // 128 * 128
-            crop_h = crop_h + 1 if crop_h % 2 == 1 else crop_h
-            crop_w = int(400 * 600 / crop_h // 128 * 128) #350 * 550
-            crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
+            #crop_h = np.random.randint(low=250, high=750) // 128 * 128
+            #crop_h = crop_h + 1 if crop_h % 2 == 1 else crop_h
+            #crop_w = int(400 * 600 / crop_h // 128 * 128) #350 * 550
+            #crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
+            crop_h = 350 #400
+            crop_w = 550 #600
             rgb, camera, src_rgbs, src_cameras = random_crop(rgb, camera, src_rgbs, src_cameras,
                                                              (crop_h, crop_w))
 

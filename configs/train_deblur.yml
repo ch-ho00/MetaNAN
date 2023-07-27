@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_woLinearize_plain_src4 #_allProj_perImgBasis_init1e-3_ELU_wTanh_src3_latent5 # _revised_plain_src3_deblur
+expname                     : nan_targetRef_offsetConvKer3_wGPool_src5_latent3 # _revised_plain_src3_deblur
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -24,17 +24,17 @@ degae_feat_ckpt             : ./ckpts/0619.pth #./ckpts/model_045000.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-sum_filtered                : False #True
+sum_filtered                : True
 weightsum_filtered          : False
-bpn_prenet                  : False #True
-bpn_per_img                 : False #True
+bpn_prenet                  : True
+bpn_per_img                 : True
 ft_embed_fc                 : False
 cond_renderer               : False
-blur_render                 : False #True
+blur_render                 : True
 train_scenes                : [blurfactory]
 lambda_align_loss           : 0.0
-num_source_views            : 4
-num_latent                  : 5
+num_source_views            : 5
+num_latent                  : 3
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
@@ -57,7 +57,7 @@ no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True
 
-include_target              : False  # set to False if you want to synthesize images rather than denoise the images
+include_target              : True  # set to False if you want to synthesize images rather than denoise the images
 eval_gain                    : [20, 16, 8]
 std                         : [-3.0, -0.5, -2.0, -0.5]
 

@@ -330,12 +330,21 @@ class DeblurBPN(nn.Module):
         super(DeblurBPN, self).__init__()
 
         self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=16)
+        self.offset_conv = nn.Sequential(
+            nn.Conv2d(128, 64, kernel_size=3, dilation=1, stride=2, padding=0),
+            nn.ELU(inplace=True),
+            nn.Conv2d(64, 16, kernel_size=3, dilation=1, stride=2, padding=0),
+            nn.ELU(inplace=True),
+            # nn.Conv2d(32, 16, kernel_size=3, dilation=1, stride=2, padding=0),
+            # nn.ELU(inplace=True),
+        )
+
         self.offset_fc = nn.Sequential(
-            nn.Linear(128 * 9, 256),
+            nn.Linear(16 * 9, 64),
             nn.ELU(inplace=True),
-            nn.Linear(256, 128),
+            nn.Linear(64, 16),
             nn.ELU(inplace=True),
-            nn.Linear(128, 6),
+            nn.Linear(16, 6),
             nn.Tanh()
         )
         
@@ -354,8 +363,9 @@ class DeblurBPN(nn.Module):
         '''
 
         pred_latent_imgs, feature = self.bpn(input_imgs, input_imgs[:,None])
-        down_feat = F.adaptive_avg_pool2d(feature, (3,3))
-        vec = down_feat.reshape(-1,128 * 9)
+        down_feat = self.offset_conv(feature)
+        down_feat = F.adaptive_avg_pool2d(down_feat, (3,3))
+        vec = down_feat.reshape(down_feat.shape[0],-1)
         pred_offset = self.offset_fc(vec)
 
         return pred_latent_imgs, pred_offset
