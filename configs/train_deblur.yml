@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_targetRef_offsetConvKer3_wGPool_src5_latent3 # _revised_plain_src3_deblur
+expname                     : nan_targetRef_embed1e1_offsetConvKer3_wGPool_src5_latent3 # _revised_plain_src3_deblur
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -33,6 +33,7 @@ cond_renderer               : False
 blur_render                 : True
 train_scenes                : [blurfactory]
 lambda_align_loss           : 0.0
+lambda_embed_loss           : 10
 num_source_views            : 5
 num_latent                  : 3
 

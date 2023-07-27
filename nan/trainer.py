@@ -28,7 +28,7 @@ from nan.ssim_l1_loss import MS_SSIM_L1_LOSS
 import torch.nn.functional as F
 from nan.se3 import SE3_to_se3_N, get_spline_poses
 from nan.projection import warp_latent_imgs
-
+import random
 alpha=0.9998
 
 class Trainer:
@@ -210,9 +210,24 @@ class Trainer:
             loss += fine_loss
 
 
-        if train_data['blur_target'] and self.args.blur_render:
-            loss += batch_out['align_loss'] * self.args.lambda_align_loss
-            self.scalars_to_log['train/align_loss'] = batch_out['align_loss'] * self.args.lambda_align_loss
+        if self.args.lambda_embed_loss > 0:
+            target_img = train_data['rgb_clean'].permute(0,3,1,2).to(self.device)
+            if self.args.blur_render:
+                reconst_img = featmaps['latent_imgs'].reshape(-1,3,target_img.shape[-2], target_img.shape[-1])
+                subsample = 4
+                sel_idxs = random.sample(list(range(reconst_img.shape[0])), subsample)
+                reconst_img = torch.stack([reconst_img[idx] for idx in sel_idxs])
+            else:
+                reconst_img = proc_src_rgbs[0].permute(0,3,1,2) 
+
+            white_level = ray_batch['white_level'].to(self.device) if ray_batch['white_level'] != None else None
+            clean_embed_vec = self.model.degae.degrep_extractor(target_img,     white_level=white_level)
+            reconst_embed_vec = self.model.degae.degrep_extractor(reconst_img, white_level=white_level)
+
+            embed_loss = F.mse_loss(reconst_embed_vec, clean_embed_vec.repeat(reconst_embed_vec.shape[0], 1))
+            loss += embed_loss * self.args.lambda_embed_loss
+            self.scalars_to_log['train/embed-loss'] = embed_loss * self.args.lambda_embed_loss
+
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
