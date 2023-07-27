@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : test #nan_allProj_singleBasis_init1e-3_ELU_wTanh_src4_latent4 # _revised_plain_src3_deblur
+expname                     : nan_woLinearize_plain_src4 #_allProj_perImgBasis_init1e-3_ELU_wTanh_src3_latent5 # _revised_plain_src3_deblur
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -24,17 +24,17 @@ degae_feat_ckpt             : ./ckpts/0619.pth #./ckpts/model_045000.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-sum_filtered                : True
+sum_filtered                : False #True
 weightsum_filtered          : False
-bpn_prenet                  : True
-bpn_per_img                 : True
+bpn_prenet                  : False #True
+bpn_per_img                 : False #True
 ft_embed_fc                 : False
 cond_renderer               : False
-blur_render                 : True
+blur_render                 : False #True
 train_scenes                : [blurfactory]
 lambda_align_loss           : 0.0
 num_source_views            : 4
-num_latent                  : 4
+num_latent                  : 5
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
