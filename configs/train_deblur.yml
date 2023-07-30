@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_targetRef_embed1e1_offsetConvKer3_wGPool_src5_latent3 # _revised_plain_src3_deblur
+expname                     : nan_targetNov_offsetConv_src5_latent3_sel1 # _revised_plain_src3_deblur
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -33,9 +33,11 @@ cond_renderer               : False
 blur_render                 : True
 train_scenes                : [blurfactory]
 lambda_align_loss           : 0.0
-lambda_embed_loss           : 10
+lambda_embed_loss           : 0.0
 num_source_views            : 5
 num_latent                  : 3
+num_sample_latent           : 1
+num_stack_nearby            : 1
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
@@ -58,7 +60,7 @@ no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True
 
-include_target              : True  # set to False if you want to synthesize images rather than denoise the images
+include_target              : False  # set to False if you want to synthesize images rather than denoise the images
 eval_gain                    : [20, 16, 8]
 std                         : [-3.0, -0.5, -2.0, -0.5]
 

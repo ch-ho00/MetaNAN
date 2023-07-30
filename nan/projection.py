@@ -190,7 +190,7 @@ class Projector:
         ray_diff = ray_diff.reshape((num_views,) + original_shape + (4,))
         return ray_diff
 
-    def compute(self, xyz, query_camera, src_imgs, org_src_imgs, sigma_estimate, src_cameras, featmaps, latent_info=None):
+    def compute(self, xyz, query_camera, src_imgs, org_src_imgs, sigma_estimate, src_cameras, featmaps, latent_info=None, sampled_idxs=None):
         """ Given 3D points and the camera of the target and src views,
         computing the rgb values of the incident pixels and their kxk environment.
 

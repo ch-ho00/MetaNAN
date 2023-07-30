@@ -214,7 +214,7 @@ class DeblurSceneTestDataset(DeblurSceneDataset):
             #crop_w = int(400 * 600 / crop_h // 128 * 128) #350 * 550
             #crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
             crop_h = 350
-            crop_w = 350
+            crop_w = 550
             rgb, camera, src_rgbs, src_cameras = random_crop(rgb, camera, src_rgbs, src_cameras,
                                                              (crop_h, crop_w))
 

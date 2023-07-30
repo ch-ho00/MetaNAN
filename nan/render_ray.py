@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import random
 from typing import Dict
 import torch
 import torch.nn as nn
@@ -300,13 +301,14 @@ class RayRender:
         """
         latent_info = None
         if blur_render:
-            latent_info = [featmaps['latent_imgs']]
+            src_imgs = torch.stack([torch.stack([featmaps['latent_imgs'][src_idx][latent_idx] for latent_idx in featmaps['sampled_idxs'][src_idx]]) for src_idx in range(featmaps['latent_imgs'].shape[0])], dim=0)
+            latent_info = [src_imgs]
 
         # Project the pts along the rays batch on all others views (src views)
         # based on the target camera and src cameras (intrinsics - K, rotation - R, translation - t)
         proj_out = self.projector.compute(pts, ray_batch['camera'], proc_src_rgbs, org_src_rgbs, sigma_estimate,
                                           ray_batch['src_cameras'],
-                                          featmaps=featmaps[level], latent_info=latent_info)  # [N_rays, N_samples, N_views, x]
+                                          featmaps=featmaps[level], latent_info=latent_info, sampled_idxs=featmaps['sampled_idxs'])  # [N_rays, N_samples, N_views, x]
         rgb_feat, ray_diff, pts_mask, org_rgb, sigma_est, proj_feat = proj_out
 
         # [N_rays, N_samples, 4]
@@ -328,7 +330,7 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs, sigma_estimate=None, white_level=None):
+    def calc_featmaps(self, src_rgbs, sigma_estimate=None, white_level=None, inference=False):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)
@@ -373,7 +375,17 @@ class RayRender:
                 torch.cuda.empty_cache()
 
         if not self.model.args.degae_feat:
-            process_rgb = src_rgbs if not self.model.args.blur_render else pred_latent_imgs.reshape(-1,3, H, W)
+            if not self.model.args.blur_render:
+                process_rgb = src_rgbs  
+            else: 
+                if inference:
+                    sampled_idxs = [list(range(self.model.args.num_latent)) for _ in range(pred_latent_imgs.shape[0])]                
+                else:
+                    sampled_idxs = [random.sample(list(range(self.model.args.num_latent)) , self.model.args.num_sample_latent) for _ in range(pred_latent_imgs.shape[0])]
+
+                featmaps['sampled_idxs'] = sampled_idxs
+                process_rgb = torch.cat([torch.stack([pred_latent_imgs[src_idx][latent_idx] for latent_idx in sampled_idxs[src_idx]]) for src_idx in range(pred_latent_imgs.shape[0])], dim=0)
+                process_rgb = process_rgb.reshape(-1,3, H, W)
             feature_dict = self.model.feature_net(process_rgb)
             featmaps.update(feature_dict)
         else:

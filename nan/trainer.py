@@ -158,7 +158,7 @@ class Trainer:
         org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
         proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs,
                                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None,
-                                                                white_level=ray_batch['white_level'])
+                                                                white_level=ray_batch['white_level'], inference=False)
 
 
         if self.model.args.blur_render:
@@ -178,6 +178,9 @@ class Trainer:
             src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
             src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4], dim=-1)
 
+            # import pdb; pdb.set_trace()
+            sampled_idxs = featmaps['sampled_idxs']
+            src_latent_camera = torch.cat([torch.stack([src_latent_camera[0,src_idx][latent_idx] for latent_idx in sampled_idxs[src_idx]]) for src_idx in range(src_latent_camera.shape[1])], dim=0)
             ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
 
 
@@ -225,8 +228,8 @@ class Trainer:
             reconst_embed_vec = self.model.degae.degrep_extractor(reconst_img, white_level=white_level)
 
             embed_loss = F.mse_loss(reconst_embed_vec, clean_embed_vec.repeat(reconst_embed_vec.shape[0], 1))
-            loss += embed_loss * self.args.lambda_embed_loss
-            self.scalars_to_log['train/embed-loss'] = embed_loss * self.args.lambda_embed_loss
+            loss += embed_loss * self.args.lambda_embed_loss * w
+            self.scalars_to_log['train/embed-loss'] = embed_loss * self.args.lambda_embed_loss * w
 
 
         loss.backward()
