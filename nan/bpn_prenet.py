@@ -118,8 +118,8 @@ class BPN(nn.Module):
         self.basis_size = basis_size
         self.upMode = upMode
         self.color_channel = 3 if color else 1
-        self.in_channel = self.color_channel
-        self.burst_length = 1   
+        self.burst_length = burst_length   
+        self.in_channel = self.color_channel * self.burst_length
         self.n_latent_layers = n_latent_layers if n_latent_layers != None else 1
         self.color_channel = self.color_channel 
         factor = 1
@@ -148,13 +148,6 @@ class BPN(nn.Module):
         self.basis_conv1 = CutEdgeConv(64 // factor, 64 // factor)
         self.basis_conv3 = SingleConv( 64 // factor, self.basis_channel)
         self.out_basis = nn.Softmax(dim=1)
-
-        # # Decoder for weight
-        # if self.n_latent_layers
-        # self.weight_conv = SingleConv((128 * self.n_latent_layers) // factor, (32  * self.n_latent_layers) // factor)
-        # self.weight_conv1 = UpBlock((32 * self.n_latent_layers) // factor,    16 // factor)
-        # self.weight_conv2 = UpBlock((16 * self.n_latent_layers) // factor,    8 // factor)
-        # self.weight_conv3 = UpBlock(8  // factor ,   1 // factor)
 
 
         # Predict clean images by using local convolutions with kernels
@@ -298,14 +291,16 @@ class BPN(nn.Module):
         if self.n_latent_layers > 1:
             # basis = self.out_basis(basis3)
             pred_imgs = []
+            nchannels = self.basis_size
             for img_idx in range(self.n_latent_layers):
-                img_basis = self.out_basis(basis3[:,self.basis_size * img_idx: self.basis_size * (img_idx + 1)])
+                img_basis = self.out_basis(basis3[:,nchannels * img_idx: nchannels * (img_idx + 1)])
                 kernels = self.kernel_predict(coeffs[img_idx], img_basis, #basis,
                                             coeffs[img_idx].size(0), self.burst_length, self.kernel_size,
                                             self.color_channel)
-                pred_burst = self.kernel_conv(data, kernels)
+                pred_burst = self.kernel_conv(data, kernels)        
+                pred_burst = torch.mean(pred_burst, dim=1, keepdim=False)
                 pred_imgs.append(pred_burst)
-            pred_imgs = torch.cat(pred_imgs, dim=1)
+            pred_imgs = torch.stack(pred_imgs, dim=1)
             torch.cuda.empty_cache()
             return pred_imgs, features
         else:
@@ -326,10 +321,10 @@ class BPN(nn.Module):
 
 
 class DeblurBPN(nn.Module):
-    def __init__(self, n_latent_layers):
+    def __init__(self, n_latent_layers, burst_length):
         super(DeblurBPN, self).__init__()
 
-        self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=16)
+        self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=16, burst_length=burst_length)
         self.offset_conv = nn.Sequential(
             nn.Conv2d(128, 64, kernel_size=3, dilation=1, stride=2, padding=0),
             nn.ELU(inplace=True),
@@ -361,8 +356,7 @@ class DeblurBPN(nn.Module):
             (B, n_latent_layers, 3, H, W)
             (B,6)
         '''
-
-        pred_latent_imgs, feature = self.bpn(input_imgs, input_imgs[:,None])
+        pred_latent_imgs, feature = self.bpn(input_imgs, input_imgs[:,None, :3])
         down_feat = self.offset_conv(feature)
         down_feat = F.adaptive_avg_pool2d(down_feat, (3,3))
         vec = down_feat.reshape(down_feat.shape[0],-1)

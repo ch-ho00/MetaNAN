@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_targetNov_offsetConv_src5_latent3_sel1 # _revised_plain_src3_deblur
+expname                     : nan_targetref_offsetConv_src5_latent3_sel1_stack3 # _revised_plain_src3_deblur
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -37,7 +37,7 @@ lambda_embed_loss           : 0.0
 num_source_views            : 5
 num_latent                  : 3
 num_sample_latent           : 1
-num_stack_nearby            : 1
+num_stack_nearby            : 3
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
@@ -60,7 +60,7 @@ no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True
 
-include_target              : False  # set to False if you want to synthesize images rather than denoise the images
+include_target              : True  # set to False if you want to synthesize images rather than denoise the images
 eval_gain                    : [20, 16, 8]
 std                         : [-3.0, -0.5, -2.0, -0.5]
 

@@ -72,6 +72,7 @@ class RaySampler:
 
         self.camera                         = data['camera']
         self.src_cameras                    = data['src_cameras'] if 'src_cameras' in data.keys() else None
+        self.nearby_idxs                    = data['nearby_idxs'] if 'nearby_idxs' in data.keys() else None
 
         W, H, self.intrinsics, self.c2w_mat = parse_camera(self.camera)
         self.batch_size                     = len(self.camera)

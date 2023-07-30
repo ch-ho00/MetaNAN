@@ -158,7 +158,8 @@ class Trainer:
         org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
         proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs,
                                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None,
-                                                                white_level=ray_batch['white_level'], inference=False)
+                                                                white_level=ray_batch['white_level'], inference=False,
+                                                                nearby_idxs=ray_sampler.nearby_idxs)
 
 
         if self.model.args.blur_render:

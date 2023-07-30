@@ -330,7 +330,7 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs, sigma_estimate=None, white_level=None, inference=False):
+    def calc_featmaps(self, src_rgbs, sigma_estimate=None, white_level=None, inference=False, nearby_idxs=None):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)
@@ -344,6 +344,12 @@ class RayRender:
             if self.model.args.bpn_prenet:
                 src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
                 if self.model.args.blur_render:
+                    if nearby_idxs != None:
+                        burst_src_rgbs = []
+                        H, W = src_rgbs.shape[-2:]
+                        for idxs in nearby_idxs:
+                            burst_src_rgbs.append(torch.cat([src_rgbs[idx] for idx in idxs], dim=1).reshape(1, len(idxs) * 3, H, W))                            
+                        src_rgbs = torch.cat(burst_src_rgbs, dim=0)
                     pred_latent_imgs, pred_offset = self.model.pre_net(src_rgbs)      
                     featmaps['latent_imgs'] = pred_latent_imgs              
                     featmaps['pred_offset'] = pred_offset              

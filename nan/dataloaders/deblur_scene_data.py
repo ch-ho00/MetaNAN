@@ -140,11 +140,12 @@ class DeblurSceneDataset(NoiseDataset, ABC):
             subsample_factor = 1
             num_select = self.num_source_views
 
-        nearest_pose_ids = self.get_nearest_pose_ids(render_pose, depth_range, train_poses, subsample_factor, id_render)
+        nearest_pose_ids = self.get_nearest_pose_ids(render_pose, train_poses, subsample_factor, id_render)
         nearest_pose_ids = self.choose_views(nearest_pose_ids, num_select, id_render)
         # assert None not in nearest_pose_ids
         src_rgbs = []
         src_cameras = []
+        src_poses = []
         for src_id in nearest_pose_ids:
             if src_id is None:
                 # print(self.render_rgb_files[idx])
@@ -156,10 +157,21 @@ class DeblurSceneDataset(NoiseDataset, ABC):
                 src_rgb = self.read_image(train_rgb_files[src_id], multiple32=False)
                 train_pose = train_poses[src_id]
                 train_intrinsics_ = train_intrinsics[src_id]
-
+            src_poses.append(train_pose)
             src_rgbs.append(src_rgb)
             src_camera = self.create_camera_vector(src_rgb, train_intrinsics_, train_pose)
             src_cameras.append(src_camera)
+
+        src_poses = np.stack(src_poses)
+        if self.args.num_stack_nearby > 1:
+            nearby_idxs = []
+            all_src_poses = src_poses
+            for train_pose in all_src_poses:
+                if self.args.num_stack_nearby > 1:
+                    idxs = get_nearest_pose_ids(train_pose, all_src_poses, self.args.num_stack_nearby, tar_id=None, angular_dist_method='dist')
+                    nearby_idxs.append(idxs)
+        else:
+            nearby_idxs = None
 
         src_rgbs = np.stack(src_rgbs, axis=0) # (num_select, H, W, 3)
         src_cameras = np.stack(src_cameras, axis=0) # (num_select, 34)
@@ -168,9 +180,9 @@ class DeblurSceneDataset(NoiseDataset, ABC):
 
         gt_depth = 0
         depth_range = self.final_depth_range(depth_range)
-        return self.create_deblur_scene_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain)
+        return self.create_deblur_scene_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain, nearby_idxs=nearby_idxs)
 
-    def get_nearest_pose_ids(self, render_pose, depth_range, train_poses, subsample_factor, id_render):
+    def get_nearest_pose_ids(self, render_pose, train_poses, subsample_factor, id_render):
         return get_nearest_pose_ids(render_pose,
                                     train_poses,
                                     min(self.num_source_views * subsample_factor, self.min_nearest_pose),
