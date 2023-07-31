@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_targetref_offsetConv_src5_latent3_sel1_stack3 # _revised_plain_src3_deblur
+expname                     : nan_targetRef_offsetConv_src5_latent3_wOrig_sel2 # _revised_plain_src3_deblur
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -36,8 +36,8 @@ lambda_align_loss           : 0.0
 lambda_embed_loss           : 0.0
 num_source_views            : 5
 num_latent                  : 3
-num_sample_latent           : 1
-num_stack_nearby            : 3
+num_sample_latent           : 2
+num_stack_nearby            : 1
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory

@@ -159,7 +159,8 @@ class Trainer:
         proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs,
                                                                 sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None,
                                                                 white_level=ray_batch['white_level'], inference=False,
-                                                                nearby_idxs=ray_sampler.nearby_idxs)
+                                                                nearby_idxs=ray_sampler.nearby_idxs,
+                                                                src_poses=ray_sampler.src_cameras.to(self.device))
 
 
         if self.model.args.blur_render:
@@ -179,10 +180,16 @@ class Trainer:
             src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
             src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4], dim=-1)
 
-            # import pdb; pdb.set_trace()
+
             sampled_idxs = featmaps['sampled_idxs']
-            src_latent_camera = torch.cat([torch.stack([src_latent_camera[0,src_idx][latent_idx] for latent_idx in sampled_idxs[src_idx]]) for src_idx in range(src_latent_camera.shape[1])], dim=0)
-            ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
+            src_latent_cameras = []
+            for src_idx in range(ray_batch['src_cameras'].shape[1]):      
+                src_latent_camera_ = [ray_batch['src_cameras'][0, src_idx]]      
+                for latent_idx in sampled_idxs[src_idx]:
+                    src_latent_camera_ += [src_latent_camera[0,src_idx][latent_idx]]
+                src_latent_cameras.append(torch.stack(src_latent_camera_, dim=0))
+            src_latent_cameras = torch.cat(src_latent_cameras, dim=0)
+            ray_batch['src_cameras'] = src_latent_cameras.reshape(1,-1,34)
 
 
         w = alpha ** global_step

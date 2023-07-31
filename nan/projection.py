@@ -57,9 +57,9 @@ def generate_image_plane(hw, intrinsics, c2w):
 
 def warp_latent_imgs(all_latent_imgs, all_intrinsics, all_spline_pose):
     """
-    N, V, H, W
+    N, V, 3, H, W
     N, 4, 4
-    N, n_spline, 3, 4
+    N, n_spline, 4, 4
     """
     warped_imgs = []
     masks = []

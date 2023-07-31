@@ -24,6 +24,7 @@ from nan.raw2output import RaysOutput
 from nan.feature_network import BasicBlock
 from nan.sample_ray import parse_camera
 from nan.se3 import SE3_to_se3_N, get_spline_poses
+from nan.projection import warp_latent_imgs
 
 def stack_image(image, N=2, pad=7):
     b, c, h, w = image.size()
@@ -301,7 +302,13 @@ class RayRender:
         """
         latent_info = None
         if blur_render:
-            src_imgs = torch.stack([torch.stack([featmaps['latent_imgs'][src_idx][latent_idx] for latent_idx in featmaps['sampled_idxs'][src_idx]]) for src_idx in range(featmaps['latent_imgs'].shape[0])], dim=0)
+            src_imgs = []
+            for src_idx in range(featmaps['latent_imgs'].shape[0]):
+                src_img = [org_src_rgbs[0, src_idx].permute(2,0,1)]
+                for latent_idx in featmaps['sampled_idxs'][src_idx]:
+                    src_img += [featmaps['latent_imgs'][src_idx, latent_idx]]
+                src_imgs.append(torch.stack(src_img))
+            src_imgs = torch.stack(src_imgs) 
             latent_info = [src_imgs]
 
         # Project the pts along the rays batch on all others views (src views)
@@ -330,7 +337,7 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs, sigma_estimate=None, white_level=None, inference=False, nearby_idxs=None):
+    def calc_featmaps(self, src_rgbs, sigma_estimate=None, white_level=None, inference=False, nearby_idxs=None, src_poses=None):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)
@@ -345,9 +352,18 @@ class RayRender:
                 src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
                 if self.model.args.blur_render:
                     if nearby_idxs != None:
+                        assert src_poses != None
                         burst_src_rgbs = []
-                        H, W = src_rgbs.shape[-2:]
+                        H,W = src_rgbs.shape[-2:]
                         for idxs in nearby_idxs:
+                            # import pdb; pdb.set_trace()
+                            # H, W = src_poses[0,0,:2]
+                            # near_intrinsics = src_poses[:,idxs,2:18].reshape(-1, 4, 4)
+                            # near_poses = src_poses[:,idxs,-16:].reshape(-1, 4, 4)
+                            # near_rgbs = torch.cat([src_rgbs[idx] for idx in idxs], dim=1).reshape(1, len(idxs), 3, H, W)
+                            # warped_imgs, warp_masks = warp_latent_imgs(near_rgbs , near_intrinsics, near_poses[None])
+                            # print(warp_masks.sum(dim=[0,-1,-2]) / (H * W))
+                            # plt.imsave('nearimgs.png', near_rgbs[0].permute(2,0,3,1).reshape(350, -1, 3).cpu().numpy())
                             burst_src_rgbs.append(torch.cat([src_rgbs[idx] for idx in idxs], dim=1).reshape(1, len(idxs) * 3, H, W))                            
                         src_rgbs = torch.cat(burst_src_rgbs, dim=0)
                     pred_latent_imgs, pred_offset = self.model.pre_net(src_rgbs)      
@@ -382,7 +398,7 @@ class RayRender:
 
         if not self.model.args.degae_feat:
             if not self.model.args.blur_render:
-                process_rgb = src_rgbs  
+                process_rgbs = src_rgbs  
             else: 
                 if inference:
                     sampled_idxs = [list(range(self.model.args.num_latent)) for _ in range(pred_latent_imgs.shape[0])]                
@@ -390,9 +406,16 @@ class RayRender:
                     sampled_idxs = [random.sample(list(range(self.model.args.num_latent)) , self.model.args.num_sample_latent) for _ in range(pred_latent_imgs.shape[0])]
 
                 featmaps['sampled_idxs'] = sampled_idxs
-                process_rgb = torch.cat([torch.stack([pred_latent_imgs[src_idx][latent_idx] for latent_idx in sampled_idxs[src_idx]]) for src_idx in range(pred_latent_imgs.shape[0])], dim=0)
-                process_rgb = process_rgb.reshape(-1,3, H, W)
-            feature_dict = self.model.feature_net(process_rgb)
+                process_rgbs = []
+                H,W = src_rgbs.shape[-2:]
+                for src_idx in range(pred_latent_imgs.shape[0]):
+                    process_rgb = [src_rgbs[src_idx:src_idx+1].reshape(1,3,H,W)]
+                    for latent_idx in sampled_idxs[src_idx]:                    
+                        process_rgb += [pred_latent_imgs[src_idx][latent_idx].reshape(1,3,H,W)]
+                    process_rgbs.append(torch.cat(process_rgb, dim=0))
+                process_rgbs = torch.stack(process_rgbs)
+                process_rgbs = process_rgbs.reshape(-1,3, H, W)
+            feature_dict = self.model.feature_net(process_rgbs)
             featmaps.update(feature_dict)
         else:
             with torch.no_grad():

@@ -55,7 +55,8 @@ def render_single_image(ray_sampler: RaySampler,
     src_rgbs, featmaps = ray_render.calc_featmaps(ray_sampler.src_rgbs.to(device), 
                                                   sigma_estimate=ray_sampler.sigma_estimate.to(device) if ray_sampler.sigma_estimate != None else None, 
                                                   white_level=ray_sampler.white_level, inference=True,
-                                                  nearby_idxs=ray_sampler.nearby_idxs)
+                                                  nearby_idxs=ray_sampler.nearby_idxs,
+                                                  src_poses=ray_sampler.src_cameras.to(device))
 
     if model.args.blur_render:
         src_cameras = ray_sampler.src_cameras.to(featmaps['pred_offset'].device)
@@ -74,6 +75,15 @@ def render_single_image(ray_sampler: RaySampler,
         src_spline_poses_4x4 = src_spline_poses_4x4.reshape(1, model.args.num_source_views, model.args.num_latent, -1)            
         src_latent_camera = src_cameras[:,:,:-16][:,:, None].repeat(1,1,model.args.num_latent,1)
         src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4], dim=-1)
+
+        sampled_idxs = featmaps['sampled_idxs']
+        src_latent_cameras = []
+        for src_idx in range(ray_sampler.src_cameras.shape[1]):      
+            src_latent_camera_ = [ray_sampler.src_cameras[0, src_idx].to(device)]      
+            for latent_idx in sampled_idxs[src_idx]:
+                src_latent_camera_ += [src_latent_camera[0,src_idx][latent_idx]]
+            src_latent_cameras.append(torch.stack(src_latent_camera_, dim=0))
+        src_latent_cameras = torch.cat(src_latent_cameras, dim=0)
 
     all_ret = OrderedDict([('coarse', RaysOutput.empty_ret()),
                            ('fine', None)])
@@ -96,7 +106,7 @@ def render_single_image(ray_sampler: RaySampler,
         # print('batch', i)
         ray_batch = ray_sampler.specific_ray_batch(slice(i, i + args.chunk_size, 1), clean=args.sup_clean)
         if model.args.blur_render:
-            ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
+            ray_batch['src_cameras'] = src_latent_cameras.reshape(1,-1,34)
         if args.sum_filtered:
             org_src_rgbs = src_rgbs
         elif not args.weightsum_filtered:
