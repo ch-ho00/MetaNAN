@@ -133,6 +133,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--sum_filtered', default=False, action="store_true")
         parser.add_argument('--blur_render', default=False, action="store_true")
         parser.add_argument('--lambda_align_loss', type=float, default=0)
+        parser.add_argument('--lambda_reconst_loss', type=float, default=0)
         parser.add_argument("--num_latent", type=int, default=5)
         parser.add_argument("--num_sample_latent", type=int, default=5)
         parser.add_argument("--num_stack_nearby", type=int, default=1)

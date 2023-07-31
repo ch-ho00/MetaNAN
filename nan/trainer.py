@@ -28,6 +28,8 @@ from nan.ssim_l1_loss import MS_SSIM_L1_LOSS
 import torch.nn.functional as F
 from nan.se3 import SE3_to_se3_N, get_spline_poses
 from nan.projection import warp_latent_imgs
+from nan.content_loss import reconstruction_loss
+
 import random
 alpha=0.9998
 
@@ -176,9 +178,9 @@ class Trainer:
             intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)
             warped_imgs, warp_masks = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
 
-            src_spline_poses_4x4 = src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)            
+            # Attach intrinsics and HW vector
             src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
-            src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4], dim=-1)
+            src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)], dim=-1)
 
 
             sampled_idxs = featmaps['sampled_idxs']
@@ -221,24 +223,30 @@ class Trainer:
             loss += fine_loss
 
 
-        if self.args.lambda_embed_loss > 0:
-            target_img = train_data['rgb_clean'].permute(0,3,1,2).to(self.device)
-            if self.args.blur_render:
-                reconst_img = featmaps['latent_imgs'].reshape(-1,3,target_img.shape[-2], target_img.shape[-1])
-                subsample = 4
-                sel_idxs = random.sample(list(range(reconst_img.shape[0])), subsample)
-                reconst_img = torch.stack([reconst_img[idx] for idx in sel_idxs])
-            else:
-                reconst_img = proc_src_rgbs[0].permute(0,3,1,2) 
+        if self.args.lambda_align_loss > 0 and self.model.args.blur_render:
+            perm = torch.randperm(self.args.num_latent)
+            src_spline_poses_4x4_ = src_spline_poses_4x4[:,perm]
+            latent_imgs_ = featmaps['latent_imgs']
+            warped_imgs, warp_masks = warp_latent_imgs(latent_imgs_, intrinsics, src_spline_poses_4x4_)
+            warp_masks = warp_masks.detach()
+            align_loss = 0
+            for imgs, masks in zip(warped_imgs, warp_masks):
+                ref_view_rgb = imgs[0:1, None]
+                ref_view_mask = masks[0:1, None]
 
-            white_level = ray_batch['white_level'].to(self.device) if ray_batch['white_level'] != None else None
-            clean_embed_vec = self.model.degae.degrep_extractor(target_img,     white_level=white_level)
-            reconst_embed_vec = self.model.degae.degrep_extractor(reconst_img, white_level=white_level)
+                nearby_view_rgb = imgs[None, 1:]
+                nearby_view_mask = masks[None, 1:]
 
-            embed_loss = F.mse_loss(reconst_embed_vec, clean_embed_vec.repeat(reconst_embed_vec.shape[0], 1))
-            loss += embed_loss * self.args.lambda_embed_loss * w
-            self.scalars_to_log['train/embed-loss'] = embed_loss * self.args.lambda_embed_loss * w
+                # print((ref_view_mask * nearby_view_mask == 1).sum() / (ref_view_mask * nearby_view_mask == 1).numel())
+                misalign = torch.abs(ref_view_rgb - nearby_view_rgb) * (ref_view_mask * nearby_view_mask == 1)[:,:,None].float()
+                align_loss += torch.mean(misalign)
+            self.scalars_to_log['train/align_loss'] = align_loss
+            loss += align_loss
 
+        if self.args.lambda_reconst_loss > 0:
+            reconst_loss = reconstruction_loss(featmaps['latent_imgs'].mean(dim=1), org_src_rgbs[0].permute(0,3,1,2), self.device)
+            self.scalars_to_log['train/reconst_loss'] = reconst_loss * self.args.lambda_reconst_loss
+            loss += reconst_loss * self.args.lambda_reconst_loss
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
