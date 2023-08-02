@@ -315,7 +315,7 @@ class RayRender:
         # based on the target camera and src cameras (intrinsics - K, rotation - R, translation - t)
         proj_out = self.projector.compute(pts, ray_batch['camera'], proc_src_rgbs, org_src_rgbs, sigma_estimate,
                                           ray_batch['src_cameras'],
-                                          featmaps=featmaps[level], latent_info=latent_info, sampled_idxs=featmaps['sampled_idxs'])  # [N_rays, N_samples, N_views, x]
+                                          featmaps=featmaps[level], latent_info=latent_info, sampled_idxs=featmaps['sampled_idxs'] if 'sampled_idxs' in featmaps.keys() else None)  # [N_rays, N_samples, N_views, x]
         rgb_feat, ray_diff, pts_mask, org_rgb, sigma_est, proj_feat = proj_out
 
         # [N_rays, N_samples, 4]

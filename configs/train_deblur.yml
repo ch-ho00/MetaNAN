@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_targetRef_baseline_src3_latent4_wOrig_sel3_run2 # _revised_plain_src3_deblur
+expname                     : test #nan_targetNov_groupConv2X_reconstLoss0_src3_latent5_wOrig_sel3
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -36,10 +36,10 @@ lambda_align_loss           : 0.0 #1.0
 lambda_embed_loss           : 0.0
 lambda_reconst_loss         : 0.0
 num_source_views            : 3
-num_latent                  : 4
+num_latent                  : 5
 num_sample_latent           : 3
 num_stack_nearby            : 1
-group_conv                  : False
+group_conv                  : True
 channel_upfactor            : 1
 skip_connect                : True
 ### TESTING
@@ -63,7 +63,7 @@ no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True
 
-include_target              : True  # set to False if you want to synthesize images rather than denoise the images
+include_target              : False  # set to False if you want to synthesize images rather than denoise the images
 eval_gain                    : [20, 16, 8]
 std                         : [-3.0, -0.5, -2.0, -0.5]
 
