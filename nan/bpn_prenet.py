@@ -420,29 +420,32 @@ class BPN(nn.Module):
         return pred_burst[:,0], features
 
 
-
 class DeblurBPN(nn.Module):
     def __init__(self, n_latent_layers, burst_length, group_conv, channel_upfactor, skip_connect):
         super(DeblurBPN, self).__init__()
 
         self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=16, burst_length=burst_length, channel_upfactor=channel_upfactor, group_conv=group_conv, skip_connect=skip_connect)
         self.offset_conv = nn.Sequential(
-            nn.Conv2d(self.bpn.decode_channels[1] * channel_upfactor, 64, kernel_size=3, dilation=1, stride=2, padding=0),
+            nn.Conv2d(3, 64, kernel_size=3, dilation=1, stride=2, padding=0), # self.bpn.decode_channels[1] * channel_upfactor
             nn.ELU(inplace=True),
-            nn.Conv2d(64, 16, kernel_size=3, dilation=1, stride=2, padding=0),
+            nn.Conv2d(64, 128, kernel_size=3, dilation=1, stride=2, padding=0),
             nn.ELU(inplace=True),
-            # nn.Conv2d(32, 16, kernel_size=3, dilation=1, stride=2, padding=0),
-            # nn.ELU(inplace=True),
+            nn.Conv2d(128, 256, kernel_size=3, dilation=1, stride=2, padding=0),
+            nn.ELU(inplace=True),
         )
 
         self.offset_fc = nn.Sequential(
-            nn.Linear(16 * 9, 64),
+            nn.Linear(256 * 9, 256),
             nn.ELU(inplace=True),
-            nn.Linear(64, 16),
+            nn.Linear(256, 128),
             nn.ELU(inplace=True),
-            nn.Linear(16, 6),
-            nn.Tanh()
+            nn.Linear(128, 6),
         )
+
+        for conv_layer in self.offset_conv:
+            if isinstance(conv_layer, nn.Conv2d):
+                torch.nn.init.constant_(conv_layer.weight, 1e-3)
+                torch.nn.init.constant_(conv_layer.bias, 1e-3)
         
         for m in self.offset_fc.modules():
             if isinstance(m, nn.Linear):
@@ -458,9 +461,55 @@ class DeblurBPN(nn.Module):
             (B,6)
         '''
         pred_latent_imgs, feature = self.bpn(input_imgs, input_imgs[:,None, :3])
-        down_feat = self.offset_conv(feature)
+        down_feat = self.offset_conv(input_imgs)
         down_feat = F.adaptive_avg_pool2d(down_feat, (3,3))
         vec = down_feat.reshape(down_feat.shape[0],-1)
         pred_offset = self.offset_fc(vec)
 
         return pred_latent_imgs, pred_offset
+
+# class DeblurBPN(nn.Module):
+#     def __init__(self, n_latent_layers, burst_length, group_conv, channel_upfactor, skip_connect):
+#         super(DeblurBPN, self).__init__()
+
+#         self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=16, burst_length=burst_length, channel_upfactor=channel_upfactor, group_conv=group_conv, skip_connect=skip_connect)
+#         self.offset_conv = nn.Sequential(
+#             nn.Conv2d(self.bpn.decode_channels[1] * channel_upfactor, 64, kernel_size=3, dilation=1, stride=2, padding=0),
+#             nn.ELU(inplace=True),
+#             nn.Conv2d(64, 16, kernel_size=3, dilation=1, stride=2, padding=0),
+#             nn.ELU(inplace=True),
+#             # nn.Conv2d(32, 16, kernel_size=3, dilation=1, stride=2, padding=0),
+#             # nn.ELU(inplace=True),
+#         )
+
+#         self.offset_fc = nn.Sequential(
+#             nn.Linear(16 * 9, 64),
+#             nn.ELU(inplace=True),
+#             nn.Linear(64, 16),
+#             nn.ELU(inplace=True),
+#             nn.Linear(16, 6),
+#             nn.Sigmoid()
+#             # nn.Tanh()
+#         )
+        
+#         for m in self.offset_fc.modules():
+#             if isinstance(m, nn.Linear):
+#                 init.normal_(m.weight, mean=0, std=1e-3)
+#                 init.normal_(m.bias, mean=0, std=1e-3)
+
+#     def forward(self, input_imgs):
+#         '''
+#         Input
+#             (B,V,3,H,W)
+#         Output
+#             (B, n_latent_layers, 3, H, W)
+#             (B,6)
+#         '''
+#         pred_latent_imgs, feature = self.bpn(input_imgs, input_imgs[:,None, :3])
+#         down_feat = self.offset_conv(feature)
+#         down_feat = F.adaptive_avg_pool2d(down_feat, (3,3))
+#         vec = down_feat.reshape(down_feat.shape[0],-1)
+#         pred_offset = self.offset_fc(vec)
+#         pred_offset = pred_offset * 2 - 1
+
+#         return pred_latent_imgs, pred_offset

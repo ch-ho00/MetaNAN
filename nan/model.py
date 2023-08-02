@@ -221,6 +221,7 @@ class NANScheme(nn.Module):
 
         if self.args.blur_render and self.args.bpn_prenet:
             params_list.append({'params': self.pre_net.bpn.parameters(), 'lr': self.args.lrate_feature})
+            params_list.append({'params': self.pre_net.offset_conv.parameters(), 'lr': self.args.lrate_feature * 1e-2})                
             params_list.append({'params': self.pre_net.offset_fc.parameters(), 'lr': self.args.lrate_feature * 1e-2})                
         elif self.args.pre_net:
             params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
@@ -251,6 +252,9 @@ class NANScheme(nn.Module):
 
         if self.pre_net is not None:
             self.pre_net.eval()
+            if self.args.blur_render and self.args.bpn_prenet:
+                self.pre_net.offset_conv.eval()
+                self.pre_net.offset_fc.eval()
 
         if self.args.ft_embed_fc:
             self.degae.degrep_extractor.degrep_conv.eval()
@@ -273,6 +277,9 @@ class NANScheme(nn.Module):
 
         if self.pre_net is not None:
             self.pre_net.train()
+            if self.args.blur_render and self.args.bpn_prenet:
+                self.pre_net.offset_conv.train()
+                self.pre_net.offset_fc.train()
 
         if self.args.ft_embed_fc:
             self.degae.degrep_extractor.degrep_conv.train()

@@ -1,0 +1,79 @@
+### INPUT
+expname                     : nan_general_targetRef_groupConv2X_woAct_AnnealReconstLoss1e-2_src3_latent5_woOrig_sel3
+render_stride               : 2  # used in evaluation
+distributed                 : False
+
+## dataset
+train_dataset               : deblur
+eval_dataset                : deblur_test
+# eval_scenes                 : ['blurstair'] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
+
+### TRAINING
+n_iters                     : 255000
+N_rand                      : 512
+lrate_feature               : 0.001
+lrate_mlp                   : 0.0005
+lrate_decay_factor          : 0.5
+lrate_decay_steps           : 50000
+losses                      : [l2, l1, l1_grad, ssim]
+losses_weights              : [0,  1,  0,       0]
+workers                     : 0
+
+degae_feat                  : False
+degae_feat_ckpt             : ./ckpts/0619.pth #./ckpts/model_045000.pth
+coarse_feat_dim             : 32
+fine_feat_dim               : 32
+img_size                    : 256
+sum_filtered                : True
+weightsum_filtered          : False
+bpn_prenet                  : True
+bpn_per_img                 : True
+ft_embed_fc                 : False
+cond_renderer               : False
+blur_render                 : True
+eval_scenes                 : [blurfactory]
+lambda_align_loss           : 0.0 #1.0
+lambda_embed_loss           : 0.0
+lambda_reconst_loss         : 0.01
+num_source_views            : 3
+num_latent                  : 5
+num_sample_latent           : 3
+num_stack_nearby            : 1
+group_conv                  : True
+channel_upfactor            : 2
+skip_connect                : True
+include_orig                : False
+add_burst_noise             : False
+### TESTING
+chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
+
+### RENDERING
+N_importance                : 64
+N_samples                   : 64
+inv_uniform                 : True
+white_bkgd                  : False
+
+### CONSOLE AND TENSORBOARD
+i_img                       : 2500
+i_print                     : 100
+i_tb                        : 20
+i_weights                   : 5000
+
+### additional
+#ckpt_path                   : out/NAN/model_255000.pth   # use this if you want to train from a specific checkpoint.
+no_load_opt                 : False
+no_load_scheduler           : False
+sup_clean                   : True
+
+include_target              : True  # set to False if you want to synthesize images rather than denoise the images
+eval_gain                    : [20, 16, 8]
+std                         : [-3.0, -0.5, -2.0, -0.5]
+
+
+views_attn                  : True
+kernel_size                 : [3, 3]
+pre_net                     : True
+noise_feat                  : False
+rgb_weights                 : True
+
+local_rank                  : 0

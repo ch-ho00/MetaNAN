@@ -117,43 +117,17 @@ class BurstDataset(Dataset, ABC):
             self.add_single_scene(0, Path(scene_root), holdout)
 
         elif self.args.train_dataset == 'deblur':
-            self.noise2folder = {
-                'syn_motion' : 'synthetic_camera_motion_blur',
-                'syn_defocus' : 'synthetic_defocus_blur'
-            }
-            if not self.args.degae_training:
-                real_noises = {                
-                    'cam_motion' : 'real_camera_motion_blur',
-                    'defocus' : 'real_defocus_blur',
-                }
-                self.noise2folder.update(real_noises)
 
-            self.noise_types = list(self.noise2folder.keys())
-            self.scene_holdout = {}
-            self.scene2noisetype = {}
-            cnt = 0
-            for noise_type in self.noise_types:
-                print(f" ########## Loading {noise_type} #######")
-                dataset = self.noise2folder[noise_type]
-                data_root = os.path.join(DATA_DIR, self.dir_name, dataset)
-
-                scenes = os.listdir(data_root)
-                scenes.sort()
-                n_train_scenes = int(len(scenes) * 0.8) 
-                tmp_scenes = scenes[:n_train_scenes] if self.mode == Mode.train else scenes[n_train_scenes:]
-                for scene in tmp_scenes:
-                    self.scene2noisetype[scene] = noise_type    
-                    scene_root = os.path.join(data_root, scene)
-
-                    if 'syn' not in noise_type:
-                        files = os.listdir(scene_root)
-                        holdout_fn = [f for f in files if 'hold' in f][0]
-                        holdout = int(holdout_fn.split("=")[-1])
-                    else:
-                        holdout = 1 if self.mode == Mode.train else 8
-                    self.scene_holdout[scene] = holdout
-                    self.add_single_scene(cnt, Path(scene_root), holdout, noise_type=noise_type)
-                    cnt += 1
+            self.scenes = ['blurcozy2room',  'blurpool'    ,  'blurwine',  'roomblur_low', 'blurfactory'  ,  'blurtanabata',  'dark'    ,  'roomblur_high']
+            self.scenes.sort()
+            self.scenes = self.args.eval_scenes if mode != Mode.train else [scene for scene in self.scenes if scene not in self.args.eval_scenes]
+            
+            s = 'Test ' if mode != Mode.train else ' Train'
+            print(f"############ Loading {s} Dataset #############")
+            for cnt, scene in enumerate(self.scenes):
+                data_root = os.path.join(DATA_DIR, self.dir_name)
+                scene_root = os.path.join(data_root, scene)
+                self.add_single_scene(cnt, Path(scene_root), holdout=8)
 
         elif self.args.train_dataset == 'seanerf':
             self.scenes = ['Curasao',  'IUI3-RedSea',  'JapaneseGradens-RedSea',  'Panama']
@@ -465,24 +439,26 @@ class NoiseDataset(BurstDataset, ABC):
     def create_deblur_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
                                 gt_depth=None, eval_gain=1, blur_target=False):
         if self.mode in [Mode.train]:
-            white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
+            white_level = torch.clamp(10 ** -torch.rand(1), 0.8, 1)
         else:
             white_level = torch.Tensor([1])
 
         if rgb_clean is not None:
             rgb_clean = re_linearize(torch.from_numpy(rgb_clean[..., :3]), white_level)
-            # if self.mode is Mode.train:
-            #     rgb, _ = self.add_noise(rgb_clean)        
-            # else:
-            #     rgb, _ = self.add_noise_level(rgb_clean, eval_gain)                        
+            if self.args.add_burst_noise:
+                if self.mode is Mode.train:
+                    rgb, _ = self.add_noise(rgb_clean)        
+                else:
+                    rgb, _ = self.add_noise_level(rgb_clean, eval_gain)                        
         else:
             rgb = None
         src_rgbs = re_linearize(torch.from_numpy(src_rgbs[..., :3]), white_level)
 
-        # if self.mode is Mode.train:
-        #     src_rgbs, sigma_est = self.add_noise(src_rgbs_clean)
-        # else:
-        #     src_rgbs, sigma_est = self.add_noise_level(src_rgbs_clean, eval_gain)
+        if self.args.add_burst_noise:
+            if self.mode is Mode.train:
+                src_rgbs, sigma_est = self.add_noise(src_rgbs_clean)
+            else:
+                src_rgbs, sigma_est = self.add_noise_level(src_rgbs_clean, eval_gain)
                       
         batch_dict = {'camera'        : torch.from_numpy(camera),
                       'rgb_path'      : str(rgb_file),

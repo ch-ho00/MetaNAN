@@ -107,32 +107,12 @@ class DeblurDataset(NoiseDataset, ABC):
         idx = idx % len(self.render_rgb_files)
         rgb_file: Path = self.render_rgb_files[idx]
         
-        blur_target = True
         scene_name = str(rgb_file).split('/')[-3]
-        holdout = self.scene_holdout[scene_name]
 
         # image (H, W, 3)
-        rgb = self.read_image(rgb_file)
-        if self.mode == Mode.train:
-            if self.args.blur_render:                
-                if 'synthetic' not in str(rgb_file) and idx % holdout == 0:
-                    blur_target = False            
-                elif 'synthetic' in str(rgb_file) and (random.random() > 0.5 or self.mode != Mode.train):
-                    _, rgb_file_clean = self.synfile2clean(rgb_file)
-                    rgb = self.read_image(rgb_file_clean)
-                    blur_target = False            
-            else:                
-                blur_target = False            
-                if 'synthetic' in str(rgb_file):
-                    _, rgb_file_clean = self.synfile2clean(rgb_file)
-                    rgb = self.read_image(rgb_file_clean)
-
-        else:
-            blur_target = False
-            if 'synthetic' in str(rgb_file):
-                _, rgb_file_clean = self.synfile2clean(rgb_file)
-                rgb = self.read_image(rgb_file_clean)
-
+        assert '/images/' in str(rgb_file)
+        rgb_file_clean = str(rgb_file).replace('images', 'images_test')
+        rgb = self.read_image(rgb_file_clean, multiple32=False)
         # Rotation | translation (4x4)
         # 0  0  0  | 1
         render_pose = self.render_poses[idx]
@@ -159,20 +139,29 @@ class DeblurDataset(NoiseDataset, ABC):
             subsample_factor = 1
             num_select = self.num_source_views
 
-        nearest_pose_ids = self.get_nearest_pose_ids(render_pose, depth_range, train_poses, subsample_factor, id_render)
+        nearest_pose_ids = self.get_nearest_pose_ids(render_pose, train_poses, subsample_factor, id_render)
         nearest_pose_ids = self.choose_views(nearest_pose_ids, num_select, id_render)
-        assert None not in nearest_pose_ids
+        # assert None not in nearest_pose_ids
         src_rgbs = []
         src_cameras = []
+        src_poses = []
         for src_id in nearest_pose_ids:
-            src_rgb = self.read_image(train_rgb_files[src_id])
+            if src_id is None:
+                # print(self.render_rgb_files[idx])
+                src_rgb = self.read_image(self.render_rgb_files[idx], multiple32=False)
+                train_pose = self.render_poses[idx]
+                train_intrinsics_ = self.render_intrinsics[idx]
+            else:
+                # print(train_rgb_files[src_id])
+                src_rgb = self.read_image(train_rgb_files[src_id], multiple32=False)
+                train_pose = train_poses[src_id]
+                train_intrinsics_ = train_intrinsics[src_id]
+            src_poses.append(train_pose)
             src_rgbs.append(src_rgb)
-
-            train_pose = train_poses[src_id]
-            train_intrinsics_ = train_intrinsics[src_id]
             src_camera = self.create_camera_vector(src_rgb, train_intrinsics_, train_pose)
             src_cameras.append(src_camera)
 
+        src_poses = np.stack(src_poses)
         src_rgbs = np.stack(src_rgbs, axis=0) # (num_select, H, W, 3)
         src_cameras = np.stack(src_cameras, axis=0) # (num_select, 34)
 
@@ -180,27 +169,25 @@ class DeblurDataset(NoiseDataset, ABC):
 
         gt_depth = 0
         depth_range = self.final_depth_range(depth_range)
-        return self.create_deblur_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain, blur_target=blur_target)
+        return self.create_deblur_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain)
 
-    def get_nearest_pose_ids(self, render_pose, depth_range, train_poses, subsample_factor, id_render):
+    def get_nearest_pose_ids(self, render_pose, train_poses, subsample_factor, id_render):
         return get_nearest_pose_ids(render_pose,
                                     train_poses,
                                     min(self.num_source_views * subsample_factor, self.min_nearest_pose),
                                     tar_id=id_render,
                                     angular_dist_method='dist')
 
-    def add_single_scene(self, i, scene_path, holdout, noise_type=None):
-        _, poses, bds, render_poses, i_test, rgb_files = self.load_scene(scene_path, None if 'synthetic' not in str(scene_path) else 1)
+    def add_single_scene(self, i, scene_path, holdout):
+        _, poses, bds, render_poses, i_test, rgb_files = self.load_scene(scene_path, None)
         print(scene_path, len(poses))
         near_depth = bds.min()
         far_depth = bds.max()
-        intrinsics, c2w_mats = batch_parse_llff_poses(poses, hw=[768,1024])
-        if self.mode == Mode.train:
-            i_render = list(range(poses.shape[0])) if self.args.blur_render else list(range(poses.shape[0]))[::holdout]
-            i_blurry = list(range(poses.shape[0]))
-        else:
-            i_render = self.get_i_test(poses.shape[0], holdout)
-            i_blurry = self.get_i_train(poses.shape[0], i_render)
+        intrinsics, c2w_mats = batch_parse_llff_poses(poses)
+
+        i_test = [] if self.mode == Mode.train else self.get_i_test(poses.shape[0], holdout)
+        i_blurry = self.get_i_train(poses.shape[0], i_test)
+        i_render = i_blurry if self.mode == Mode.train else i_test
 
         # Source images
         self.src_intrinsics.append(intrinsics[i_blurry])
@@ -219,16 +206,18 @@ class DeblurDataset(NoiseDataset, ABC):
 
 class DeblurTestDataset(DeblurDataset):
     name = 'deblur_test'
-    dir_name = 'deblurnerf_dataset'
+    dir_name = 'badnerf'
     num_select_high = 2
     min_nearest_pose = 28
 
     def apply_transform(self, rgb, camera, src_rgbs, src_cameras):
         if self.mode is Mode.train and self.random_crop:
-            crop_h = np.random.randint(low=250, high=750) // 128 * 128
-            crop_h = crop_h + 1 if crop_h % 2 == 1 else crop_h
-            crop_w = int(275 * 475 / crop_h // 128 * 128) #350 * 550
-            crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
+            # crop_h = np.random.randint(low=250, high=750) // 128 * 128
+            # crop_h = crop_h + 1 if crop_h % 2 == 1 else crop_h
+            # crop_w = int(350 * 550 / crop_h // 128 * 128) #
+            # crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
+            crop_h = 350
+            crop_w = 550
             rgb, camera, src_rgbs, src_cameras = random_crop(rgb, camera, src_rgbs, src_cameras,
                                                              (crop_h, crop_w))
 
@@ -243,7 +232,7 @@ class DeblurTestDataset(DeblurDataset):
 
 class DeblurTrainDataset(DeblurTestDataset):
     name = 'deblur'
-    dir_name = 'deblurnerf_dataset'
+    dir_name = 'badnerf'
     num_select_high = 3
     min_nearest_pose = 20
 

@@ -150,6 +150,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
 
         # ########## dataset options ##########
         # ## train and eval dataset
+        parser.add_argument('--add_burst_noise', default=False, action="store_true")
         parser.add_argument("--train_dataset", type=str, default='ibrnet_collected',
                             help='the training dataset, should either be a single dataset, '
                                  'or multiple datasets connected with "+", for example, ibrnet_collected+llff+spaces')
