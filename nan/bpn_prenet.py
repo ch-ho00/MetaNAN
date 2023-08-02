@@ -158,7 +158,7 @@ class KernelConv(nn.Module):
 
 class BPN(nn.Module):
     def __init__(self, color=True, burst_length=1, blind_est=True,
-                 kernel_size=7, basis_size=32, upMode='bilinear', bpn_per_img=True, n_latent_layers=None, channel_upfactor=None):
+                 kernel_size=7, basis_size=32, upMode='bilinear', bpn_per_img=True, n_latent_layers=None, channel_upfactor=None, group_conv=False, skip_connect=True):
         super(BPN, self).__init__()
         self.blind_est = blind_est
         self.kernel_size = kernel_size
@@ -179,10 +179,11 @@ class BPN(nn.Module):
         self.down_conv1 = DownBlock(64 // factor , 64  // factor)
         self.down_conv2 = DownBlock(64 // factor , 64 // factor)
 
+        self.group_conv = group_conv
         # Decoder for coefficients
-        if self.n_latent_layers > 1:
+        if self.n_latent_layers > 1 and group_conv:
             assert channel_upfactor != None
-            self.skip_connect = False
+            self.skip_connect = skip_connect
             self.features_conv1 = GroupSingleConv(64 // factor, 128 * channel_upfactor // factor, self.n_latent_layers)
             self.up_coeff_conv1 = GroupUpBlock(((128 * channel_upfactor  + (64 if self.skip_connect else 0))  // factor) ,  (128 * channel_upfactor // factor),  groups=self.n_latent_layers)
             self.up_coeff_conv2 = GroupUpBlock(((128 * channel_upfactor  + (64 if self.skip_connect else 0))  // factor) ,  (64  * channel_upfactor // factor) , groups=self.n_latent_layers)
@@ -197,18 +198,18 @@ class BPN(nn.Module):
             self.basis_conv3 = GroupSingleConv( 64 * channel_upfactor // factor , self.basis_channel , groups=self.n_latent_layers)
 
         else:
-            self.skip_connect = False
+            self.skip_connect = skip_connect
             self.features_conv1 = SingleConv(64 // factor, 128 // factor)
-            self.up_coeff_conv1 = UpBlock((128 + 64) // factor, 128 // factor)
-            self.up_coeff_conv2 = UpBlock((128 + 64) // factor, 64 // factor)
-            self.up_coeff_conv3 = UpBlock((64 + 64)   // factor, 64 // factor)
+            self.up_coeff_conv1 = UpBlock((128 + (64 if self.skip_connect else 0)) // factor, 128 // factor)
+            self.up_coeff_conv2 = UpBlock((128 + (64 if self.skip_connect else 0)) // factor, 64 // factor)
+            self.up_coeff_conv3 = UpBlock((64 +  (64 if self.skip_connect else 0)) // factor, 64 // factor)
             self.coeff_conv1 = SingleConv(64 // factor, 64 // factor)
             self.coeff_conv3 = SingleConv(64 // factor, self.coeff_channel)
 
             # Decoder for basis
-            self.up_basis_conv1 = UpBlock((128 + 64) // factor, 128 // factor)
-            self.up_basis_conv2 = UpBlock((128 + 64) // factor, 64 // factor)
-            self.up_basis_conv3 = UpBlock((64 + 64)   // factor, 64 // factor)
+            self.up_basis_conv1 = UpBlock((128 + (64 if self.skip_connect else 0)) // factor, 128 // factor)
+            self.up_basis_conv2 = UpBlock((128 + (64 if self.skip_connect else 0)) // factor, 64 // factor)
+            self.up_basis_conv3 = UpBlock((64 +  (64 if self.skip_connect else 0)) // factor, 64 // factor)
             self.basis_conv1 = CutEdgeConv(64 // factor, 64 // factor)
             self.basis_conv3 = SingleConv( 64 // factor, self.basis_channel)
 
@@ -417,11 +418,10 @@ class BPN(nn.Module):
 
 
 class DeblurBPN(nn.Module):
-    def __init__(self, n_latent_layers, burst_length):
+    def __init__(self, n_latent_layers, burst_length, group_conv, channel_upfactor, skip_connect):
         super(DeblurBPN, self).__init__()
 
-        channel_upfactor = 3
-        self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=16, burst_length=burst_length, channel_upfactor=channel_upfactor)
+        self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=16, burst_length=burst_length, channel_upfactor=channel_upfactor, group_conv=group_conv, skip_connect=skip_connect)
         self.offset_conv = nn.Sequential(
             nn.Conv2d(128 * channel_upfactor, 64, kernel_size=3, dilation=1, stride=2, padding=0),
             nn.ELU(inplace=True),

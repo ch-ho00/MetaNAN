@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_targetRef_woSkipConnect_groupConv3X_recontLoss0_src3_latent4_wOrig_sel2_run2 # _revised_plain_src3_deblur
+expname                     : nan_targetRef_baseline_src3_latent4_wOrig_sel3_run2 # _revised_plain_src3_deblur
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -37,9 +37,11 @@ lambda_embed_loss           : 0.0
 lambda_reconst_loss         : 0.0
 num_source_views            : 3
 num_latent                  : 4
-num_sample_latent           : 2
+num_sample_latent           : 3
 num_stack_nearby            : 1
-
+group_conv                  : False
+channel_upfactor            : 1
+skip_connect                : True
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
 

@@ -180,7 +180,7 @@ class NANScheme(nn.Module):
         if args.pre_net:
             if args.bpn_prenet:
                 if args.blur_render:
-                    self.pre_net = DeblurBPN(n_latent_layers=args.num_latent, burst_length=args.num_stack_nearby).to(device)
+                    self.pre_net = DeblurBPN(n_latent_layers=args.num_latent, burst_length=args.num_stack_nearby, group_conv=args.group_conv, channel_upfactor=args.channel_upfactor, skip_connect=args.skip_connect).to(device)
                 else:
                     self.pre_net = BPN(bpn_per_img=args.bpn_per_img, burst_length=args.num_stack_nearby).to(device)
             else:
