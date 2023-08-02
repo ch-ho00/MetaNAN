@@ -304,7 +304,7 @@ class RayRender:
         if blur_render:
             src_imgs = []
             for src_idx in range(featmaps['latent_imgs'].shape[0]):
-                src_img = [org_src_rgbs[0, src_idx].permute(2,0,1)]
+                src_img = [org_src_rgbs[0, src_idx].permute(2,0,1)] if self.model.args.include_orig else []
                 for latent_idx in featmaps['sampled_idxs'][src_idx]:
                     src_img += [featmaps['latent_imgs'][src_idx, latent_idx]]
                 src_imgs.append(torch.stack(src_img))
@@ -409,7 +409,7 @@ class RayRender:
                 process_rgbs = []
                 H,W = src_rgbs.shape[-2:]
                 for src_idx in range(pred_latent_imgs.shape[0]):
-                    process_rgb = [src_rgbs[src_idx:src_idx+1].reshape(1,3,H,W)]
+                    process_rgb = [src_rgbs[src_idx:src_idx+1].reshape(1,3,H,W)] if self.model.args.include_orig else []
                     for latent_idx in sampled_idxs[src_idx]:                    
                         process_rgb += [pred_latent_imgs[src_idx][latent_idx].reshape(1,3,H,W)]
                     process_rgbs.append(torch.cat(process_rgb, dim=0))

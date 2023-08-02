@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : test #nan_targetNov_groupConv2X_reconstLoss0_src3_latent5_wOrig_sel3
+expname                     : nan_targetNov_groupConv1X_reconstLoss0_src3_latent5_woOrig_sel3
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -42,6 +42,7 @@ num_stack_nearby            : 1
 group_conv                  : True
 channel_upfactor            : 1
 skip_connect                : True
+include_orig                : False
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
 

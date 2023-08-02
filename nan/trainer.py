@@ -186,7 +186,7 @@ class Trainer:
             sampled_idxs = featmaps['sampled_idxs']
             src_latent_cameras = []
             for src_idx in range(ray_batch['src_cameras'].shape[1]):      
-                src_latent_camera_ = [ray_batch['src_cameras'][0, src_idx]]      
+                src_latent_camera_ = [ray_batch['src_cameras'][0, src_idx]] if self.model.args.include_orig else []     
                 for latent_idx in sampled_idxs[src_idx]:
                     src_latent_camera_ += [src_latent_camera[0,src_idx][latent_idx]]
                 src_latent_cameras.append(torch.stack(src_latent_camera_, dim=0))
@@ -252,6 +252,7 @@ class Trainer:
         self.scalars_to_log['loss'] = loss.item()
         if self.args.blur_render and self.args.bpn_prenet:
             torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_fc.parameters(), 0.1)
+            torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_conv.parameters(), 0.1)
             
         self.model.optimizer.step()
         self.model.scheduler.step()

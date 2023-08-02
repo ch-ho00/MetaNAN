@@ -79,7 +79,7 @@ def render_single_image(ray_sampler: RaySampler,
         sampled_idxs = featmaps['sampled_idxs']
         src_latent_cameras = []
         for src_idx in range(ray_sampler.src_cameras.shape[1]):      
-            src_latent_camera_ = [ray_sampler.src_cameras[0, src_idx].to(device)]      
+            src_latent_camera_ = [ray_sampler.src_cameras[0, src_idx].to(device)]  if model.args.include_orig else []    
             for latent_idx in sampled_idxs[src_idx]:
                 src_latent_camera_ += [src_latent_camera[0,src_idx][latent_idx]]
             src_latent_cameras.append(torch.stack(src_latent_camera_, dim=0))

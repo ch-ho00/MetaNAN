@@ -131,6 +131,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
 
         # blur render
         parser.add_argument("--channel_upfactor", type=int, default=5)
+        parser.add_argument('--include_orig', default=False, action="store_true")
         parser.add_argument('--skip_connect', default=False, action="store_true")
         parser.add_argument('--group_conv', default=False, action="store_true")
         parser.add_argument('--sum_filtered', default=False, action="store_true")
