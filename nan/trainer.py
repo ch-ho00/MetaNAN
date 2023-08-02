@@ -245,8 +245,8 @@ class Trainer:
 
         if self.args.lambda_reconst_loss > 0:
             reconst_loss = reconstruction_loss(featmaps['latent_imgs'].mean(dim=1), org_src_rgbs[0].permute(0,3,1,2), self.device)
-            self.scalars_to_log['train/reconst_loss'] = reconst_loss * self.args.lambda_reconst_loss
-            loss += reconst_loss * self.args.lambda_reconst_loss
+            self.scalars_to_log['train/reconst_loss'] = reconst_loss * self.args.lambda_reconst_loss * w
+            loss += reconst_loss * self.args.lambda_reconst_loss * w
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()

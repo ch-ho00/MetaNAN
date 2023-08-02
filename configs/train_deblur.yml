@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_targetNov_groupConv1X_reconstLoss0_src3_latent5_woOrig_sel3
+expname                     : nan_targetRef_groupConv2X_AnnealReconstLoss1e-2_src3_latent5_woOrig_sel3
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -34,7 +34,7 @@ blur_render                 : True
 train_scenes                : [blurfactory]
 lambda_align_loss           : 0.0 #1.0
 lambda_embed_loss           : 0.0
-lambda_reconst_loss         : 0.0
+lambda_reconst_loss         : 0.01
 num_source_views            : 3
 num_latent                  : 5
 num_sample_latent           : 3
@@ -64,7 +64,7 @@ no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True
 
-include_target              : False  # set to False if you want to synthesize images rather than denoise the images
+include_target              : True  # set to False if you want to synthesize images rather than denoise the images
 eval_gain                    : [20, 16, 8]
 std                         : [-3.0, -0.5, -2.0, -0.5]
 
