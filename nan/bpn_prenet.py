@@ -419,12 +419,75 @@ class BPN(nn.Module):
 
         return pred_burst[:,0], features
 
+from torch import sigmoid
+from torch.nn.init import xavier_uniform_, zeros_
+
+
+def conv(in_planes, out_planes, kernel_size=3):
+    return nn.Sequential(
+        nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, padding=(kernel_size-1)//2, stride=2),
+        nn.ReLU(inplace=True)
+    )
+
+
+def upconv(in_planes, out_planes):
+    return nn.Sequential(
+        nn.ConvTranspose2d(in_planes, out_planes, kernel_size=4, stride=2, padding=1),
+        nn.ReLU(inplace=True)
+    )
+
+
+class OffsetPredictor(nn.Module):
+
+    def __init__(self, nb_ref_imgs=2, output_exp=False):
+        super(OffsetPredictor, self).__init__()
+        self.nb_ref_imgs = nb_ref_imgs
+
+        conv_planes = [16, 32, 64, 128, 256, 256, 256]
+        self.conv1 = conv(3*(1+self.nb_ref_imgs), conv_planes[0], kernel_size=7)
+        self.conv2 = conv(conv_planes[0], conv_planes[1], kernel_size=5)
+        self.conv3 = conv(conv_planes[1], conv_planes[2])
+        self.conv4 = conv(conv_planes[2], conv_planes[3])
+        self.conv5 = conv(conv_planes[3], conv_planes[4])
+        self.conv6 = conv(conv_planes[4], conv_planes[5])
+        self.conv7 = conv(conv_planes[5], conv_planes[6])
+
+        self.pose_pred = nn.Conv2d(conv_planes[6], 6*self.nb_ref_imgs, kernel_size=1, padding=0)
+
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                xavier_uniform_(m.weight.data)
+                if m.bias is not None:
+                    zeros_(m.bias)
+
+    def forward(self, target_image, ref_imgs):
+        assert(len(ref_imgs) == self.nb_ref_imgs)
+        input = [target_image]
+        input.extend(ref_imgs)
+        input = torch.cat(input, 1)
+        out_conv1 = self.conv1(input)
+        out_conv2 = self.conv2(out_conv1)
+        out_conv3 = self.conv3(out_conv2)
+        out_conv4 = self.conv4(out_conv3)
+        out_conv5 = self.conv5(out_conv4)
+        out_conv6 = self.conv6(out_conv5)
+        out_conv7 = self.conv7(out_conv6)
+
+        pose = self.pose_pred(out_conv7)
+        pose = pose.mean(3).mean(2)
+        pose = 0.01 * pose.view(pose.size(0), self.nb_ref_imgs, 6)
+
+        return pose
+
 
 class DeblurBPN(nn.Module):
     def __init__(self, n_latent_layers, burst_length, group_conv, channel_upfactor, skip_connect):
         super(DeblurBPN, self).__init__()
 
         self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=16, burst_length=burst_length, channel_upfactor=channel_upfactor, group_conv=group_conv, skip_connect=skip_connect)
+        '''
         self.offset_conv = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=3, dilation=1, stride=2, padding=0), # self.bpn.decode_channels[1] * channel_upfactor
             nn.ELU(inplace=True),
@@ -451,6 +514,8 @@ class DeblurBPN(nn.Module):
             if isinstance(m, nn.Linear):
                 init.normal_(m.weight, mean=0, std=1e-3)
                 init.normal_(m.bias, mean=0, std=1e-3)
+        '''
+        self.offset_module = OffsetPredictor(n_latent_layers)
 
     def forward(self, input_imgs):
         '''
@@ -461,10 +526,12 @@ class DeblurBPN(nn.Module):
             (B,6)
         '''
         pred_latent_imgs, feature = self.bpn(input_imgs, input_imgs[:,None, :3])
-        down_feat = self.offset_conv(input_imgs)
-        down_feat = F.adaptive_avg_pool2d(down_feat, (3,3))
-        vec = down_feat.reshape(down_feat.shape[0],-1)
-        pred_offset = self.offset_fc(vec)
+        pred_offset = self.offset_module(input_imgs,pred_latent_imgs.transpose(0,1))
+        pred_offset = pred_offset.mean(1)
+        # down_feat = self.offset_conv(input_imgs)
+        # down_feat = F.adaptive_avg_pool2d(down_feat, (3,3))
+        # vec = down_feat.reshape(down_feat.shape[0],-1)
+        # pred_offset = self.offset_fc(vec)
 
         return pred_latent_imgs, pred_offset
 

@@ -251,8 +251,10 @@ class Trainer:
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
         if self.args.blur_render and self.args.bpn_prenet:
-            torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_fc.parameters(), 0.1)
-            torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_conv.parameters(), 0.1)
+            torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_module.parameters(), 0.1)
+
+            # torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_fc.parameters(), 0.1)
+            # torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_conv.parameters(), 0.1)
             
         self.model.optimizer.step()
         self.model.scheduler.step()
