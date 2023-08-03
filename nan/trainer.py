@@ -169,6 +169,9 @@ class Trainer:
             src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
             src_se3_start = SE3_to_se3_N(src_poses)
             src_se3_end = src_se3_start + featmaps['pred_offset']
+            # print("Norm")
+            # print("\t",torch.norm(src_se3_start[:,:3],dim=-1), torch.norm(featmaps['pred_offset'][:,:3], dim=-1))
+            # print("\t",torch.norm(src_se3_start[:,3:],dim=-1), torch.norm(featmaps['pred_offset'][:,3:], dim=-1))
             src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=self.model.args.num_latent)
             src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(self.model.args.num_source_views, self.model.args.num_latent, 1, 1)
             src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
@@ -250,8 +253,8 @@ class Trainer:
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
-        if self.args.blur_render and self.args.bpn_prenet:
-            torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_module.parameters(), 0.1)
+        # if self.args.blur_render and self.args.bpn_prenet:
+        #     torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_module.parameters(), 0.1)
 
             # torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_fc.parameters(), 0.1)
             # torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_conv.parameters(), 0.1)

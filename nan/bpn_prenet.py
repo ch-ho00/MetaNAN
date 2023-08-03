@@ -477,7 +477,7 @@ class OffsetPredictor(nn.Module):
 
         pose = self.pose_pred(out_conv7)
         pose = pose.mean(3).mean(2)
-        pose = 0.01 * pose.view(pose.size(0), self.nb_ref_imgs, 6)
+        pose = 0.01 * pose.view(pose.size(0), self.nb_ref_imgs, 6) + 1e-6
 
         return pose
 
@@ -534,49 +534,3 @@ class DeblurBPN(nn.Module):
         # pred_offset = self.offset_fc(vec)
 
         return pred_latent_imgs, pred_offset
-
-# class DeblurBPN(nn.Module):
-#     def __init__(self, n_latent_layers, burst_length, group_conv, channel_upfactor, skip_connect):
-#         super(DeblurBPN, self).__init__()
-
-#         self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=16, burst_length=burst_length, channel_upfactor=channel_upfactor, group_conv=group_conv, skip_connect=skip_connect)
-#         self.offset_conv = nn.Sequential(
-#             nn.Conv2d(self.bpn.decode_channels[1] * channel_upfactor, 64, kernel_size=3, dilation=1, stride=2, padding=0),
-#             nn.ELU(inplace=True),
-#             nn.Conv2d(64, 16, kernel_size=3, dilation=1, stride=2, padding=0),
-#             nn.ELU(inplace=True),
-#             # nn.Conv2d(32, 16, kernel_size=3, dilation=1, stride=2, padding=0),
-#             # nn.ELU(inplace=True),
-#         )
-
-#         self.offset_fc = nn.Sequential(
-#             nn.Linear(16 * 9, 64),
-#             nn.ELU(inplace=True),
-#             nn.Linear(64, 16),
-#             nn.ELU(inplace=True),
-#             nn.Linear(16, 6),
-#             nn.Sigmoid()
-#             # nn.Tanh()
-#         )
-        
-#         for m in self.offset_fc.modules():
-#             if isinstance(m, nn.Linear):
-#                 init.normal_(m.weight, mean=0, std=1e-3)
-#                 init.normal_(m.bias, mean=0, std=1e-3)
-
-#     def forward(self, input_imgs):
-#         '''
-#         Input
-#             (B,V,3,H,W)
-#         Output
-#             (B, n_latent_layers, 3, H, W)
-#             (B,6)
-#         '''
-#         pred_latent_imgs, feature = self.bpn(input_imgs, input_imgs[:,None, :3])
-#         down_feat = self.offset_conv(feature)
-#         down_feat = F.adaptive_avg_pool2d(down_feat, (3,3))
-#         vec = down_feat.reshape(down_feat.shape[0],-1)
-#         pred_offset = self.offset_fc(vec)
-#         pred_offset = pred_offset * 2 - 1
-
-#         return pred_latent_imgs, pred_offset
