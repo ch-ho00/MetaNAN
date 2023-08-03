@@ -171,7 +171,7 @@ class BPN(nn.Module):
         self.color_channel = self.color_channel 
         factor = 1
         self.coeff_channel = self.basis_size * self.n_latent_layers
-        self.basis_channel = self.color_channel * self.burst_length * self.basis_size * self.n_latent_layers
+        self.basis_channel = self.color_channel * self.burst_length * self.basis_size # * self.n_latent_layers
 
         self.skip_connect = skip_connect
         # Layer definition in each block
@@ -193,12 +193,20 @@ class BPN(nn.Module):
             self.coeff_conv1 = GroupSingleConv(self.decode_channels[0] * channel_upfactor, self.decode_channels[0] * channel_upfactor, groups=self.n_latent_layers)
             self.coeff_conv3 = GroupSingleConv(self.decode_channels[0] * channel_upfactor, self.coeff_channel, groups=self.n_latent_layers)
 
+            # # Decoder for basis
+            # self.up_basis_conv1 = GroupUpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[1]  * channel_upfactor, groups=self.n_latent_layers)
+            # self.up_basis_conv2 = GroupUpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor, groups=self.n_latent_layers)
+            # self.up_basis_conv3 = GroupUpBlock((self.decode_channels[0] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor, groups=self.n_latent_layers)
+            # self.basis_conv1 = GroupCutEdgeConv(self.decode_channels[0] * channel_upfactor, self.decode_channels[0] * channel_upfactor, groups=self.n_latent_layers)
+            # self.basis_conv3 = GroupSingleConv( self.decode_channels[0] * channel_upfactor , self.basis_channel , groups=self.n_latent_layers)
+
             # Decoder for basis
-            self.up_basis_conv1 = GroupUpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[1]  * channel_upfactor, groups=self.n_latent_layers)
-            self.up_basis_conv2 = GroupUpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor, groups=self.n_latent_layers)
-            self.up_basis_conv3 = GroupUpBlock((self.decode_channels[0] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor, groups=self.n_latent_layers)
-            self.basis_conv1 = GroupCutEdgeConv(self.decode_channels[0] * channel_upfactor, self.decode_channels[0] * channel_upfactor, groups=self.n_latent_layers)
-            self.basis_conv3 = GroupSingleConv( self.decode_channels[0] * channel_upfactor , self.basis_channel , groups=self.n_latent_layers)
+            self.up_basis_conv1 = UpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[1]  * channel_upfactor)
+            self.up_basis_conv2 = UpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor)
+            self.up_basis_conv3 = UpBlock((self.decode_channels[0] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor)
+            self.basis_conv1 = CutEdgeConv(self.decode_channels[0] * channel_upfactor, self.decode_channels[0] * channel_upfactor) 
+            self.basis_conv3 = SingleConv( self.decode_channels[0] * channel_upfactor , self.basis_channel)
+
         else:
             self.initial_conv = SingleConv(self.in_channel, 64 // factor)
             self.down_conv1 = DownBlock(64 // factor , 64  // factor)
@@ -383,19 +391,19 @@ class BPN(nn.Module):
         basis1 = self.basis_conv1(up_basis_conv3)
         del up_basis_conv3
         basis3 = self.basis_conv3(basis1).view(basis1.size(0),
-                                               self.basis_size * self.n_latent_layers,
+                                               self.basis_size, #* self.n_latent_layers,
                                                self.burst_length,
                                                self.color_channel,
                                                self.kernel_size,
                                                self.kernel_size)
         del basis1
         if self.n_latent_layers > 1:
-            # basis = self.out_basis(basis3)
+            basis = self.out_basis(basis3)
             pred_imgs = []
             nchannels = self.basis_size
             for img_idx in range(self.n_latent_layers):
-                img_basis = self.out_basis(basis3[:,nchannels * img_idx: nchannels * (img_idx + 1)])
-                kernels = self.kernel_predict(coeffs[img_idx], img_basis, #basis,
+                # img_basis = self.out_basis(basis3[:,nchannels * img_idx: nchannels * (img_idx + 1)])
+                kernels = self.kernel_predict(coeffs[img_idx], basis, # img_basis, #
                                             coeffs[img_idx].size(0), self.burst_length, self.kernel_size,
                                             self.color_channel)
                 pred_burst = self.kernel_conv(data, kernels)        
@@ -420,37 +428,43 @@ class BPN(nn.Module):
         return pred_burst[:,0], features
 
 
+import torch.nn.init as init
 class DeblurBPN(nn.Module):
     def __init__(self, n_latent_layers, burst_length, group_conv, channel_upfactor, skip_connect):
         super(DeblurBPN, self).__init__()
 
         self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=16, burst_length=burst_length, channel_upfactor=channel_upfactor, group_conv=group_conv, skip_connect=skip_connect)
         self.offset_conv = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, dilation=1, stride=2, padding=0), # self.bpn.decode_channels[1] * channel_upfactor
+            nn.Conv2d(self.bpn.decode_channels[1] * channel_upfactor, 64, kernel_size=3, dilation=1, stride=2, padding=0),
             nn.ELU(inplace=True),
-            nn.Conv2d(64, 128, kernel_size=3, dilation=1, stride=2, padding=0),
+            nn.Conv2d(64, 32, kernel_size=3, dilation=1, stride=2, padding=0),
             nn.ELU(inplace=True),
-            nn.Conv2d(128, 256, kernel_size=3, dilation=1, stride=2, padding=0),
+            nn.Conv2d(32, 32, kernel_size=3, dilation=1, stride=2, padding=0),
             nn.ELU(inplace=True),
+            nn.Conv2d(32, 16, kernel_size=1, dilation=1, stride=1, padding=0),
+            nn.Conv2d(16, 6, kernel_size=1, dilation=1, stride=1, padding=0),
         )
 
-        self.offset_fc = nn.Sequential(
-            nn.Linear(256 * 9, 256),
-            nn.ELU(inplace=True),
-            nn.Linear(256, 128),
-            nn.ELU(inplace=True),
-            nn.Linear(128, 6),
-        )
+        for module in self.offset_conv.modules():
+            if isinstance(module, nn.Conv2d):
+                init.normal_(module.weight, mean=0, std=1e-6)
+                if module.bias is not None:
+                    init.constant_(module.bias, 0)
 
-        for conv_layer in self.offset_conv:
-            if isinstance(conv_layer, nn.Conv2d):
-                torch.nn.init.constant_(conv_layer.weight, 1e-3)
-                torch.nn.init.constant_(conv_layer.bias, 1e-3)
+        # self.offset_fc = nn.Sequential(
+        #     nn.Linear(16 * 9, 64),
+        #     nn.ELU(inplace=True),
+        #     nn.Linear(64, 16),
+        #     nn.ELU(inplace=True),
+        #     nn.Linear(16, 6),
+        #     nn.Sigmoid()
+        #     # nn.Tanh()
+        # )
         
-        for m in self.offset_fc.modules():
-            if isinstance(m, nn.Linear):
-                init.normal_(m.weight, mean=0, std=1e-3)
-                init.normal_(m.bias, mean=0, std=1e-3)
+        # for m in self.offset_fc.modules():
+        #     if isinstance(m, nn.Linear):
+        #         init.normal_(m.weight, mean=0, std=1e-3)
+        #         init.normal_(m.bias, mean=0, std=1e-3)
 
     def forward(self, input_imgs):
         '''
@@ -461,55 +475,6 @@ class DeblurBPN(nn.Module):
             (B,6)
         '''
         pred_latent_imgs, feature = self.bpn(input_imgs, input_imgs[:,None, :3])
-        down_feat = self.offset_conv(input_imgs)
-        down_feat = F.adaptive_avg_pool2d(down_feat, (3,3))
-        vec = down_feat.reshape(down_feat.shape[0],-1)
-        pred_offset = self.offset_fc(vec)
+        pred_offset = self.offset_conv(feature).mean(-1).mean(-1)
 
         return pred_latent_imgs, pred_offset
-
-# class DeblurBPN(nn.Module):
-#     def __init__(self, n_latent_layers, burst_length, group_conv, channel_upfactor, skip_connect):
-#         super(DeblurBPN, self).__init__()
-
-#         self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=16, burst_length=burst_length, channel_upfactor=channel_upfactor, group_conv=group_conv, skip_connect=skip_connect)
-#         self.offset_conv = nn.Sequential(
-#             nn.Conv2d(self.bpn.decode_channels[1] * channel_upfactor, 64, kernel_size=3, dilation=1, stride=2, padding=0),
-#             nn.ELU(inplace=True),
-#             nn.Conv2d(64, 16, kernel_size=3, dilation=1, stride=2, padding=0),
-#             nn.ELU(inplace=True),
-#             # nn.Conv2d(32, 16, kernel_size=3, dilation=1, stride=2, padding=0),
-#             # nn.ELU(inplace=True),
-#         )
-
-#         self.offset_fc = nn.Sequential(
-#             nn.Linear(16 * 9, 64),
-#             nn.ELU(inplace=True),
-#             nn.Linear(64, 16),
-#             nn.ELU(inplace=True),
-#             nn.Linear(16, 6),
-#             nn.Sigmoid()
-#             # nn.Tanh()
-#         )
-        
-#         for m in self.offset_fc.modules():
-#             if isinstance(m, nn.Linear):
-#                 init.normal_(m.weight, mean=0, std=1e-3)
-#                 init.normal_(m.bias, mean=0, std=1e-3)
-
-#     def forward(self, input_imgs):
-#         '''
-#         Input
-#             (B,V,3,H,W)
-#         Output
-#             (B, n_latent_layers, 3, H, W)
-#             (B,6)
-#         '''
-#         pred_latent_imgs, feature = self.bpn(input_imgs, input_imgs[:,None, :3])
-#         down_feat = self.offset_conv(feature)
-#         down_feat = F.adaptive_avg_pool2d(down_feat, (3,3))
-#         vec = down_feat.reshape(down_feat.shape[0],-1)
-#         pred_offset = self.offset_fc(vec)
-#         pred_offset = pred_offset * 2 - 1
-
-#         return pred_latent_imgs, pred_offset

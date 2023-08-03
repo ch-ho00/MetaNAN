@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_targetRef_groupConv2X_AnnealReconstLoss1e-2_src3_latent5_woOrig_sel3
+expname                     : nan_targetRef_AnnealReconstLoss1e-2_groupBPN_commonBasis_includeOrig_src3_lat5 #_plainBPN_src8 # 
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -37,12 +37,10 @@ lambda_embed_loss           : 0.0
 lambda_reconst_loss         : 0.01
 num_source_views            : 3
 num_latent                  : 5
-num_sample_latent           : 3
-num_stack_nearby            : 1
 group_conv                  : True
 channel_upfactor            : 1
 skip_connect                : True
-include_orig                : False
+include_orig                : True
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
 

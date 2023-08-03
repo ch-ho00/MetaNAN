@@ -163,15 +163,6 @@ class DeblurSceneDataset(NoiseDataset, ABC):
             src_cameras.append(src_camera)
 
         src_poses = np.stack(src_poses)
-        if self.args.num_stack_nearby > 1:
-            nearby_idxs = []
-            all_src_poses = src_poses
-            for train_pose in all_src_poses:
-                if self.args.num_stack_nearby > 1:
-                    idxs = get_nearest_pose_ids(train_pose, all_src_poses, self.args.num_stack_nearby, tar_id=None, angular_dist_method='dist')
-                    nearby_idxs.append(idxs)
-        else:
-            nearby_idxs = None
 
         src_rgbs = np.stack(src_rgbs, axis=0) # (num_select, H, W, 3)
         src_cameras = np.stack(src_cameras, axis=0) # (num_select, 34)
@@ -180,7 +171,7 @@ class DeblurSceneDataset(NoiseDataset, ABC):
 
         gt_depth = 0
         depth_range = self.final_depth_range(depth_range)
-        return self.create_deblur_scene_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain, nearby_idxs=nearby_idxs)
+        return self.create_deblur_scene_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain)
 
     def get_nearest_pose_ids(self, render_pose, train_poses, subsample_factor, id_render):
         return get_nearest_pose_ids(render_pose,

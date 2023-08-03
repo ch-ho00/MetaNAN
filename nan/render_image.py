@@ -76,15 +76,6 @@ def render_single_image(ray_sampler: RaySampler,
         src_latent_camera = src_cameras[:,:,:-16][:,:, None].repeat(1,1,model.args.num_latent,1)
         src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4], dim=-1)
 
-        sampled_idxs = featmaps['sampled_idxs']
-        src_latent_cameras = []
-        for src_idx in range(ray_sampler.src_cameras.shape[1]):      
-            src_latent_camera_ = [ray_sampler.src_cameras[0, src_idx].to(device)]  if model.args.include_orig else []    
-            for latent_idx in sampled_idxs[src_idx]:
-                src_latent_camera_ += [src_latent_camera[0,src_idx][latent_idx]]
-            src_latent_cameras.append(torch.stack(src_latent_camera_, dim=0))
-        src_latent_cameras = torch.cat(src_latent_cameras, dim=0)
-
     all_ret = OrderedDict([('coarse', RaysOutput.empty_ret()),
                            ('fine', None)])
 
@@ -96,6 +87,9 @@ def render_single_image(ray_sampler: RaySampler,
             if model.args.blur_render:
                 all_ret['latent_imgs'] = featmaps['latent_imgs']
                 all_ret['warped_latent_imgs'] = warped_imgs
+                if model.args.include_orig:
+                    featmaps['latent_imgs'] = torch.cat([ray_sampler.src_rgbs[0].permute(0,3,1,2)[:,None].to(device), all_ret['latent_imgs']], dim=1)
+                    src_latent_camera = torch.cat([ray_sampler.src_cameras[:,:,None].to(device), src_latent_camera], dim=2)
 
 
     if args.N_importance > 0:
@@ -106,7 +100,7 @@ def render_single_image(ray_sampler: RaySampler,
         # print('batch', i)
         ray_batch = ray_sampler.specific_ray_batch(slice(i, i + args.chunk_size, 1), clean=args.sup_clean)
         if model.args.blur_render:
-            ray_batch['src_cameras'] = src_latent_cameras.reshape(1,-1,34)
+            ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
         if args.sum_filtered:
             org_src_rgbs = src_rgbs
         elif not args.weightsum_filtered:

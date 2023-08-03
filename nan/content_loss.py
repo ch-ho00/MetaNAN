@@ -62,7 +62,7 @@ def reconstruction_loss(output, target, device):
     """
     kernel_choices = ["gaussian", "generalized_gaussian", "plateau_shaped"]
     kernel_probs = [0.7, 0.15, 0.15]
-    kernel_size_choices = list(range(7, 22, 2))
+    kernel_size_choices = list(range(13, 22, 2))
     beta_range_gaussian = (0.5, 4)
     beta_range_plateau_shaped = (1, 2)
     sigma_range_gaussian = (0.1, 2)

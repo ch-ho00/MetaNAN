@@ -302,20 +302,12 @@ class RayRender:
         """
         latent_info = None
         if blur_render:
-            src_imgs = []
-            for src_idx in range(featmaps['latent_imgs'].shape[0]):
-                src_img = [org_src_rgbs[0, src_idx].permute(2,0,1)] if self.model.args.include_orig else []
-                for latent_idx in featmaps['sampled_idxs'][src_idx]:
-                    src_img += [featmaps['latent_imgs'][src_idx, latent_idx]]
-                src_imgs.append(torch.stack(src_img))
-            src_imgs = torch.stack(src_imgs) 
-            latent_info = [src_imgs]
-
+            latent_info = [featmaps['latent_imgs']]
         # Project the pts along the rays batch on all others views (src views)
         # based on the target camera and src cameras (intrinsics - K, rotation - R, translation - t)
         proj_out = self.projector.compute(pts, ray_batch['camera'], proc_src_rgbs, org_src_rgbs, sigma_estimate,
                                           ray_batch['src_cameras'],
-                                          featmaps=featmaps[level], latent_info=latent_info, sampled_idxs=featmaps['sampled_idxs'] if 'sampled_idxs' in featmaps.keys() else None)  # [N_rays, N_samples, N_views, x]
+                                          featmaps=featmaps[level], latent_info=latent_info)  # [N_rays, N_samples, N_views, x]
         rgb_feat, ray_diff, pts_mask, org_rgb, sigma_est, proj_feat = proj_out
 
         # [N_rays, N_samples, 4]
@@ -351,34 +343,12 @@ class RayRender:
             if self.model.args.bpn_prenet:
                 src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
                 if self.model.args.blur_render:
-                    if nearby_idxs != None:
-                        assert src_poses != None
-                        burst_src_rgbs = []
-                        H,W = src_rgbs.shape[-2:]
-                        for idxs in nearby_idxs:
-                            # import pdb; pdb.set_trace()
-                            # H, W = src_poses[0,0,:2]
-                            # near_intrinsics = src_poses[:,idxs,2:18].reshape(-1, 4, 4)
-                            # near_poses = src_poses[:,idxs,-16:].reshape(-1, 4, 4)
-                            # near_rgbs = torch.cat([src_rgbs[idx] for idx in idxs], dim=1).reshape(1, len(idxs), 3, H, W)
-                            # warped_imgs, warp_masks = warp_latent_imgs(near_rgbs , near_intrinsics, near_poses[None])
-                            # print(warp_masks.sum(dim=[0,-1,-2]) / (H * W))
-                            # plt.imsave('nearimgs.png', near_rgbs[0].permute(2,0,3,1).reshape(350, -1, 3).cpu().numpy())
-                            burst_src_rgbs.append(torch.cat([src_rgbs[idx] for idx in idxs], dim=1).reshape(1, len(idxs) * 3, H, W))                            
-                        src_rgbs = torch.cat(burst_src_rgbs, dim=0)
                     pred_latent_imgs, pred_offset = self.model.pre_net(src_rgbs)      
                     featmaps['latent_imgs'] = pred_latent_imgs              
                     featmaps['pred_offset'] = pred_offset              
                     src_rgbs = pred_latent_imgs[:,0]
                 else:
-                    pad = 8
-                    npatch_per_side = 2
-                    src_rgbs_stacked = stack_image(src_rgbs, N=npatch_per_side, pad=pad)
-                    src_rgbs, bpn_feats = self.model.pre_net(src_rgbs_stacked, src_rgbs_stacked[:,None])                    
-                    # src_rgbs, bpn_feats = self.model.pre_net(src_rgbs, src_rgbs[:,None])                    
-                    del src_rgbs_stacked
-                    src_rgbs = unstack_image(src_rgbs, total_n_patch=npatch_per_side**2, pad=pad)
-                    bpn_feats = unstack_image(bpn_feats, total_n_patch=npatch_per_side**2, pad=1)
+                    src_rgbs, bpn_feats = self.model.pre_net(src_rgbs, src_rgbs[:,None])                    
                     featmaps['bpn_feats'] = bpn_feats
                 torch.cuda.empty_cache()
             else:
@@ -399,22 +369,10 @@ class RayRender:
         if not self.model.args.degae_feat:
             if not self.model.args.blur_render:
                 process_rgbs = src_rgbs  
-            else: 
-                if inference:
-                    sampled_idxs = [list(range(self.model.args.num_latent)) for _ in range(pred_latent_imgs.shape[0])]                
-                else:
-                    sampled_idxs = [random.sample(list(range(self.model.args.num_latent)) , self.model.args.num_sample_latent) for _ in range(pred_latent_imgs.shape[0])]
-
-                featmaps['sampled_idxs'] = sampled_idxs
-                process_rgbs = []
-                H,W = src_rgbs.shape[-2:]
-                for src_idx in range(pred_latent_imgs.shape[0]):
-                    process_rgb = [src_rgbs[src_idx:src_idx+1].reshape(1,3,H,W)] if self.model.args.include_orig else []
-                    for latent_idx in sampled_idxs[src_idx]:                    
-                        process_rgb += [pred_latent_imgs[src_idx][latent_idx].reshape(1,3,H,W)]
-                    process_rgbs.append(torch.cat(process_rgb, dim=0))
-                process_rgbs = torch.stack(process_rgbs)
-                process_rgbs = process_rgbs.reshape(-1,3, H, W)
+            else:
+                if self.model.args.include_orig:
+                    pred_latent_imgs = torch.cat([orig_rgbs[0].permute(0,3,1,2)[:,None], pred_latent_imgs], dim=1)
+                process_rgbs = pred_latent_imgs.reshape(-1,3, H, W)
             feature_dict = self.model.feature_net(process_rgbs)
             featmaps.update(feature_dict)
         else:
