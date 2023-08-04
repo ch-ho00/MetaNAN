@@ -368,11 +368,13 @@ class RayRender:
 
         if not self.model.args.degae_feat:
             if not self.model.args.blur_render:
-                process_rgbs = src_rgbs  
+                process_rgbs = src_rgbs[:,None]     # (N, 1, 3, H, W)  
             else:
-                if self.model.args.include_orig:
-                    pred_latent_imgs = torch.cat([orig_rgbs[0].permute(0,3,1,2)[:,None], pred_latent_imgs], dim=1)
-                process_rgbs = pred_latent_imgs.reshape(-1,3, H, W)
+                process_rgbs = pred_latent_imgs     # (N, V, 3, H, W)
+
+            if self.model.args.include_orig:
+                process_rgbs = torch.cat([orig_rgbs[0].permute(0,3,1,2)[:,None], process_rgbs], dim=1)
+            process_rgbs = process_rgbs.reshape(-1,3, H, W)
             feature_dict = self.model.feature_net(process_rgbs)
             featmaps.update(feature_dict)
         else:

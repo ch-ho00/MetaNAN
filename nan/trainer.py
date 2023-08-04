@@ -186,8 +186,12 @@ class Trainer:
                 ray_batch['src_cameras'] = torch.cat([ray_batch['src_cameras'][:,:,None],src_latent_camera], dim=2).reshape(1,-1,34)
             else:
                 ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
+        else:
+            if self.model.args.include_orig:
+                H, W = proc_src_rgbs.shape[-3:-1]
+                ray_batch['src_cameras'] = ray_batch['src_cameras'].repeat(1,1,2).reshape(1,-1,34)
+                proc_src_rgbs = torch.stack([org_src_rgbs, proc_src_rgbs], dim=2).reshape(1,-1,H,W,3)
                 
-
         w = alpha ** global_step
         if self.args.sum_filtered:
             org_src_rgbs_ = proc_src_rgbs
