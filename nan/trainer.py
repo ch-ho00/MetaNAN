@@ -188,13 +188,39 @@ class Trainer:
                                                     tar_latent_cameras=tar_latent_cameras,
                                                     center_ratio=self.args.center_ratio)
 
-            if self.model.args.include_orig:
-                featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None], proc_src_rgbs[0].permute(0,3,1,2)[:,None]], dim=1)
-                blur_ray_batch['src_cameras'] = ray_batch['src_cameras'].repeat(1,1,2).reshape(1,-1,34)
+
+            if self.model.args.num_latent > 1:
+                src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
+                src_se3_start = SE3_to_se3_N(src_poses)
+                src_se3_end = src_se3_start + featmaps['pred_offset']
+                src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=self.model.args.num_latent)
+                src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(self.model.args.num_source_views, self.model.args.num_latent, 1, 1)
+                src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
+                src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
+
+                H, W = ray_batch['src_cameras'][0,0,:2]
+                intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)
+                # warped_imgs, warp_masks = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
+
+                # Attach intrinsics and HW vector
+                src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
+                src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)], dim=-1)
+
+
+                if self.model.args.include_orig:
+                    featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None], featmaps['latent_imgs']], dim=1)
+                    blur_ray_batch['src_cameras'] = torch.cat([ray_batch['src_cameras'][:,:,None],src_latent_camera], dim=2).reshape(1,-1,34)
+                else:
+                    blur_ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
+
             else:
-                featmaps['latent_imgs'] = proc_src_rgbs[0].permute(0,3,1,2)[:,None]
-                blur_ray_batch['src_cameras'] = ray_batch['src_cameras'].reshape(1,-1,34)
-                
+                if self.model.args.include_orig:
+                    featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None], proc_src_rgbs[0].permute(0,3,1,2)[:,None]], dim=1)
+                    blur_ray_batch['src_cameras'] = ray_batch['src_cameras'].repeat(1,1,2).reshape(1,-1,34)
+                else:
+                    featmaps['latent_imgs'] = proc_src_rgbs[0].permute(0,3,1,2)[:,None]
+                    blur_ray_batch['src_cameras'] = ray_batch['src_cameras'].reshape(1,-1,34)
+                    
 
             # Render the rgb values of the pixels that were sampled
             batch_out = self.ray_render.render_batch(ray_batch=blur_ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,

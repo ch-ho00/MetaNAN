@@ -354,7 +354,9 @@ class RayRender:
         if self.model.pre_net is not None:
             if self.model.args.bpn_prenet:
                 src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
-                src_rgbs, _ = self.model.pre_net(src_rgbs) #, src_rgbs[:,None])                    
+                src_rgbs, pred_offset = self.model.pre_net(src_rgbs)
+                featmaps['latent_imgs'] = src_rgbs                    
+                featmaps['pred_offset'] = pred_offset
                 torch.cuda.empty_cache()
             else:
                 src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
@@ -372,7 +374,10 @@ class RayRender:
                 torch.cuda.empty_cache()
 
         if not self.model.args.degae_feat:
-            process_rgbs = src_rgbs[:,None]     # (N, 1, 3, H, W)  
+            if self.model.args.num_latent > 1:
+                process_rgbs = src_rgbs
+            else:
+                process_rgbs = src_rgbs[:,None]     # (N, 1, 3, H, W)  
 
             if self.model.args.include_orig:
                 process_rgbs = torch.cat([orig_rgbs[0].permute(0,3,1,2)[:,None], process_rgbs], dim=1)
@@ -391,6 +396,8 @@ class RayRender:
             featmaps['fine']    = feat[:,self.model.args.coarse_feat_dim:]
             del degfeat
 
+        if self.model.args.num_latent > 1:
+            src_rgbs = src_rgbs[:,0]
         src_rgbs = src_rgbs.permute(0, 2, 3, 1).unsqueeze(0)
         featmaps['noise_vec'] = noise_vec
 

@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_targetNov_blurTarget_woOrig_src3 #nan_targetNov_blurTarget_perImgBasis_src3_lat5_woOrig #nan_targetRef_AnnealReconstLoss1e-2_groupBPN_commonBasis_includeOrig_src3_lat5 #_plainBPN_src8 # 
+expname                     : nan_targetNov_blurTarget_woOrig_src3_lat5 #nan_targetNov_blurTarget_perImgBasis_src3_lat5_woOrig #nan_targetRef_AnnealReconstLoss1e-2_groupBPN_commonBasis_includeOrig_src3_lat5 #_plainBPN_src8 # 
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -36,10 +36,9 @@ lambda_align_loss           : 0.0 #1.0
 lambda_embed_loss           : 0.0
 lambda_reconst_loss         : 0.0
 num_source_views            : 3
-num_latent                  : 1
+num_latent                  : 5
 group_conv                  : True
 channel_upfactor            : 2
-skip_connect                : True
 include_orig                : False
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
