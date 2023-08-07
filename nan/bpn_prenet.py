@@ -176,9 +176,7 @@ class BPN(nn.Module):
         self.skip_connect = skip_connect
         # Layer definition in each block
         # Encoder
-        self.group_conv = group_conv
-        # Decoder for coefficients
-        if self.n_latent_layers > 1 and group_conv:
+        if self.n_latent_layers > 1:
             assert channel_upfactor != None
             self.decode_channels = [( (64 // factor) // self.n_latent_layers +  1) * self.n_latent_layers, ((128 // factor) // self.n_latent_layers +  1) * self.n_latent_layers]
 

@@ -232,7 +232,7 @@ class RayRender:
         return pts, z_vals
 
     def render_batch(self, ray_batch, proc_src_rgbs, featmaps, org_src_rgbs,
-                     sigma_estimate, blur_target=False) -> Dict[str, RaysOutput]:
+                     sigma_estimate) -> Dict[str, RaysOutput]:
         """
         :param sigma_estimate: (1, N, H, W, 3)
         :param org_src_rgbs: (1, N, H, W, 3)
@@ -260,6 +260,14 @@ class RayRender:
         # pts:    [R, S, 3]
         # z_vals: [R, S]
         # Sample points along ray for coarse phase
+        if ray_batch['ray_o'].ndim == 3:
+            post_process = True
+            n_latent, n_ray = ray_batch['ray_o'].shape[:2]
+            ray_batch['ray_o'] = ray_batch['ray_o'].reshape(-1,3)
+            ray_batch['ray_d'] = ray_batch['ray_d'].reshape(-1,3)
+        else:
+            post_process = False
+
         pts_coarse, z_vals_coarse = self.sample_along_ray_coarse(ray_o=ray_batch['ray_o'],
                                                                 ray_d=ray_batch['ray_d'],
                                                                 depth_range=ray_batch['depth_range'])
@@ -283,6 +291,10 @@ class RayRender:
 
             batch_out['fine'] = fine
 
+        if post_process:
+            for k in batch_out.keys():
+                batch_out[k].rgb = batch_out[k].rgb.reshape(n_latent, n_ray, 3)
+                batch_out[k].depth = batch_out[k].depth.reshape(n_latent, n_ray)
 
         return batch_out
 
@@ -329,7 +341,7 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs, sigma_estimate=None, white_level=None, inference=False, nearby_idxs=None, src_poses=None):
+    def calc_featmaps(self, src_rgbs, white_level=None, inference=False):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)

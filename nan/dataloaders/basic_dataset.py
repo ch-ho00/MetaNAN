@@ -403,7 +403,7 @@ class NoiseDataset(BurstDataset, ABC):
         return batch_dict
 
     def create_deblur_scene_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
-                                gt_depth=None, eval_gain=1, blur_target=False, nearby_idxs=None):
+                                gt_depth=None, eval_gain=1, rgb_noisy=None):
         if rgb_clean is not None:
             rgb_clean = torch.from_numpy(rgb_clean[..., :3])
             # if self.mode is Mode.train:
@@ -425,14 +425,11 @@ class NoiseDataset(BurstDataset, ABC):
                       'src_rgbs'      : src_rgbs,
                       'src_cameras'   : torch.from_numpy(src_cameras),
                       'depth_range'   : depth_range,
-                      'eval_gain'     : eval_gain,
-                      'blur_target'  : blur_target}
+                      'eval_gain'     : eval_gain}
 
-        if rgb_clean is not None:
-            batch_dict['rgb_clean'] = rgb_clean
+        batch_dict['rgb_clean'] = rgb_clean
+        batch_dict['rgb_noisy'] = rgb_noisy
             
-        if nearby_idxs != None:
-            batch_dict['nearby_idxs'] = nearby_idxs
         return batch_dict
 
 

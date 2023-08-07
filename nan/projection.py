@@ -207,8 +207,8 @@ class Projector:
                  sigma_estimate: [R, S, k, k, N, 3+F]
         """
         assert (src_imgs.shape[0] == 1) \
-               and (src_cameras.shape[0] == 1) \
-               and (query_camera.shape[0] == 1), 'only support batch_size=1 for now'
+               and (src_cameras.shape[0] == 1), 'only support batch_size=1 for now'
+            #    and (query_camera.shape[0] == 1), 
 
         src_imgs       = src_imgs.squeeze(0)  # [n_views, h, w, 3]
         src_imgs       = src_imgs.permute(0, 3, 1, 2)  # [n_views, 3, h, w]
@@ -255,7 +255,20 @@ class Projector:
         rgb_feat_sampled = self.reshape_features(rgb_feat_sampled)
         feat_sampled = self.reshape_features(feat_sampled)
         # ray_diff
-        ray_diff = self.compute_angle(xyz, query_camera, src_cameras)
+        if query_camera.ndim == 2:
+            ray_diff = []
+            n_latent = query_camera.shape[0]
+            n_sample = xyz.shape[-2]
+            n_src_imgs = src_cameras.shape[0]
+            xyz = xyz.reshape(n_latent, -1, n_sample, 3)
+            for cam, pts in zip(query_camera, xyz):
+                diff = self.compute_angle(pts, cam, src_cameras)
+                ray_diff.append(diff)
+            ray_diff = torch.stack(ray_diff)
+            ray_diff = ray_diff.permute(1,0,2,3,4).reshape(n_src_imgs, -1, n_sample, 4)
+        else:
+            ray_diff = self.compute_angle(xyz, query_camera, src_cameras)
+            # torch.Size([8, 512, 64, 4])
         ray_diff = ray_diff.permute(1, 2, 0, 3).unsqueeze(-3).unsqueeze(-3)
 
         # mask

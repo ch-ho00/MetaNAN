@@ -65,6 +65,7 @@ class RaySampler:
         self.rgb                            = data['rgb'] if 'rgb' in data.keys() else None
         self.src_rgbs                       = data['src_rgbs'] if 'src_rgbs' in data.keys() else None
         self.rgb_clean                      = data['rgb_clean'] if 'rgb_clean' in data.keys() else None
+        self.rgb_noisy                      = data['rgb_noisy'] if 'rgb_noisy' in data.keys() else None
         self.src_rgbs_clean                 = data['src_rgbs_clean'] if 'src_rgbs_clean' in data.keys() else None
         self.ref_rgb                        = data['ref_clean_rgb'] if 'ref_clean_rgb' in data.keys() else None
 
@@ -72,7 +73,6 @@ class RaySampler:
 
         self.camera                         = data['camera']
         self.src_cameras                    = data['src_cameras'] if 'src_cameras' in data.keys() else None
-        self.nearby_idxs                    = data['nearby_idxs'] if 'nearby_idxs' in data.keys() else None
 
         W, H, self.intrinsics, self.c2w_mat = parse_camera(self.camera)
         self.batch_size                     = len(self.camera)
@@ -97,6 +97,9 @@ class RaySampler:
 
         if self.rgb is not None:
             self.rgb = self.rgb.reshape(-1, 3)
+        
+        if self.rgb_noisy is not None:
+            self.rgb_noisy = self.rgb_noisy.reshape(-1, 3)
 
         if self.rgb_clean is not None:
             self.rgb_clean = self.rgb_clean.reshape(-1, 3)
@@ -235,3 +238,89 @@ class RaySampler:
         select_inds = [x + self.W * y for y, x in pixel]
         shuffle(select_inds)
         return self.specific_ray_batch(select_inds, clean=clean)
+
+
+    def random_blur_ray_batch(self, N_rand, sample_mode, src_latent_camera, center_ratio=0.8):
+        """
+        Select random N_rand rays.
+        :param N_rand: number of rays in a batch (R)
+        :param sample_mode: 'center', 'uniform', 'crop'
+        :param center_ratio: arguments for sampling mode 'center'
+        :param clean: if set to True, the rgb values in the rays batch will be clean,
+                      otherwise it will have the noisy values.
+                      This is determined by args.sup_clean.
+                      It effects whether the loss function is WRT the clean values (supervied),
+                       or WRT noisy values (unsupervised) (as in NeRF in the Dark)
+
+        :return: batch of rays and more relevant data for the batch , Dict {ray_o: (R, 3),
+                                                                           ray_d: (R, 3),
+                                                                           camera: (1, 34),
+                                                                           depth_range: (1, 2),
+                                                                           src_cameras: (1, N, 34),
+                                                                           selected_inds: (R,),
+                                                                           xyz: (R, 3),
+                                                                           rgb: (R, 3),
+                                                                           white_level: (1, 1)}
+        """
+        N_rand = N_rand // src_latent_camera.shape[-2]
+        select_inds = self.sample_random_pixels(N_rand, sample_mode, center_ratio)
+
+        return self.specific_blur_ray_batch(select_inds, src_latent_camera)
+
+    def specific_blur_ray_batch(self, select_inds, src_latent_camera):
+        """
+        Select specific N_rand rays by select_inds
+        :param select_inds: R indices of rays to choose
+        :param clean: if set to True, the rgb values in the rays batch will be clean,
+                      otherwise it will have the noisy values.
+                      This is detemined by args.sup_clean.
+                      It effect whether the loss function is WRT the clean values (supervied),
+                       or WRT noisy values (unsupervies) (as in NeRF in the Dark)
+        :return: batch of rays and more relevant data for the batch. Dict {ray_o: (R, 3),
+                                                                           ray_d: (R, 3),
+                                                                           camera: (1, 34),
+                                                                           depth_range: (1, 2),
+                                                                           src_cameras: (1, N, 34),
+                                                                           selected_inds: (R,),
+                                                                           xyz: (R, 3),
+                                                                           rgb: (R, 3),
+                                                                           white_level: (1, 1)}
+        """
+        rgb_inds = select_inds
+        rgb_clean = self.rgb_clean[rgb_inds, :].to(self.device) 
+        rgb_noisy = self.rgb_noisy[rgb_inds, :].to(self.device)
+
+        # parse reference camera
+        W, H, ref_intrinsics, ref_c2w_mats = parse_camera(src_latent_camera[0,0])
+        n_latent = ref_c2w_mats.shape[0]
+        blur_rays_o, blur_rays_d = self.generate_all_blur_rays(H, W, ref_intrinsics, ref_c2w_mats)
+
+        return {'ray_o'          : blur_rays_o[:, select_inds].to(self.device),
+                'ray_d'          : blur_rays_d[:, select_inds].to(self.device),
+                'camera'         : src_latent_camera[0,0].to(self.device),
+                'depth_range'    : self.depth_range.to(self.device),
+                'rgb_clean'      : rgb_clean,
+                'rgb_noisy'      : rgb_noisy,
+                'white_level'    : self.white_level.to(self.device) if self.white_level is not None else None}
+
+
+    def generate_all_blur_rays(self, H, W, intrinsics, c2w):
+        """
+        :param H: image height
+        :param W: image width
+        :param intrinsics: 4 by 4 intrinsic matrix
+        :param c2w: 4 by 4 camera to world extrinsic matrix
+        :return: all rays of a target image: rays origin (H*W, 3), rays direction (H*W, 3), pixels coordinate + (1,) (H*W, 3)
+        """
+        n_latent = c2w.shape[0]
+        x, y = np.meshgrid(np.arange(W[0].item())[::self.render_stride], np.arange(H[0].item())[::self.render_stride])
+        x = x.reshape(-1).astype(dtype=np.float32)  # + 0.5    # add half pixel
+        y = y.reshape(-1).astype(dtype=np.float32)  # + 0.5
+        pixels = np.stack((x, y, np.ones_like(x)), axis=0)  # (3, H*W)
+        pixels = torch.from_numpy(pixels).to(intrinsics.device)
+        batched_pixels = pixels.unsqueeze(0).expand(n_latent, 3, pixels.shape[-1])
+
+        rays_d = (c2w[:, :3, :3].bmm(torch.inverse(intrinsics[:, :3, :3])).bmm(batched_pixels)).transpose(1, 2)
+        rays_d = rays_d.reshape(n_latent, -1, 3)
+        rays_o = c2w[:, :3, 3].unsqueeze(1).expand(n_latent, rays_d.shape[1], 3)  # B x HW x 3
+        return rays_o, rays_d

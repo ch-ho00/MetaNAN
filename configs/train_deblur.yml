@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_targetRef_plainBPN_includeOrig_src8 #nan_targetRef_AnnealReconstLoss1e-2_groupBPN_commonBasis_includeOrig_src3_lat5 #_plainBPN_src8 # 
+expname                     : nan_targetRef_blurTarget_src5_lat3_wOrig #nan_targetRef_AnnealReconstLoss1e-2_groupBPN_commonBasis_includeOrig_src3_lat5 #_plainBPN_src8 # 
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -30,14 +30,14 @@ bpn_prenet                  : True
 bpn_per_img                 : True
 ft_embed_fc                 : False
 cond_renderer               : False
-blur_render                 : False #True
+blur_render                 : True
 train_scenes                : [blurfactory]
 lambda_align_loss           : 0.0 #1.0
 lambda_embed_loss           : 0.0
 lambda_reconst_loss         : 0.0
-num_source_views            : 8
-num_latent                  : 5
-group_conv                  : False #True
+num_source_views            : 5
+num_latent                  : 3
+group_conv                  : True
 channel_upfactor            : 1
 skip_connect                : True
 include_orig                : True

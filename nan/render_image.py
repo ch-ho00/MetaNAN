@@ -52,11 +52,7 @@ def render_single_image(ray_sampler: RaySampler,
     """
     device = torch.device(f'cuda:{args.local_rank}')
     ray_render = RayRender(model=model, args=args, device=device, save_pixel=save_pixel)
-    src_rgbs, featmaps = ray_render.calc_featmaps(ray_sampler.src_rgbs.to(device), 
-                                                  sigma_estimate=ray_sampler.sigma_estimate.to(device) if ray_sampler.sigma_estimate != None else None, 
-                                                  white_level=ray_sampler.white_level, inference=True,
-                                                  nearby_idxs=ray_sampler.nearby_idxs,
-                                                  src_poses=ray_sampler.src_cameras.to(device))
+    src_rgbs, featmaps = ray_render.calc_featmaps(ray_sampler.src_rgbs.to(device), white_level=ray_sampler.white_level, inference=True)
 
     if model.args.blur_render:
         src_cameras = ray_sampler.src_cameras.to(featmaps['pred_offset'].device)
