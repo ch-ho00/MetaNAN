@@ -240,7 +240,7 @@ class RaySampler:
         return self.specific_ray_batch(select_inds, clean=clean)
 
 
-    def random_blur_ray_batch(self, N_rand, sample_mode, src_latent_camera, center_ratio=0.8):
+    def random_blur_ray_batch(self, N_rand, sample_mode, tar_latent_cameras, center_ratio=0.8):
         """
         Select random N_rand rays.
         :param N_rand: number of rays in a batch (R)
@@ -262,12 +262,12 @@ class RaySampler:
                                                                            rgb: (R, 3),
                                                                            white_level: (1, 1)}
         """
-        N_rand = N_rand // src_latent_camera.shape[-2]
+        N_rand = N_rand // tar_latent_cameras.shape[0]
         select_inds = self.sample_random_pixels(N_rand, sample_mode, center_ratio)
 
-        return self.specific_blur_ray_batch(select_inds, src_latent_camera)
+        return self.specific_blur_ray_batch(select_inds, tar_latent_cameras)
 
-    def specific_blur_ray_batch(self, select_inds, src_latent_camera):
+    def specific_blur_ray_batch(self, select_inds, tar_latent_cameras):
         """
         Select specific N_rand rays by select_inds
         :param select_inds: R indices of rays to choose
@@ -291,13 +291,13 @@ class RaySampler:
         rgb_noisy = self.rgb_noisy[rgb_inds, :].to(self.device)
 
         # parse reference camera
-        W, H, ref_intrinsics, ref_c2w_mats = parse_camera(src_latent_camera[0,0])
-        n_latent = ref_c2w_mats.shape[0]
-        blur_rays_o, blur_rays_d = self.generate_all_blur_rays(H, W, ref_intrinsics, ref_c2w_mats)
+        W, H, tar_intrinsics, tar_c2w_mats = parse_camera(tar_latent_cameras)
+        n_latent = tar_c2w_mats.shape[0]
+        blur_rays_o, blur_rays_d = self.generate_all_blur_rays(H, W, tar_intrinsics, tar_c2w_mats)
 
         return {'ray_o'          : blur_rays_o[:, select_inds].to(self.device),
                 'ray_d'          : blur_rays_d[:, select_inds].to(self.device),
-                'camera'         : src_latent_camera[0,0].to(self.device),
+                'camera'         : tar_latent_cameras,
                 'depth_range'    : self.depth_range.to(self.device),
                 'rgb_clean'      : rgb_clean,
                 'rgb_noisy'      : rgb_noisy,

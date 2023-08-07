@@ -171,7 +171,7 @@ class BPN(nn.Module):
         self.color_channel = self.color_channel 
         factor = 1
         self.coeff_channel = self.basis_size * self.n_latent_layers
-        self.basis_channel = self.color_channel * self.burst_length * self.basis_size # * self.n_latent_layers
+        self.basis_channel = self.color_channel * self.burst_length * self.basis_size * self.n_latent_layers
 
         self.skip_connect = skip_connect
         # Layer definition in each block
@@ -192,20 +192,21 @@ class BPN(nn.Module):
             self.coeff_conv3 = GroupSingleConv(self.decode_channels[0] * channel_upfactor, self.coeff_channel, groups=self.n_latent_layers)
 
             # # Decoder for basis
-            # self.up_basis_conv1 = GroupUpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[1]  * channel_upfactor, groups=self.n_latent_layers)
-            # self.up_basis_conv2 = GroupUpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor, groups=self.n_latent_layers)
-            # self.up_basis_conv3 = GroupUpBlock((self.decode_channels[0] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor, groups=self.n_latent_layers)
-            # self.basis_conv1 = GroupCutEdgeConv(self.decode_channels[0] * channel_upfactor, self.decode_channels[0] * channel_upfactor, groups=self.n_latent_layers)
-            # self.basis_conv3 = GroupSingleConv( self.decode_channels[0] * channel_upfactor , self.basis_channel , groups=self.n_latent_layers)
+            self.up_basis_conv1 = GroupUpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[1]  * channel_upfactor, groups=self.n_latent_layers)
+            self.up_basis_conv2 = GroupUpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor, groups=self.n_latent_layers)
+            self.up_basis_conv3 = GroupUpBlock((self.decode_channels[0] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor, groups=self.n_latent_layers)
+            self.basis_conv1 = GroupCutEdgeConv(self.decode_channels[0] * channel_upfactor, self.decode_channels[0] * channel_upfactor, groups=self.n_latent_layers)
+            self.basis_conv3 = GroupSingleConv( self.decode_channels[0] * channel_upfactor , self.basis_channel , groups=self.n_latent_layers)
 
             # Decoder for basis
-            self.up_basis_conv1 = UpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[1]  * channel_upfactor)
-            self.up_basis_conv2 = UpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor)
-            self.up_basis_conv3 = UpBlock((self.decode_channels[0] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor)
-            self.basis_conv1 = CutEdgeConv(self.decode_channels[0] * channel_upfactor, self.decode_channels[0] * channel_upfactor) 
-            self.basis_conv3 = SingleConv( self.decode_channels[0] * channel_upfactor , self.basis_channel)
+            # self.up_basis_conv1 = UpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[1]  * channel_upfactor)
+            # self.up_basis_conv2 = UpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor)
+            # self.up_basis_conv3 = UpBlock((self.decode_channels[0] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor)
+            # self.basis_conv1 = CutEdgeConv(self.decode_channels[0] * channel_upfactor, self.decode_channels[0] * channel_upfactor) 
+            # self.basis_conv3 = SingleConv( self.decode_channels[0] * channel_upfactor , self.basis_channel)
 
         else:
+            self.decode_channels = [64 // factor, 128 // factor]
             self.initial_conv = SingleConv(self.in_channel, 64 // factor)
             self.down_conv1 = DownBlock(64 // factor , 64  // factor)
             self.down_conv2 = DownBlock(64 // factor , 64 // factor)
@@ -389,19 +390,19 @@ class BPN(nn.Module):
         basis1 = self.basis_conv1(up_basis_conv3)
         del up_basis_conv3
         basis3 = self.basis_conv3(basis1).view(basis1.size(0),
-                                               self.basis_size, #* self.n_latent_layers,
+                                               self.basis_size * self.n_latent_layers,
                                                self.burst_length,
                                                self.color_channel,
                                                self.kernel_size,
                                                self.kernel_size)
         del basis1
         if self.n_latent_layers > 1:
-            basis = self.out_basis(basis3)
+            # basis = self.out_basis(basis3)
             pred_imgs = []
             nchannels = self.basis_size
             for img_idx in range(self.n_latent_layers):
-                # img_basis = self.out_basis(basis3[:,nchannels * img_idx: nchannels * (img_idx + 1)])
-                kernels = self.kernel_predict(coeffs[img_idx], basis, # img_basis, #
+                img_basis = self.out_basis(basis3[:,nchannels * img_idx: nchannels * (img_idx + 1)])
+                kernels = self.kernel_predict(coeffs[img_idx], img_basis,
                                             coeffs[img_idx].size(0), self.burst_length, self.kernel_size,
                                             self.color_channel)
                 pred_burst = self.kernel_conv(data, kernels)        
@@ -431,9 +432,9 @@ class DeblurBPN(nn.Module):
     def __init__(self, n_latent_layers, burst_length, group_conv, channel_upfactor, skip_connect):
         super(DeblurBPN, self).__init__()
 
-        self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=16, burst_length=burst_length, channel_upfactor=channel_upfactor, group_conv=group_conv, skip_connect=skip_connect)
+        self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=32, burst_length=burst_length, channel_upfactor=channel_upfactor, group_conv=group_conv, skip_connect=skip_connect)
         self.offset_conv = nn.Sequential(
-            nn.Conv2d(self.bpn.decode_channels[1] * channel_upfactor, 64, kernel_size=3, dilation=1, stride=2, padding=0),
+            nn.Conv2d(self.bpn.decode_channels[1] * (channel_upfactor if n_latent_layers > 1 else 1), 64, kernel_size=3, dilation=1, stride=2, padding=0),
             nn.ELU(inplace=True),
             nn.Conv2d(64, 32, kernel_size=3, dilation=1, stride=2, padding=0),
             nn.ELU(inplace=True),

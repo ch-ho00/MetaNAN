@@ -169,32 +169,32 @@ class Trainer:
 
 
         if self.model.args.blur_render:
-            src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
-            src_se3_start = SE3_to_se3_N(src_poses)
-            src_se3_end = src_se3_start + featmaps['pred_offset']
-            src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=self.model.args.num_latent)
-            src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(self.model.args.num_source_views, self.model.args.num_latent, 1, 1)
-            src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
-            src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
+            num_latent = 8
+            _, tar_offset = self.model.pre_net(train_data['rgb_noisy'].permute(0,3,1,2).to(self.device))
+            tar_pose = train_data['camera'][:,-16:].reshape(-1, 4, 4)[:,:3,:4].to(self.device)
+            tar_se3_start = SE3_to_se3_N(tar_pose)
+            tar_se3_end = tar_se3_start + tar_offset
+            tar_spline_poses = get_spline_poses(tar_se3_start, tar_se3_end, spline_num=num_latent)
 
-            H, W = ray_batch['src_cameras'][0,0,:2]
-            intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)
-            # warped_imgs, warp_masks = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
-
-            # Attach intrinsics and HW vector
-            src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
-            src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)], dim=-1)
-
+            tar_spline_poses_4x4 =  torch.eye(4)[None].repeat(num_latent, 1, 1)
+            tar_spline_poses_4x4 = tar_spline_poses_4x4.to(tar_spline_poses.device)
+            tar_spline_poses_4x4[:, :3, :4] = tar_spline_poses
+            intrinsics = ray_batch['camera'][:,2:18].reshape(-1, 4, 4)
+            tar_latent_cameras = ray_batch['camera'][:, :-16].repeat(num_latent,1)
+            tar_latent_cameras = torch.cat([tar_latent_cameras, tar_spline_poses_4x4.reshape(num_latent, -1)], dim=-1)
+                        
             blur_ray_batch = ray_sampler.random_blur_ray_batch(N_rand,
                                                     sample_mode=self.args.sample_mode,
-                                                    src_latent_camera=src_latent_camera,
+                                                    tar_latent_cameras=tar_latent_cameras,
                                                     center_ratio=self.args.center_ratio)
 
             if self.model.args.include_orig:
-                featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None], featmaps['latent_imgs']], dim=1)
-                blur_ray_batch['src_cameras'] = torch.cat([ray_batch['src_cameras'][:,:,None],src_latent_camera], dim=2).reshape(1,-1,34)
+                featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None], proc_src_rgbs[0].permute(0,3,1,2)[:,None]], dim=1)
+                blur_ray_batch['src_cameras'] = ray_batch['src_cameras'].repeat(1,1,2).reshape(1,-1,34)
             else:
-                blur_ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
+                featmaps['latent_imgs'] = proc_src_rgbs[0].permute(0,3,1,2)[:,None]
+                blur_ray_batch['src_cameras'] = ray_batch['src_cameras'].reshape(1,-1,34)
+                
 
             # Render the rgb values of the pixels that were sampled
             batch_out = self.ray_render.render_batch(ray_batch=blur_ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
@@ -245,7 +245,7 @@ class Trainer:
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
         if self.args.blur_render and self.args.bpn_prenet:
-            # torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_fc.parameters(), 0.1)
+            torch.nn.utils.clip_grad_norm_(self.model.pre_net.bpn.parameters(), 1.0)
             torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_conv.parameters(), 0.1)
             
         self.model.optimizer.step()
@@ -372,24 +372,24 @@ class Trainer:
                     reconst_img = reconst_img.cpu().clamp(0,1)
                 self.writer.add_image(prefix + 'bpn_reconst'+ postfix, reconst_img, global_step)
 
-            if self.args.blur_render:
-                h, w = ret['latent_imgs'].shape[-2:]
-                vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['latent_imgs'][0].cpu()], dim=0)
-                reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
-                if ray_sampler.white_level != None:
-                    reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
-                else:
-                    reconst_img = reconst_img.cpu().clamp(0,1)
-                self.writer.add_image(prefix + 'latent_imgs'+ postfix, reconst_img, global_step)
+            # if self.args.blur_render:
+            #     h, w = ret['latent_imgs'].shape[-2:]
+            #     vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['latent_imgs'][0].cpu()], dim=0)
+            #     reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
+            #     if ray_sampler.white_level != None:
+            #         reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
+            #     else:
+            #         reconst_img = reconst_img.cpu().clamp(0,1)
+            #     self.writer.add_image(prefix + 'latent_imgs'+ postfix, reconst_img, global_step)
 
-                h, w = ret['warped_latent_imgs'].shape[-2:]
-                vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['warped_latent_imgs'][0].cpu()], dim=0)
-                reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
-                if ray_sampler.white_level != None:
-                    reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
-                else:
-                    reconst_img = reconst_img.cpu().clamp(0,1)
-                self.writer.add_image(prefix + 'warped_latent_imgs'+ postfix, reconst_img, global_step)
+            #     h, w = ret['warped_latent_imgs'].shape[-2:]
+            #     vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['warped_latent_imgs'][0].cpu()], dim=0)
+            #     reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
+            #     if ray_sampler.white_level != None:
+            #         reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
+            #     else:
+            #         reconst_img = reconst_img.cpu().clamp(0,1)
+            #     self.writer.add_image(prefix + 'warped_latent_imgs'+ postfix, reconst_img, global_step)
 
             del depth_im, rgb_im
         # write scalar

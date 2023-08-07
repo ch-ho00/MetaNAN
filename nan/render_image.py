@@ -54,23 +54,23 @@ def render_single_image(ray_sampler: RaySampler,
     ray_render = RayRender(model=model, args=args, device=device, save_pixel=save_pixel)
     src_rgbs, featmaps = ray_render.calc_featmaps(ray_sampler.src_rgbs.to(device), white_level=ray_sampler.white_level, inference=True)
 
-    if model.args.blur_render:
-        src_cameras = ray_sampler.src_cameras.to(featmaps['pred_offset'].device)
-        src_poses = src_cameras[:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
-        src_se3_start = SE3_to_se3_N(src_poses)
-        src_se3_end = src_se3_start + featmaps['pred_offset']
-        src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=model.args.num_latent)
-        src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(model.args.num_source_views, model.args.num_latent, 1, 1)
-        src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
-        src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
+    # if model.args.blur_render:
+    #     src_cameras = ray_sampler.src_cameras.to(featmaps['pred_offset'].device)
+    #     src_poses = src_cameras[:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
+    #     src_se3_start = SE3_to_se3_N(src_poses)
+    #     src_se3_end = src_se3_start + featmaps['pred_offset']
+    #     src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=model.args.num_latent)
+    #     src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(model.args.num_source_views, model.args.num_latent, 1, 1)
+    #     src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
+    #     src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
 
-        H, W = src_cameras[0,0,:2]
-        intrinsics = src_cameras[:,:,2:18].reshape(-1, 4, 4)
-        warped_imgs, _ = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
+    #     H, W = src_cameras[0,0,:2]
+    #     intrinsics = src_cameras[:,:,2:18].reshape(-1, 4, 4)
+    #     warped_imgs, _ = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
 
-        src_spline_poses_4x4 = src_spline_poses_4x4.reshape(1, model.args.num_source_views, model.args.num_latent, -1)            
-        src_latent_camera = src_cameras[:,:,:-16][:,:, None].repeat(1,1,model.args.num_latent,1)
-        src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4], dim=-1)
+    #     src_spline_poses_4x4 = src_spline_poses_4x4.reshape(1, model.args.num_source_views, model.args.num_latent, -1)            
+    #     src_latent_camera = src_cameras[:,:,:-16][:,:, None].repeat(1,1,model.args.num_latent,1)
+    #     src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4], dim=-1)
 
     all_ret = OrderedDict([('coarse', RaysOutput.empty_ret()),
                            ('fine', None)])
@@ -78,12 +78,7 @@ def render_single_image(ray_sampler: RaySampler,
 
     if model.args.bpn_prenet:
         all_ret['bpn_reconst'] = src_rgbs
-        if model.args.blur_render:
-            all_ret['latent_imgs'] = featmaps['latent_imgs']
-            all_ret['warped_latent_imgs'] = warped_imgs
-            if model.args.include_orig:
-                featmaps['latent_imgs'] = torch.cat([ray_sampler.src_rgbs[0].permute(0,3,1,2)[:,None].to(device), all_ret['latent_imgs']], dim=1)
-                src_latent_camera = torch.cat([ray_sampler.src_cameras[:,:,None].to(device), src_latent_camera], dim=2)
+            
 
     if args.N_importance > 0:
         all_ret['fine'] = RaysOutput.empty_ret()
@@ -92,14 +87,18 @@ def render_single_image(ray_sampler: RaySampler,
     for i in tqdm(range(0, N_rays, args.chunk_size)):
         # print('batch', i)
         ray_batch = ray_sampler.specific_ray_batch(slice(i, i + args.chunk_size, 1), clean=args.sup_clean)
-        if model.args.blur_render:
-            ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
-        else:
-            if model.args.include_orig and model.args.bpn_prenet:           
+        # if model.args.blur_render:
+        #     ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
+        # else:
+        if model.args.bpn_prenet:
+            if model.args.include_orig:           
                 ray_batch['src_cameras'] = ray_batch['src_cameras'].repeat(1,1,2).reshape(1,-1,34)
                 if i == 0:
-                    H,W  = ray_sampler.src_rgbs.to(device).shape[-3:-1]
-                    src_rgbs = torch.stack([ray_sampler.src_rgbs.to(device), src_rgbs], dim=2).reshape(1,-1, H, W, 3)
+                    featmaps['latent_imgs'] = torch.cat([ray_sampler.src_rgbs[0].permute(0,3,1,2)[:,None].to(device), src_rgbs[0].permute(0,3,1,2)[:,None]], dim=1)
+            else:
+                ray_batch['src_cameras'] = ray_batch['src_cameras'].reshape(1,-1,34)
+                if i == 0:
+                    featmaps['latent_imgs'] = src_rgbs[0].permute(0,3,1,2)[:,None]
 
         if args.sum_filtered:
             org_src_rgbs = src_rgbs

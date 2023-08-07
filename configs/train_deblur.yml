@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_targetRef_blurTarget_src5_lat3_wOrig #nan_targetRef_AnnealReconstLoss1e-2_groupBPN_commonBasis_includeOrig_src3_lat5 #_plainBPN_src8 # 
+expname                     : nan_targetNov_blurTarget_woOrig_src3 #nan_targetNov_blurTarget_perImgBasis_src3_lat5_woOrig #nan_targetRef_AnnealReconstLoss1e-2_groupBPN_commonBasis_includeOrig_src3_lat5 #_plainBPN_src8 # 
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -35,12 +35,12 @@ train_scenes                : [blurfactory]
 lambda_align_loss           : 0.0 #1.0
 lambda_embed_loss           : 0.0
 lambda_reconst_loss         : 0.0
-num_source_views            : 5
-num_latent                  : 3
+num_source_views            : 3
+num_latent                  : 1
 group_conv                  : True
-channel_upfactor            : 1
+channel_upfactor            : 2
 skip_connect                : True
-include_orig                : True
+include_orig                : False
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
 
@@ -62,7 +62,7 @@ no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True
 
-include_target              : True  # set to False if you want to synthesize images rather than denoise the images
+include_target              : False  # set to False if you want to synthesize images rather than denoise the images
 eval_gain                    : [20, 16, 8]
 std                         : [-3.0, -0.5, -2.0, -0.5]
 
