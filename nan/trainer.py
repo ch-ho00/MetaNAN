@@ -182,7 +182,7 @@ class Trainer:
             intrinsics = ray_batch['camera'][:,2:18].reshape(-1, 4, 4)
             tar_latent_cameras = ray_batch['camera'][:, :-16].repeat(num_latent,1)
             tar_latent_cameras = torch.cat([tar_latent_cameras, tar_spline_poses_4x4.reshape(num_latent, -1)], dim=-1)
-                        
+            tar_latent_cameras[:1] = ray_batch['camera']
             blur_ray_batch = ray_sampler.random_blur_ray_batch(N_rand,
                                                     sample_mode=self.args.sample_mode,
                                                     tar_latent_cameras=tar_latent_cameras,
@@ -204,7 +204,7 @@ class Trainer:
                 # Attach intrinsics and HW vector
                 src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
                 src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)], dim=-1)
-
+                src_latent_camera[:,:,0] = ray_batch['src_cameras']
 
                 if self.model.args.include_orig:
                     featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None], featmaps['latent_imgs']], dim=1)
@@ -236,7 +236,7 @@ class Trainer:
             fine_noise_loss     = F.l1_loss(batch_out['fine'].rgb.mean(0), blur_ray_batch['rgb_noisy'])
 
             loss += coarse_loss + fine_loss
-            loss += (coarse_noise_loss + fine_noise_loss) * 0.1
+            loss += coarse_noise_loss + fine_noise_loss
             self.scalars_to_log['train/coarse_loss'] = coarse_loss
             self.scalars_to_log['train/fine_loss'] = fine_loss
             self.scalars_to_log['train/coarse_noise_loss'] = coarse_noise_loss
@@ -244,7 +244,7 @@ class Trainer:
 
             ray_batch = blur_ray_batch
             if self.args.lambda_reconst_loss > 0:
-                reconst_loss = F.l1_loss(featmaps['latent_imgs'].mean(dim=1), org_src_rgbs[0].permute(0,3,1,2))
+                reconst_loss = reconstruction_loss(featmaps['latent_imgs'].mean(dim=1), org_src_rgbs[0].permute(0,3,1,2), self.device)
                 self.scalars_to_log['train/reconst_loss'] = reconst_loss * self.args.lambda_reconst_loss * w
                 loss += reconst_loss * self.args.lambda_reconst_loss * w
 
@@ -397,24 +397,24 @@ class Trainer:
                     reconst_img = reconst_img.cpu().clamp(0,1)
                 self.writer.add_image(prefix + 'bpn_reconst'+ postfix, reconst_img, global_step)
 
-            # if self.args.blur_render:
-            #     h, w = ret['latent_imgs'].shape[-2:]
-            #     vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['latent_imgs'][0].cpu()], dim=0)
-            #     reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
-            #     if ray_sampler.white_level != None:
-            #         reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
-            #     else:
-            #         reconst_img = reconst_img.cpu().clamp(0,1)
-            #     self.writer.add_image(prefix + 'latent_imgs'+ postfix, reconst_img, global_step)
+            if self.args.blur_render and self.args.num_latent > 1:
+                h, w = ret['latent_imgs'].shape[-2:]
+                vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['latent_imgs'][0].cpu()], dim=0)
+                reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
+                if ray_sampler.white_level != None:
+                    reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
+                else:
+                    reconst_img = reconst_img.cpu().clamp(0,1)
+                self.writer.add_image(prefix + 'latent_imgs'+ postfix, reconst_img, global_step)
 
-            #     h, w = ret['warped_latent_imgs'].shape[-2:]
-            #     vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['warped_latent_imgs'][0].cpu()], dim=0)
-            #     reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
-            #     if ray_sampler.white_level != None:
-            #         reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
-            #     else:
-            #         reconst_img = reconst_img.cpu().clamp(0,1)
-            #     self.writer.add_image(prefix + 'warped_latent_imgs'+ postfix, reconst_img, global_step)
+                h, w = ret['warped_latent_imgs'].shape[-2:]
+                vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['warped_latent_imgs'][0].cpu()], dim=0)
+                reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
+                if ray_sampler.white_level != None:
+                    reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
+                else:
+                    reconst_img = reconst_img.cpu().clamp(0,1)
+                self.writer.add_image(prefix + 'warped_latent_imgs'+ postfix, reconst_img, global_step)
 
             del depth_im, rgb_im
         # write scalar

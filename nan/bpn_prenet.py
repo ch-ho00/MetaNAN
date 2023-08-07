@@ -158,7 +158,7 @@ class KernelConv(nn.Module):
 
 class BPN(nn.Module):
     def __init__(self, color=True, burst_length=1, blind_est=True,
-                 kernel_size=7, basis_size=32, upMode='bilinear', bpn_per_img=True, n_latent_layers=None, channel_upfactor=None, group_conv=False, skip_connect=True):
+                 kernel_size=7, basis_size=64, upMode='bilinear', bpn_per_img=True, n_latent_layers=None, channel_upfactor=None, group_conv=False, skip_connect=True):
         super(BPN, self).__init__()
         self.blind_est = blind_est
         self.kernel_size = kernel_size
@@ -432,7 +432,7 @@ class DeblurBPN(nn.Module):
     def __init__(self, n_latent_layers, burst_length, group_conv, channel_upfactor, skip_connect):
         super(DeblurBPN, self).__init__()
 
-        self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=32, burst_length=burst_length, channel_upfactor=channel_upfactor, group_conv=group_conv, skip_connect=skip_connect)
+        self.bpn = BPN(bpn_per_img=True, n_latent_layers=n_latent_layers, basis_size=64, burst_length=burst_length, channel_upfactor=channel_upfactor, group_conv=group_conv, skip_connect=skip_connect)
         self.offset_conv = nn.Sequential(
             nn.Conv2d(self.bpn.decode_channels[1] * (channel_upfactor if n_latent_layers > 1 else 1), 64, kernel_size=3, dilation=1, stride=2, padding=0),
             nn.ELU(inplace=True),

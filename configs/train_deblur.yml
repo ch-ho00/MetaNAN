@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_targetNov_blurTarget_reconst1e0_woOrig_src5_lat3 #nan_targetNov_blurTarget_perImgBasis_src3_lat5_woOrig #nan_targetRef_AnnealReconstLoss1e-2_groupBPN_commonBasis_includeOrig_src3_lat5 #_plainBPN_src8 # 
+expname                     : nan_revised_targetNov_blurTarget_reconst0_woOrig_src8 #nan_targetNov_blurTarget_perImgBasis_src3_lat5_woOrig #nan_targetRef_AnnealReconstLoss1e-2_groupBPN_commonBasis_includeOrig_src3_lat5 #_plainBPN_src8 # 
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -34,9 +34,9 @@ blur_render                 : True
 train_scenes                : [blurfactory]
 lambda_align_loss           : 0.0 #1.0
 lambda_embed_loss           : 0.0
-lambda_reconst_loss         : 1.0
-num_source_views            : 5
-num_latent                  : 3
+lambda_reconst_loss         : 0.0
+num_source_views            : 8
+num_latent                  : 1
 group_conv                  : True
 channel_upfactor            : 2
 include_orig                : False

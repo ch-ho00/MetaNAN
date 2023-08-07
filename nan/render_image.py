@@ -72,14 +72,15 @@ def render_single_image(ray_sampler: RaySampler,
             src_spline_poses_4x4 = src_spline_poses_4x4.reshape(1, model.args.num_source_views, model.args.num_latent, -1)            
             src_latent_camera = src_cameras[:,:,:-16][:,:, None].repeat(1,1,model.args.num_latent,1)
             src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4], dim=-1)
-
     all_ret = OrderedDict([('coarse', RaysOutput.empty_ret()),
                            ('fine', None)])
 
 
     if model.args.bpn_prenet:
         all_ret['bpn_reconst'] = src_rgbs
-            
+        if model.args.num_latent > 1:
+            all_ret['warped_latent_imgs'] = warped_imgs
+            all_ret['latent_imgs'] = featmaps['latent_imgs']
 
     if args.N_importance > 0:
         all_ret['fine'] = RaysOutput.empty_ret()
@@ -96,6 +97,7 @@ def render_single_image(ray_sampler: RaySampler,
         ray_batch = ray_sampler.specific_ray_batch(slice(i, i + args.chunk_size, 1), clean=args.sup_clean)
         if model.args.bpn_prenet and model.args.blur_render:
             if model.args.num_latent > 1:
+                src_latent_camera[0,:,0] = ray_batch['src_cameras']
                 ray_batch['src_cameras'] = torch.cat([ray_batch['src_cameras'][:,:,None], src_latent_camera], dim=2) if model.args.include_orig else src_latent_camera
             else:
                 ray_batch['src_cameras'] = ray_batch['src_cameras'].repeat(1,1,2) if model.args.include_orig else ray_batch['src_cameras']
