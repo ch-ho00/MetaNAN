@@ -201,7 +201,6 @@ class Trainer:
                 H, W = ray_batch['src_cameras'][0,0,:2]
                 intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)
                 # warped_imgs, warp_masks = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
-
                 # Attach intrinsics and HW vector
                 src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
                 src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)], dim=-1)
@@ -244,10 +243,10 @@ class Trainer:
             self.scalars_to_log['train/fine_noise_loss'] = fine_noise_loss
 
             ray_batch = blur_ray_batch
-            # if self.args.lambda_reconst_loss > 0:
-            #     reconst_loss = reconstruction_loss(featmaps['latent_imgs'].mean(dim=1), org_src_rgbs[0].permute(0,3,1,2), self.device)
-            #     self.scalars_to_log['train/reconst_loss'] = reconst_loss * self.args.lambda_reconst_loss * w
-            #     loss += reconst_loss * self.args.lambda_reconst_loss * w
+            if self.args.lambda_reconst_loss > 0:
+                reconst_loss = F.l1_loss(featmaps['latent_imgs'].mean(dim=1), org_src_rgbs[0].permute(0,3,1,2))
+                self.scalars_to_log['train/reconst_loss'] = reconst_loss * self.args.lambda_reconst_loss * w
+                loss += reconst_loss * self.args.lambda_reconst_loss * w
 
         else:                
             # Render the rgb values of the pixels that were sampled
