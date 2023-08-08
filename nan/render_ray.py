@@ -275,7 +275,7 @@ class RayRender:
         # Process the rays and return the coarse phase output
         coarse_ray_out = self.process_rays_batch(ray_batch=ray_batch, pts=pts_coarse, z_vals=z_vals_coarse, save_idx=save_idx,
                                          level='coarse', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                         org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, blur_render=self.model.args.blur_render)
+                                         org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, latent_render=self.model.args.num_latent > 1)
         batch_out['coarse'] = coarse_ray_out
 
         if self.fine_processing:
@@ -287,7 +287,7 @@ class RayRender:
             # Process the rays and return the fine phase output
             fine = self.process_rays_batch(ray_batch=ray_batch, pts=pts_fine, z_vals=z_vals_fine, save_idx=save_idx,
                                            level='fine', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, blur_render=self.model.args.blur_render)
+                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, latent_render=self.model.args.num_latent > 1)
 
             batch_out['fine'] = fine
 
@@ -299,7 +299,7 @@ class RayRender:
         return batch_out
 
     def process_rays_batch(self, ray_batch, pts, z_vals, save_idx, level, proc_src_rgbs, featmaps,
-                           org_src_rgbs, sigma_estimate, blur_render=False):
+                           org_src_rgbs, sigma_estimate, latent_render=False):
         """
         :param sigma_estimate: (1, N, H, W, 3)
         :param org_src_rgbs: (1, N, H, W, 3)
@@ -313,7 +313,7 @@ class RayRender:
         :return: RaysOutput object of the rendered values
         """
         latent_info = None
-        if blur_render:
+        if latent_render:
             latent_info = [featmaps['latent_imgs']]
         # Project the pts along the rays batch on all others views (src views)
         # based on the target camera and src cameras (intrinsics - K, rotation - R, translation - t)
@@ -354,9 +354,13 @@ class RayRender:
         if self.model.pre_net is not None:
             if self.model.args.bpn_prenet:
                 src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
-                src_rgbs, pred_offset = self.model.pre_net(src_rgbs)
-                featmaps['latent_imgs'] = src_rgbs                    
-                featmaps['pred_offset'] = pred_offset
+                if self.model.args.num_latent > 1:
+                    src_rgbs, pred_offset = self.model.pre_net(src_rgbs)
+                    featmaps['latent_imgs'] = src_rgbs                    
+                    featmaps['pred_offset'] = pred_offset
+                else:
+                    src_rgbs, _ = self.model.pre_net(src_rgbs, src_rgbs[:, None, :3])
+
                 torch.cuda.empty_cache()
             else:
                 src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
