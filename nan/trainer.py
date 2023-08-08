@@ -155,14 +155,17 @@ class Trainer:
                                                  clean=self.args.sup_clean)
         # Calculate the feature maps of all views.
         # This step is seperated because in evaluation time we want to do it once for each image.
-        org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
+        if self.args.clean_src_imgs:
+            org_src_rgbs = ray_sampler.src_rgbs_clean.to(self.device)
+        else:
+            org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
         proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, white_level=ray_batch['white_level'], inference=False)
 
         w = alpha ** global_step
         if self.args.sum_filtered:
             org_src_rgbs_ = proc_src_rgbs
         elif not self.args.weightsum_filtered:
-            org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
+            org_src_rgbs_ = org_src_rgbs
         else:
             org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
             self.scalars_to_log['weight'] = w 
@@ -345,7 +348,11 @@ class Trainer:
         with torch.no_grad():
             ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args, global_step=global_step)
 
-        average_im = ray_sampler.src_rgbs.cpu()[0,0]
+        if self.args.clean_src_imgs:
+            average_im = ray_sampler.src_rgbs_clean.cpu()[0,0]        
+        else:
+            average_im = ray_sampler.src_rgbs.cpu()[0,0]
+
         if self.args.render_stride != 1:
             gt_img = gt_img[::render_stride, ::render_stride]
             average_im = average_im[::render_stride, ::render_stride]

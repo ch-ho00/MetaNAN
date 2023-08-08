@@ -52,7 +52,12 @@ def render_single_image(ray_sampler: RaySampler,
     """
     device = torch.device(f'cuda:{args.local_rank}')
     ray_render = RayRender(model=model, args=args, device=device, save_pixel=save_pixel)
-    src_rgbs, featmaps = ray_render.calc_featmaps(ray_sampler.src_rgbs.to(device), white_level=ray_sampler.white_level, inference=True)
+    if args.clean_src_imgs:
+        org_src_rgbs = ray_sampler.src_rgbs_clean.to(device)
+    else:
+        org_src_rgbs = ray_sampler.src_rgbs.to(device)
+    
+    src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs, white_level=ray_sampler.white_level, inference=True)
 
     if model.args.blur_render:
         if model.args.num_latent > 1:
@@ -87,9 +92,9 @@ def render_single_image(ray_sampler: RaySampler,
     N_rays = ray_sampler.rays_o.shape[0]
 
     if model.args.num_latent > 1:
-        featmaps['latent_imgs'] = torch.cat([ray_sampler.src_rgbs[0].permute(0,3,1,2)[:,None].to(device), featmaps['latent_imgs']], dim=1) if model.args.include_orig else  featmaps['latent_imgs']
+        featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None].to(device), featmaps['latent_imgs']], dim=1) if model.args.include_orig else  featmaps['latent_imgs']
     else:
-        featmaps['latent_imgs'] = torch.cat([ray_sampler.src_rgbs[0].permute(0,3,1,2)[:,None].to(device), src_rgbs[0].permute(0,3,1,2)[:,None]], dim=1) if model.args.include_orig else src_rgbs[0].permute(0,3,1,2)[:,None]
+        featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None].to(device), src_rgbs[0].permute(0,3,1,2)[:,None]], dim=1) if model.args.include_orig else src_rgbs[0].permute(0,3,1,2)[:,None]
 
 
     for i in tqdm(range(0, N_rays, args.chunk_size)):
@@ -105,14 +110,12 @@ def render_single_image(ray_sampler: RaySampler,
 
         if args.sum_filtered:
             org_src_rgbs = src_rgbs
-        elif not args.weightsum_filtered:
-            org_src_rgbs = ray_sampler.src_rgbs.to(device)
-        else:
+        elif args.weightsum_filtered:
             if eval_:
                 org_src_rgbs = src_rgbs
             else:
                 w = alpha ** global_step
-                org_src_rgbs = src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(device) * w
+                org_src_rgbs = src_rgbs * (1 - w) + org_src_rgbs.to(device) * w
 
         ret       = ray_render.render_batch(ray_batch=ray_batch,
                                             proc_src_rgbs=src_rgbs,
