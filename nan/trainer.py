@@ -162,16 +162,16 @@ class Trainer:
         proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, white_level=ray_batch['white_level'], inference=False)
 
         w = alpha ** global_step
+        self.scalars_to_log['weight'] = w 
         if self.args.sum_filtered:
             org_src_rgbs_ = proc_src_rgbs
         elif not self.args.weightsum_filtered:
             org_src_rgbs_ = org_src_rgbs
         else:
             org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
-            self.scalars_to_log['weight'] = w 
-
 
         if self.model.args.blur_render:
+            assert self.model.args.num_latent > 1, 'Require Offset Prediction Module for Blur Render'
             num_latent = 8
             _, tar_offset = self.model.pre_net(train_data['rgb_noisy'].permute(0,3,1,2).to(self.device))
             tar_pose = train_data['camera'][:,-16:].reshape(-1, 4, 4)[:,:3,:4].to(self.device)
@@ -190,91 +190,71 @@ class Trainer:
                                                     sample_mode=self.args.sample_mode,
                                                     tar_latent_cameras=tar_latent_cameras,
                                                     center_ratio=self.args.center_ratio)
+            ray_batch = blur_ray_batch
 
+        if self.model.args.num_latent > 1:
+            src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
+            src_se3_start = SE3_to_se3_N(src_poses)
+            src_se3_end = src_se3_start + featmaps['pred_offset']
+            src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=self.model.args.num_latent)
+            src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(self.model.args.num_source_views, self.model.args.num_latent, 1, 1)
+            src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
+            src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
+            H, W = ray_batch['src_cameras'][0,0,:2]
+            intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)
+            # warped_imgs, warp_masks = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
 
-            if self.model.args.num_latent > 1:
-                src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
-                src_se3_start = SE3_to_se3_N(src_poses)
-                src_se3_end = src_se3_start + featmaps['pred_offset']
-                src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=self.model.args.num_latent)
-                src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(self.model.args.num_source_views, self.model.args.num_latent, 1, 1)
-                src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
-                src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
-
-                H, W = ray_batch['src_cameras'][0,0,:2]
-                intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)
-                # warped_imgs, warp_masks = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
-                # Attach intrinsics and HW vector
-                src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
-                src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)], dim=-1)
-                src_latent_camera[:,:,0] = ray_batch['src_cameras']
-
-                if self.model.args.include_orig:
-                    featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None], featmaps['latent_imgs']], dim=1)
-                    blur_ray_batch['src_cameras'] = torch.cat([ray_batch['src_cameras'][:,:,None],src_latent_camera], dim=2).reshape(1,-1,34)
-                else:
-                    blur_ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
-
+            # Attach intrinsics and HW vector
+            src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
+            src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)], dim=-1)
+            src_latent_camera[:,:,0] = ray_batch['src_cameras']
+            if self.model.args.include_orig:
+                featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None], featmaps['latent_imgs']], dim=1)
+                ray_batch['src_cameras'] = torch.cat([ray_batch['src_cameras'][:,:,None],src_latent_camera], dim=2).reshape(1,-1,34)
             else:
-                if self.model.args.include_orig:
-                    featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None], proc_src_rgbs[0].permute(0,3,1,2)[:,None]], dim=1)
-                    blur_ray_batch['src_cameras'] = ray_batch['src_cameras'].repeat(1,1,2).reshape(1,-1,34)
-                else:
-                    featmaps['latent_imgs'] = proc_src_rgbs[0].permute(0,3,1,2)[:,None]
-                    blur_ray_batch['src_cameras'] = ray_batch['src_cameras'].reshape(1,-1,34)
-                    
+                ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
+        else:
+            if self.model.args.include_orig:
+                featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None], proc_src_rgbs[0].permute(0,3,1,2)[:,None]], dim=1)
+                ray_batch['src_cameras'] = ray_batch['src_cameras'].repeat(1,1,2).reshape(1,-1,34)
+            else:
+                featmaps['latent_imgs'] = proc_src_rgbs[0].permute(0,3,1,2)[:,None]
+                ray_batch['src_cameras'] = ray_batch['src_cameras'].reshape(1,-1,34)
+                
+        # Render the rgb values of the pixels that were sampled
+        batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
+                                                org_src_rgbs=org_src_rgbs_,
+                                                sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None)
+        # compute loss
+        torch.cuda.empty_cache()
+        self.model.optimizer.zero_grad()
+        loss = 0
 
-            # Render the rgb values of the pixels that were sampled
-            batch_out = self.ray_render.render_batch(ray_batch=blur_ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                                    org_src_rgbs=org_src_rgbs_,
-                                                    sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None)
+        if self.args.blur_render:
+            coarse_loss         = F.l1_loss(batch_out['coarse'].rgb[0], ray_batch['rgb'])
+            fine_loss           = F.l1_loss(batch_out['fine'].rgb[0], ray_batch['rgb'])
+        else:
+            coarse_loss         = F.l1_loss(batch_out['coarse'].rgb, ray_batch['rgb'])
+            fine_loss           = F.l1_loss(batch_out['fine'].rgb, ray_batch['rgb'])
+        loss += coarse_loss + fine_loss
+        self.scalars_to_log['train/coarse_loss'] = coarse_loss
+        self.scalars_to_log['train/fine_loss'] = fine_loss
 
-            # compute loss
-            torch.cuda.empty_cache()
-            self.model.optimizer.zero_grad()
-            loss = 0
-            coarse_loss         = F.l1_loss(batch_out['coarse'].rgb[0], blur_ray_batch['rgb_clean'])
-            fine_loss           = F.l1_loss(batch_out['fine'].rgb[0], blur_ray_batch['rgb_clean'])
-            coarse_noise_loss   = F.l1_loss(batch_out['coarse'].rgb.mean(0), blur_ray_batch['rgb_noisy'])
-            fine_noise_loss     = F.l1_loss(batch_out['fine'].rgb.mean(0), blur_ray_batch['rgb_noisy'])
-
-            loss += coarse_loss + fine_loss
+        if self.args.lambda_blur_loss > 0:
+            assert self.args.blur_render, 'Require blur ray batch for blur loss'
+            coarse_noise_loss   = F.l1_loss(batch_out['coarse'].rgb.mean(0), ray_batch['rgb_noisy'])
+            fine_noise_loss     = F.l1_loss(batch_out['fine'].rgb.mean(0), ray_batch['rgb_noisy'])
             loss += coarse_noise_loss + fine_noise_loss
-            self.scalars_to_log['train/coarse_loss'] = coarse_loss
-            self.scalars_to_log['train/fine_loss'] = fine_loss
             self.scalars_to_log['train/coarse_noise_loss'] = coarse_noise_loss
             self.scalars_to_log['train/fine_noise_loss'] = fine_noise_loss
 
-            ray_batch = blur_ray_batch
-            if self.args.lambda_reconst_loss > 0:
-                reconst_loss = reconstruction_loss(featmaps['latent_imgs'].mean(dim=1), org_src_rgbs[0].permute(0,3,1,2), self.device)
-                self.scalars_to_log['train/reconst_loss'] = reconst_loss * self.args.lambda_reconst_loss * w
-                loss += reconst_loss * self.args.lambda_reconst_loss * w
-
-        else:                
-            # Render the rgb values of the pixels that were sampled
-            batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                                    org_src_rgbs=org_src_rgbs_,
-                                                    sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None)
-
-            # compute loss
-            torch.cuda.empty_cache()
-            self.model.optimizer.zero_grad()
-            loss = 0
-            coarse_loss = self.criterion(batch_out['coarse'], ray_batch, self.scalars_to_log)
-            self.scalars_to_log['train/coarse_loss'] = coarse_loss
-            loss += coarse_loss
-
-            if batch_out['fine'] is not None:
-                fine_loss = self.criterion(batch_out['fine'], ray_batch, self.scalars_to_log)
-                self.scalars_to_log['train/fine_loss'] = fine_loss
-                loss += fine_loss
+        if self.args.lambda_latent_loss > 0:
+            latent_loss = F.l1_loss(proc_src_rgbs, ray_sampler.src_rgbs_clean.to(self.device))
+            loss += latent_loss * self.args.lambda_latent_loss
+            self.scalars_to_log['train/latent_loss'] = latent_loss * self.args.lambda_latent_loss
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
-        if self.args.blur_render and self.args.bpn_prenet:
-            torch.nn.utils.clip_grad_norm_(self.model.pre_net.bpn.parameters(), 1.0)
-            torch.nn.utils.clip_grad_norm_(self.model.pre_net.offset_conv.parameters(), 0.1)
             
         self.model.optimizer.step()
         self.model.scheduler.step()
@@ -313,7 +293,7 @@ class Trainer:
         else:
             if self.model.args.blur_render:
                 mse_error = l2_loss(ray_batch_out['coarse'].rgb[0].clamp(0,1),
-                                    ray_batch_in['rgb_clean'].clamp(0,1)).item()
+                                    ray_batch_in['rgb'].clamp(0,1)).item()
             else:
                 mse_error = l2_loss(ray_batch_out['coarse'].rgb.clamp(0,1),
                                     ray_batch_in['rgb'].clamp(0,1)).item()
@@ -327,7 +307,7 @@ class Trainer:
             else:
                 if self.model.args.blur_render:
                     mse_error = l2_loss(ray_batch_out['fine'].rgb[0].clamp(0,1),
-                                        ray_batch_in['rgb_clean'].clamp(0,1)).item()                
+                                        ray_batch_in['rgb'].clamp(0,1)).item()                
                 else:
                     mse_error = l2_loss(ray_batch_out['fine'].rgb.clamp(0,1),
                                         ray_batch_in['rgb'].clamp(0,1)).item()

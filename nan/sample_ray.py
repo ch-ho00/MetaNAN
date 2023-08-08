@@ -298,8 +298,9 @@ class RaySampler:
         return {'ray_o'          : blur_rays_o[:, select_inds].to(self.device),
                 'ray_d'          : blur_rays_d[:, select_inds].to(self.device),
                 'camera'         : tar_latent_cameras,
+                'src_cameras'    : self.src_cameras.to(self.device) if self.src_cameras is not None else None,
                 'depth_range'    : self.depth_range.to(self.device),
-                'rgb_clean'      : rgb_clean,
+                'rgb'            : rgb_clean,
                 'rgb_noisy'      : rgb_noisy,
                 'white_level'    : self.white_level.to(self.device) if self.white_level is not None else None}
 
