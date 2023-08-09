@@ -244,9 +244,9 @@ class Trainer:
             assert self.args.blur_render, 'Require blur ray batch for blur loss'
             coarse_noise_loss   = F.l1_loss(batch_out['coarse'].rgb.mean(0), ray_batch['rgb_noisy'])
             fine_noise_loss     = F.l1_loss(batch_out['fine'].rgb.mean(0), ray_batch['rgb_noisy'])
-            loss += coarse_noise_loss + fine_noise_loss
-            self.scalars_to_log['train/coarse_noise_loss'] = coarse_noise_loss
-            self.scalars_to_log['train/fine_noise_loss'] = fine_noise_loss
+            loss += (coarse_noise_loss + fine_noise_loss) * self.args.lambda_blur_loss
+            self.scalars_to_log['train/coarse_noise_loss'] = coarse_noise_loss * self.args.lambda_blur_loss
+            self.scalars_to_log['train/fine_noise_loss'] = fine_noise_loss * self.args.lambda_blur_loss
 
         if self.args.lambda_latent_loss > 0:
             latent_loss = F.l1_loss(proc_src_rgbs, ray_sampler.src_rgbs_clean.to(self.device))
@@ -384,7 +384,7 @@ class Trainer:
                     reconst_img = reconst_img.cpu().clamp(0,1)
                 self.writer.add_image(prefix + 'bpn_reconst'+ postfix, reconst_img, global_step)
 
-            if self.args.blur_render and self.args.num_latent > 1:
+            if self.args.num_latent > 1:
                 h, w = ret['latent_imgs'].shape[-2:]
                 vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['latent_imgs'][0].cpu()], dim=0)
                 reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
