@@ -176,7 +176,7 @@ class BPN(nn.Module):
         self.skip_connect = skip_connect
         # Layer definition in each block
         # Encoder
-        if self.n_latent_layers > 1:
+        if self.n_latent_layers > 1 and group_conv:
             assert channel_upfactor != None
             self.decode_channels = [( (64 // factor) // self.n_latent_layers +  1) * self.n_latent_layers, ((128 // factor) // self.n_latent_layers +  1) * self.n_latent_layers]
 
@@ -207,22 +207,23 @@ class BPN(nn.Module):
 
         else:
             self.decode_channels = [64 // factor, 128 // factor]
-            self.initial_conv = SingleConv(self.in_channel, 64 // factor)
-            self.down_conv1 = DownBlock(64 // factor , 64  // factor)
-            self.down_conv2 = DownBlock(64 // factor , 64 // factor)
-            self.features_conv1 = SingleConv(64 // factor, 128 // factor)
-            self.up_coeff_conv1 = UpBlock((128 + (64 if self.skip_connect else 0)) // factor, 128 // factor)
-            self.up_coeff_conv2 = UpBlock((128 + (64 if self.skip_connect else 0)) // factor, 64 // factor)
-            self.up_coeff_conv3 = UpBlock((64 +  (64 if self.skip_connect else 0)) // factor, 64 // factor)
-            self.coeff_conv1 = SingleConv(64 // factor, 64 // factor)
-            self.coeff_conv3 = SingleConv(64 // factor, self.coeff_channel)
+            self.initial_conv = SingleConv(self.in_channel, self.decode_channels[0])
+            self.down_conv1 = DownBlock(self.decode_channels[0] , self.decode_channels[0])
+            self.down_conv2 = DownBlock(self.decode_channels[0] , self.decode_channels[0])
+            self.features_conv1 = SingleConv(self.decode_channels[0], self.decode_channels[1] * channel_upfactor)
+            # Decoder for coeff
+            self.up_coeff_conv1 = UpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[1]  * channel_upfactor)
+            self.up_coeff_conv2 = UpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor)
+            self.up_coeff_conv3 = UpBlock((self.decode_channels[0] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor)
+            self.coeff_conv1 = SingleConv(self.decode_channels[0] * channel_upfactor, self.decode_channels[0] * channel_upfactor)
+            self.coeff_conv3 = SingleConv(self.decode_channels[0] * channel_upfactor, self.coeff_channel)
 
-            # Decoder for basis
-            self.up_basis_conv1 = UpBlock((128 + (64 if self.skip_connect else 0)) // factor, 128 // factor)
-            self.up_basis_conv2 = UpBlock((128 + (64 if self.skip_connect else 0)) // factor, 64 // factor)
-            self.up_basis_conv3 = UpBlock((64 +  (64 if self.skip_connect else 0)) // factor, 64 // factor)
-            self.basis_conv1 = CutEdgeConv(64 // factor, 64 // factor)
-            self.basis_conv3 = SingleConv( 64 // factor, self.basis_channel)
+            # # Decoder for basis
+            self.up_basis_conv1 = UpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[1]  * channel_upfactor)
+            self.up_basis_conv2 = UpBlock((self.decode_channels[1] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor)
+            self.up_basis_conv3 = UpBlock((self.decode_channels[0] * channel_upfactor  + (self.decode_channels[0] if self.skip_connect else 0)),  self.decode_channels[0]  * channel_upfactor)
+            self.basis_conv1 = CutEdgeConv(self.decode_channels[0] * channel_upfactor, self.decode_channels[0] * channel_upfactor)
+            self.basis_conv3 = SingleConv( self.decode_channels[0] * channel_upfactor , self.basis_channel )
 
         self.out_coeff = nn.Softmax(dim=1)
         self.out_basis = nn.Softmax(dim=1)

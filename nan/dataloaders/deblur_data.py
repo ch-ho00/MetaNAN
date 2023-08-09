@@ -113,6 +113,7 @@ class DeblurDataset(NoiseDataset, ABC):
         assert '/images/' in str(rgb_file)
         rgb_file_clean = str(rgb_file).replace('images', 'images_test')
         rgb = self.read_image(rgb_file_clean, multiple32=False)
+        rgb_noisy = self.read_image(rgb_file, multiple32=False)
         # Rotation | translation (4x4)
         # 0  0  0  | 1
         render_pose = self.render_poses[idx]
@@ -143,19 +144,26 @@ class DeblurDataset(NoiseDataset, ABC):
         nearest_pose_ids = self.choose_views(nearest_pose_ids, num_select, id_render)
         # assert None not in nearest_pose_ids
         src_rgbs = []
+        src_rgbs_clean = []
         src_cameras = []
         src_poses = []
         for src_id in nearest_pose_ids:
             if src_id is None:
                 # print(self.render_rgb_files[idx])
-                src_rgb = self.read_image(self.render_rgb_files[idx], multiple32=False)
+                rgb_file = self.render_rgb_files[idx]
+                src_rgb = self.read_image(rgb_file, multiple32=False)
                 train_pose = self.render_poses[idx]
                 train_intrinsics_ = self.render_intrinsics[idx]
             else:
                 # print(train_rgb_files[src_id])
-                src_rgb = self.read_image(train_rgb_files[src_id], multiple32=False)
+                rgb_file = train_rgb_files[src_id]
+                src_rgb = self.read_image(rgb_file, multiple32=False)
                 train_pose = train_poses[src_id]
                 train_intrinsics_ = train_intrinsics[src_id]
+                
+            rgb_file_clean = str(rgb_file).replace('images', 'images_test')
+            src_rgb_clean = self.read_image(rgb_file_clean, multiple32=False)
+            src_rgbs_clean.append(src_rgb_clean)
             src_poses.append(train_pose)
             src_rgbs.append(src_rgb)
             src_camera = self.create_camera_vector(src_rgb, train_intrinsics_, train_pose)
@@ -163,13 +171,14 @@ class DeblurDataset(NoiseDataset, ABC):
 
         src_poses = np.stack(src_poses)
         src_rgbs = np.stack(src_rgbs, axis=0) # (num_select, H, W, 3)
+        src_rgbs_clean = np.stack(src_rgbs_clean, axis=0)
         src_cameras = np.stack(src_cameras, axis=0) # (num_select, 34)
 
-        rgb, camera, src_rgbs, src_cameras = self.apply_transform(rgb, camera, src_rgbs, src_cameras)
+        rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean = self.apply_transform(rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean)
 
         gt_depth = 0
         depth_range = self.final_depth_range(depth_range)
-        return self.create_deblur_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain)
+        return self.create_deblur_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain, rgb_noisy=rgb_noisy, src_rgbs_clean=src_rgbs_clean)
 
     def get_nearest_pose_ids(self, render_pose, train_poses, subsample_factor, id_render):
         return get_nearest_pose_ids(render_pose,
@@ -210,21 +219,22 @@ class DeblurTestDataset(DeblurDataset):
     num_select_high = 2
     min_nearest_pose = 28
 
-    def apply_transform(self, rgb, camera, src_rgbs, src_cameras):
+    def apply_transform(self, rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean=None):
         if self.mode is Mode.train and self.random_crop:
-            # crop_h = np.random.randint(low=250, high=750) // 128 * 128
-            # crop_h = crop_h + 1 if crop_h % 2 == 1 else crop_h
-            # crop_w = int(350 * 550 / crop_h // 128 * 128) #
-            # crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
+            #crop_h = np.random.randint(low=250, high=750) // 128 * 128
+            #crop_h = crop_h + 1 if crop_h % 2 == 1 else crop_h
+            #crop_w = int(400 * 600 / crop_h // 128 * 128) #350 * 550
+            #crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
             crop_h = 350
             crop_w = 550
-            rgb, camera, src_rgbs, src_cameras = random_crop(rgb, camera, src_rgbs, src_cameras,
-                                                             (crop_h, crop_w))
+            rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean = random_crop(rgb, camera, src_rgbs, src_cameras,
+                                                             (crop_h, crop_w), rgb_noisy=rgb_noisy, src_rgbs_clean=src_rgbs_clean)
 
         if self.mode is Mode.train and np.random.choice([0, 1]):
-            rgb, camera, src_rgbs, src_cameras = random_flip(rgb, camera, src_rgbs, src_cameras)
+            rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean = random_flip(rgb, camera, src_rgbs, src_cameras, rgb_noisy=rgb_noisy, src_rgbs_clean=src_rgbs_clean)
 
-        return rgb, camera, src_rgbs, src_cameras
+        return rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean
+
 
     def final_depth_range(self, depth_range):
         return torch.tensor([depth_range[0] * 0.9, depth_range[1] * 1.6])

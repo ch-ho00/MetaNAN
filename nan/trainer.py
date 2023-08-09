@@ -384,7 +384,7 @@ class Trainer:
                     reconst_img = reconst_img.cpu().clamp(0,1)
                 self.writer.add_image(prefix + 'bpn_reconst'+ postfix, reconst_img, global_step)
 
-            if self.args.blur_render and self.args.num_latent > 1:
+            if self.args.num_latent > 1:
                 h, w = ret['latent_imgs'].shape[-2:]
                 vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['latent_imgs'][0].cpu()], dim=0)
                 reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]

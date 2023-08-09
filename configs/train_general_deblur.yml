@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_general_targetRef_groupConv2X_woAct_AnnealReconstLoss1e-2_src3_latent5_woOrig_sel3
+expname                     : nan_general_targetNov_plain_src5 #_wGroupConv_latentLoss1e0_src5_lat3 #_latentLoss1e0_src5
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -24,28 +24,24 @@ degae_feat_ckpt             : ./ckpts/0619.pth #./ckpts/model_045000.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-sum_filtered                : True
+sum_filtered                : False #True
 weightsum_filtered          : False
-bpn_prenet                  : True
-bpn_per_img                 : True
+bpn_prenet                  : False #True
+bpn_per_img                 : False #True
 ft_embed_fc                 : False
 cond_renderer               : False
-blur_render                 : True
+blur_render                 : False
 eval_scenes                 : [blurfactory]
-lambda_align_loss           : 0.0 #1.0
-lambda_embed_loss           : 0.0
-lambda_reconst_loss         : 0.01
-num_source_views            : 3
-num_latent                  : 5
-num_sample_latent           : 3
-num_stack_nearby            : 1
-group_conv                  : True
+lambda_latent_loss          : 0.0
+lambda_blur_loss            : 0.0
+num_source_views            : 5
+num_latent                  : 1
+group_conv                  : False #True
 channel_upfactor            : 2
-skip_connect                : True
 include_orig                : False
-add_burst_noise             : False
 ### TESTING
-chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
+chunk_size                  : 2048 #2048 # can be biggerd depend on the gpu memory
+clean_src_imgs              : False
 
 ### RENDERING
 N_importance                : 64
@@ -65,7 +61,7 @@ no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True
 
-include_target              : True  # set to False if you want to synthesize images rather than denoise the images
+include_target              : False  # set to False if you want to synthesize images rather than denoise the images
 eval_gain                    : [20, 16, 8]
 std                         : [-3.0, -0.5, -2.0, -0.5]
 
