@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_general_targetNov_plain_src5 #_wGroupConv_latentLoss1e0_src5_lat3 #_latentLoss1e0_src5
+expname                     : nan_tanabata_general_burst_targetNov_plain_src5 #_wGroupConv_latentLoss1e0_src5_lat3 #_latentLoss1e0_src5
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -31,7 +31,7 @@ bpn_per_img                 : False #True
 ft_embed_fc                 : False
 cond_renderer               : False
 blur_render                 : False
-eval_scenes                 : [blurfactory]
+eval_scenes                 : [blurtanabata] # 
 lambda_latent_loss          : 0.0
 lambda_blur_loss            : 0.0
 num_source_views            : 5
@@ -42,6 +42,7 @@ include_orig                : False
 ### TESTING
 chunk_size                  : 2048 #2048 # can be biggerd depend on the gpu memory
 clean_src_imgs              : False
+add_burst_noise             : True
 
 ### RENDERING
 N_importance                : 64

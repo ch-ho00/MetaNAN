@@ -436,22 +436,24 @@ class NoiseDataset(BurstDataset, ABC):
     def create_deblur_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
                                 gt_depth=None, eval_gain=1, rgb_noisy=None, src_rgbs_clean=None):
         if self.mode in [Mode.train]:
-            white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
+            white_level = 10 ** -torch.rand(1) * 0.4 + 0.6
+            # white_level = torch.Tensor([1])
         else:
             white_level = torch.Tensor([1])
 
         if rgb_clean is not None:
             rgb_clean = re_linearize(torch.from_numpy(rgb_clean[..., :3]), white_level)
-            if self.args.add_burst_noise:
-                if self.mode is Mode.train:
-                    rgb, _ = self.add_noise(rgb_clean)        
-                else:
-                    rgb, _ = self.add_noise_level(rgb_clean, eval_gain)                        
+            # if self.args.add_burst_noise:
+            #     if self.mode is Mode.train:
+            #         rgb, _ = self.add_noise(rgb_clean)        
+            #     else:
+            #         rgb, _ = self.add_noise_level(rgb_clean, eval_gain)                        
         else:
             rgb = None
 
         src_rgbs = re_linearize(torch.from_numpy(src_rgbs[..., :3]), white_level)
         src_rgbs_clean = re_linearize(torch.from_numpy(src_rgbs_clean[..., :3]), white_level)
+        rgb_noisy       = re_linearize(rgb_noisy[..., :3], white_level)
 
         if self.args.add_burst_noise:
             if self.mode is Mode.train:
@@ -469,6 +471,7 @@ class NoiseDataset(BurstDataset, ABC):
 
         batch_dict['src_rgbs_clean'] = src_rgbs_clean[..., :3]
         batch_dict['rgb_clean'] = rgb_clean
+        batch_dict['rgb_noisy'] = rgb_noisy
 
         return batch_dict
 

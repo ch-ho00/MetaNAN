@@ -82,7 +82,7 @@ class DeblurDataset(NoiseDataset, ABC):
         return load_llff_data(scene_path, load_imgs=False, factor=factor)
 
     def __len__(self):
-        return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files)
+        return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files)  * ( len(self.args.eval_gain) if self.args.add_burst_noise else 1)
 
     def __getitem__(self, idx):
         return self.get_multiview_item(idx)
@@ -103,7 +103,10 @@ class DeblurDataset(NoiseDataset, ABC):
 
     def get_multiview_item(self, idx):
         # Read target data:
-        eval_gain = 0 # self.args.eval_gain[idx // len(self.render_rgb_files)]
+        if self.args.add_burst_noise:
+            eval_gain = self.args.eval_gain[idx // len(self.render_rgb_files)]
+        else:
+            eval_gain = 0
         idx = idx % len(self.render_rgb_files)
         rgb_file: Path = self.render_rgb_files[idx]
         
