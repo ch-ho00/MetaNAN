@@ -158,7 +158,7 @@ class KernelConv(nn.Module):
 
 class BPN(nn.Module):
     def __init__(self, color=True, burst_length=1, blind_est=True,
-                 kernel_size=7, basis_size=64, upMode='bilinear', bpn_per_img=True, n_latent_layers=None, channel_upfactor=None, group_conv=False, skip_connect=True):
+                 kernel_size=7, basis_size=64, upMode='bilinear', bpn_per_img=True, n_latent_layers=None, channel_upfactor=1, group_conv=False, skip_connect=True):
         super(BPN, self).__init__()
         self.blind_est = blind_est
         self.kernel_size = kernel_size

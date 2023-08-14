@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_tanabata_general_burst_targetNov_plain_src5 #_wGroupConv_latentLoss1e0_src5_lat3 #_latentLoss1e0_src5
+expname                     : nan_tanabata_general_burst_targetNov_latentLoss1e0_src5_lat3 #_wGroupConv_latentLoss1e0_src5_lat3 #_latentLoss1e0_src5
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -24,19 +24,19 @@ degae_feat_ckpt             : ./ckpts/0619.pth #./ckpts/model_045000.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-sum_filtered                : False #True
+sum_filtered                : True
 weightsum_filtered          : False
-bpn_prenet                  : False #True
-bpn_per_img                 : False #True
+bpn_prenet                  : True
+bpn_per_img                 : True
 ft_embed_fc                 : False
 cond_renderer               : False
 blur_render                 : False
 eval_scenes                 : [blurtanabata] # 
-lambda_latent_loss          : 0.0
+lambda_latent_loss          : 1.0
 lambda_blur_loss            : 0.0
 num_source_views            : 5
-num_latent                  : 1
-group_conv                  : False #True
+num_latent                  : 3
+group_conv                  : False
 channel_upfactor            : 2
 include_orig                : False
 ### TESTING

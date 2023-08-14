@@ -377,20 +377,22 @@ class RayRender:
                 del input_rgb
                 torch.cuda.empty_cache()
 
-        if not self.model.args.degae_feat:
-            if self.model.args.num_latent > 1:
-                process_rgbs = src_rgbs
-            else:
-                process_rgbs = src_rgbs[:,None]     # (N, 1, 3, H, W)  
+        # input for feature extractor
+        if self.model.args.num_latent > 1:
+            process_rgbs = src_rgbs
+        else:
+            process_rgbs = src_rgbs[:,None]     # (N, 1, 3, H, W)  
 
-            if self.model.args.include_orig:
-                process_rgbs = torch.cat([orig_rgbs[0].permute(0,3,1,2)[:,None], process_rgbs], dim=1)
-            process_rgbs = process_rgbs.reshape(-1,3, H, W)
+        if self.model.args.include_orig:
+            process_rgbs = torch.cat([orig_rgbs[0].permute(0,3,1,2)[:,None], process_rgbs], dim=1)
+        process_rgbs = process_rgbs.reshape(-1,3, H, W)
+
+        if not self.model.args.degae_feat:
             feature_dict = self.model.feature_net(process_rgbs)
             featmaps.update(feature_dict)
         else:
             with torch.no_grad():
-                degfeat = self.model.degae.encoder(orig_rgbs[0].permute(0,3,1,2), img_wh=torch.Tensor([orig_rgbs.shape[-2], orig_rgbs.shape[-3]]).int().to(orig_rgbs.device))    
+                degfeat = self.model.degae.encoder(process_rgbs, img_wh=torch.Tensor([W,H]).int().to(orig_rgbs.device))    
             degfeat = self.model.feature_conv_0(degfeat) 
             degfeat = self.model.feature_conv_1(degfeat) 
             degfeat = self.model.feature_conv_2(degfeat)

@@ -114,6 +114,7 @@ class NanMLP(nn.Module):
         if self.anti_alias_pooling:
             self.s = nn.Parameter(torch.tensor(0.2), requires_grad=True)
 
+        multi = 2 if self.args.cond_renderer else 1
         self.n_samples = n_samples
         base_input_channels = in_feat_ch + 3 # + (args.num_latent * 3 if args.blur_render else 0)
 
@@ -121,9 +122,13 @@ class NanMLP(nn.Module):
                                         self.activation_func,
                                         nn.Linear(16, base_input_channels), #  
                                         self.activation_func)
+        if self.args.cond_renderer:
+            self.base_fc2 = nn.Sequential(nn.Linear(base_input_channels, base_input_channels),
+                                        self.activation_func,
+                                        nn.Linear(base_input_channels * multi, base_input_channels),
+                                        self.activation_func)
 
         base_input_channels = base_input_channels * 3
-
         if self.args.noise_feat:
             base_input_channels += 3
             
@@ -146,7 +151,7 @@ class NanMLP(nn.Module):
 
         self.vis_fc2 = nn.Sequential(nn.Linear(32, 32),
                                      self.activation_func,
-                                     nn.Linear(32, 1),
+                                     nn.Linear(32 * multi, 1),
                                      torch.nn.Sigmoid()
                                      )
 
@@ -167,12 +172,14 @@ class NanMLP(nn.Module):
         self.rgb_reduce_fn = self.rgb_reduce_factory()
 
         if self.args.cond_renderer:
+
             # self.base_fc         =  CondSeqential(self.base_fc        )
             # self.vis_fc          =  CondSeqential(self.vis_fc         )
-            # self.vis_fc2         =  CondSeqential(self.vis_fc2        )
+            self.base_fc2        =  CondSeqential(self.base_fc2)
+            self.vis_fc2         =  CondSeqential(self.vis_fc2        )
             # self.geometry_fc     =  CondSeqential(self.geometry_fc    )
             # self.out_geometry_fc =  CondSeqential(self.out_geometry_fc)
-            self.rgb_fc          =  CondSeqential(self.rgb_fc         )
+            # self.rgb_fc          =  CondSeqential(self.rgb_fc         )
 
         # positional encoding
         self.pos_enc_d = 16
@@ -232,20 +239,15 @@ class NanMLP(nn.Module):
         ext_feat, weight = self.compute_extended_features(ray_diff, rgb_feat, mask, num_valid_obs, sigma_est, degrade_vec=degrade_vec)
         torch.cuda.empty_cache()
 
-        # if self.args.cond_renderer:
-        #     x = self.base_fc(ext_feat, degrade_vec)  # ((32 + 3) x 3) --> MLP --> (32)
-        #     x_vis = self.vis_fc(x * weight, degrade_vec)
-        #     x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
-        #     vis = torch.sigmoid(vis) * mask
-        #     x = x + x_res
-        #     vis = self.vis_fc2(x * vis, degrade_vec) * mask        
-        # else:
         x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32)
         x_vis = self.vis_fc(x * weight)
         x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
         vis = torch.sigmoid(vis) * mask
         x = x + x_res
-        vis = self.vis_fc2(x * vis) * mask
+        if isinstance(self.vis_fc2, CondSeqential):
+            vis = self.vis_fc2(x * vis, degrade_vec) * mask        
+        else:
+            vis = self.vis_fc2(x * vis) * mask
 
         torch.cuda.empty_cache()
 
@@ -260,7 +262,10 @@ class NanMLP(nn.Module):
         direction_feat = self.ray_dir_fc(ray_diff)  # [n_rays, n_samples, k, k, n_views, 35]
         rgb_feat = rgb_feat[:, :, self.k_mid:self.k_mid + 1, 
                     self.k_mid:self.k_mid + 1] + direction_feat  # [n_rays, n_samples, 1, 1, n_views, 35]
-        feat = rgb_feat
+        if isinstance(self.base_fc2, CondSeqential):
+            feat = self.base_fc2(rgb_feat, degrade_vec)            
+        else:
+            feat = rgb_feat
 
         if self.args.views_attn:
             r, s, k, _, v, f = feat.shape
@@ -297,9 +302,6 @@ class NanMLP(nn.Module):
         rho_globalfeat = torch.cat([mean.squeeze(2), var.squeeze(2), weight.mean(dim=2)],
                                    dim=-1)  # [n_rays, n_samples, 32*2+1]
 
-        # if self.args.cond_renderer:
-        #     globalfeat = self.geometry_fc(rho_globalfeat, degrade_vec)  # [n_rays, n_samples, 16]        
-        # else:
         globalfeat = self.geometry_fc(rho_globalfeat)  # [n_rays, n_samples, 16]
 
         # positional encoding
@@ -308,9 +310,6 @@ class NanMLP(nn.Module):
         # ray attention
         globalfeat, _ = self.ray_attention(globalfeat, globalfeat, globalfeat,
                                            mask=num_valid_obs > 1)  # [n_rays, n_samples, 16]
-        # if self.args.cond_renderer:
-        #    rho = self.out_geometry_fc(globalfeat, degrade_vec)  # [n_rays, n_samples, 1]        
-        # else:
         rho = self.out_geometry_fc(globalfeat)  # [n_rays, n_samples, 1]
         rho_out = rho.masked_fill(num_valid_obs < 1, 0.)  # set the rho of invalid point to zero
 
@@ -318,10 +317,7 @@ class NanMLP(nn.Module):
 
     def compute_rgb(self, x, mask, rgb_in, degrade_vec=None):
 
-        if self.args.cond_renderer:
-            x = self.rgb_fc(x, degrade_vec)        
-        else:
-            x = self.rgb_fc(x)
+        x = self.rgb_fc(x)
 
         rgb_out, blending_weights_rgb = self.rgb_reduce_fn(x, mask, rgb_in)
         return rgb_out, blending_weights_rgb

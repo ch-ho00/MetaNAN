@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : origFeat_preBPN_weightSum_rerun_ablation #origFeat_run_400x600_preBPN64_weightSum_subsample2_novelView_ablation
+expname                     : origFeat_targetNov_woNoiseFeat_condBase2Vis2_preBPN_weightSum_ablation #origFeat_run_400x600_preBPN64_weightSum_subsample2_novelView_ablation
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -19,19 +19,21 @@ losses                      : [l2, l1, l1_grad, ssim]
 losses_weights              : [0,  1,  0,       0]
 workers                     : 0
 
-degae_feat                  : False #True
+degae_feat                  : False
 degae_feat_ckpt             : ./ckpts/0619.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
 weightsum_filtered          : True
 downscale_input_img         : False
+lambda_latent_loss          : 1.0
 lambda_embed_loss           : 0
 bpn_prenet                  : True
 bpn_per_img                 : True
 ft_embed_fc                 : False
-cond_renderer               : False #True
-
+cond_renderer               : True
+include_orig                : False
+basis_dim                   : 64
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory
@@ -55,7 +57,7 @@ no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True
 
-include_target              : True  # set to False if you want to synthesize images rather than denoise the images
+include_target              : False  # set to False if you want to synthesize images rather than denoise the images
 eval_gain                    : [20, 16, 8]
 std                         : [-3.0, -0.5, -2.0, -0.5]
 
@@ -63,7 +65,7 @@ std                         : [-3.0, -0.5, -2.0, -0.5]
 views_attn                  : True
 kernel_size                 : [3, 3]
 pre_net                     : True
-noise_feat                  : True
+noise_feat                  : False #True
 rgb_weights                 : True
 
 local_rank                  : 0
