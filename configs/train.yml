@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : origFeat_targetNov_origRGB_preBPN_latentLoss1e0_WeightSumFilter #origFeat_run_400x600_preBPN64_weightSum_subsample2_novelView_ablation
+expname                     : degAE_targetNov_origRgbFeat_preBPN_woProcRgbSample_latentLoss1e0_SumFilter #origFeat_run_400x600_preBPN64_weightSum_subsample2_novelView_ablation
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -19,13 +19,13 @@ losses                      : [l2, l1, l1_grad, ssim]
 losses_weights              : [0,  1,  0,       0]
 workers                     : 0
 
-degae_feat                  : False
+degae_feat                  : True
 degae_feat_ckpt             : ./ckpts/0619.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-weightsum_filtered          : True
-sum_filtered                : False
+weightsum_filtered          : False
+sum_filtered                : True
 downscale_input_img         : False
 lambda_latent_loss          : 1.0
 lambda_embed_loss           : 0
@@ -34,6 +34,7 @@ bpn_per_img                 : True
 ft_embed_fc                 : False
 cond_renderer               : False #True
 include_orig                : False
+exclude_proc_rgb            : True
 basis_dim                   : 64
 
 ### TESTING

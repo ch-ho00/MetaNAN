@@ -116,7 +116,7 @@ class NanMLP(nn.Module):
 
         multi = 2 if self.args.cond_renderer else 1
         self.n_samples = n_samples
-        base_input_channels = in_feat_ch + 3 # + (args.num_latent * 3 if args.blur_render else 0)
+        base_input_channels = in_feat_ch + (3 if not self.args.exclude_proc_rgb else 0) # + (args.num_latent * 3 if args.blur_render else 0)
 
         self.ray_dir_fc = nn.Sequential(nn.Linear(4, 16),
                                         self.activation_func,
@@ -141,8 +141,8 @@ class NanMLP(nn.Module):
                                      self.activation_func)
 
         if args.views_attn:
-            input_channel = in_feat_ch + 3 # + (args.num_latent * 3 if args.blur_render else 0)
-            view_att_nhead = 5 if not args.bpn_prenet else 3
+            input_channel = in_feat_ch + (3 if not self.args.exclude_proc_rgb else 0)
+            view_att_nhead = 5
             self.views_attention = MultiHeadAttention(view_att_nhead, input_channel, 7, 8)
 
         self.vis_fc = nn.Sequential(nn.Linear(32, 32),
@@ -162,7 +162,7 @@ class NanMLP(nn.Module):
                                          nn.Linear(64, 16),
                                          self.activation_func)
 
-        ray_att_nhead = 4  if not args.bpn_prenet else 3
+        ray_att_nhead = 4
         self.ray_attention = MultiHeadAttention(ray_att_nhead, 16, 4, 4)
         self.out_geometry_fc = nn.Sequential(nn.Linear(16, 16),
                                              self.activation_func,

@@ -238,9 +238,6 @@ class Projector:
             src_imgs = latent_info[0].reshape(-1, 3, h.int().item(), w.int().item())
             org_src_imgs = latent_info[0].reshape(-1, 3, h.int().item(), w.int().item())
 
-        # rgb sampling
-        rgbs_sampled = F.grid_sample(src_imgs, norm_xys, align_corners=True)
-        rgbs_sampled = rgbs_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, 3]
 
         org_rgbs_sampled = F.grid_sample(org_src_imgs, norm_xys, align_corners=True)
         org_rgbs_sampled = org_rgbs_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, 3]
@@ -249,7 +246,14 @@ class Projector:
         # deep feature sampling
         feat_sampled = F.grid_sample(featmaps, norm_xys, align_corners=True)
         feat_sampled = feat_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, d]
-        rgb_feat_sampled = torch.cat([rgbs_sampled, feat_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
+
+        if self.args.exclude_proc_rgb:
+            rgb_feat_sampled = feat_sampled
+        else:
+            # rgb sampling
+            rgbs_sampled = F.grid_sample(src_imgs, norm_xys, align_corners=True)
+            rgbs_sampled = rgbs_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, 3]
+            rgb_feat_sampled = torch.cat([rgbs_sampled, feat_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
 
 
         rgb_feat_sampled = self.reshape_features(rgb_feat_sampled)
