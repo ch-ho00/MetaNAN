@@ -451,6 +451,8 @@ class Trainer:
 
         for k in psnr_results.keys():
             self.writer.add_scalar('val/' + f'psnr_gain{k}', np.mean(psnr_results[k]), global_step)
+            for idx, psnr in enumerate(psnr_results[k]):
+                self.writer.add_scalar('val/' + f'psnr_gain{k}/img{idx}', psnr, global_step)
 
         print('Logging current training view...')
         tmp_ray_train_sampler = RaySampler(train_data, self.device,

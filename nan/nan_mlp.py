@@ -127,6 +127,8 @@ class NanMLP(nn.Module):
                                         self.activation_func,
                                         nn.Linear(base_input_channels * multi, base_input_channels),
                                         self.activation_func)
+        else:
+            self.base_fc2 = None
 
         base_input_channels = base_input_channels * 3
         if self.args.noise_feat:
@@ -262,7 +264,7 @@ class NanMLP(nn.Module):
         direction_feat = self.ray_dir_fc(ray_diff)  # [n_rays, n_samples, k, k, n_views, 35]
         rgb_feat = rgb_feat[:, :, self.k_mid:self.k_mid + 1, 
                     self.k_mid:self.k_mid + 1] + direction_feat  # [n_rays, n_samples, 1, 1, n_views, 35]
-        if isinstance(self.base_fc2, CondSeqential):
+        if self.args.cond_renderer and self.base_fc2 != None:
             feat = self.base_fc2(rgb_feat, degrade_vec)            
         else:
             feat = rgb_feat

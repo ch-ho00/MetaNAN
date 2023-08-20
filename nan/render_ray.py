@@ -385,6 +385,7 @@ class RayRender:
 
         if self.model.args.include_orig:
             process_rgbs = torch.cat([orig_rgbs[0].permute(0,3,1,2)[:,None], process_rgbs], dim=1)
+        process_rgbs = orig_rgbs[0].permute(0,3,1,2)
         process_rgbs = process_rgbs.reshape(-1,3, H, W)
 
         if not self.model.args.degae_feat:
