@@ -108,7 +108,16 @@ class BurstDataset(Dataset, ABC):
         self.num_source_views = args.num_source_views
         self.random_crop = random_crop
 
-        if self.args.train_dataset == 'deblur_scene':
+        if self.args.train_dataset == 'objaverse_scene':
+            assert isinstance(args.train_scenes, list)
+            assert len(args.train_scenes) == 1
+            import pdb; pdb.set_trace()
+            scene_root = os.path.join(DATA_DIR, self.dir_name, self.args.train_scenes[0])
+            holdout = 16
+            self.holdout = holdout
+            self.add_single_scene(0, Path(scene_root), holdout)
+
+        elif self.args.train_dataset == 'deblur_scene':
             assert isinstance(args.train_scenes, list)
             assert len(args.train_scenes) == 1
             scene_root = os.path.join(DATA_DIR, self.dir_name, self.args.train_scenes[0])
@@ -432,6 +441,35 @@ class NoiseDataset(BurstDataset, ABC):
             
         return batch_dict
 
+    def create_objaverse_scene_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
+                                gt_depth=None, eval_gain=1, rgb_noisy=None, src_rgbs_clean=None):
+        if rgb_clean is not None:
+            rgb_clean = torch.from_numpy(rgb_clean[..., :3])
+            # if self.mode is Mode.train:
+            #     rgb, _ = self.add_noise(rgb_clean)        
+            # else:
+            #     rgb, _ = self.add_noise_level(rgb_clean, eval_gain)                        
+        else:
+            rgb = None
+
+        src_rgbs = torch.from_numpy(src_rgbs[..., :3])
+
+        # if self.mode is Mode.train:
+        #     src_rgbs, sigma_est = self.add_noise(src_rgbs_clean)
+        # else:
+        #     src_rgbs, sigma_est = self.add_noise_level(src_rgbs_clean, eval_gain)
+                      
+        batch_dict = {'camera'        : torch.from_numpy(camera),
+                      'rgb_path'      : str(rgb_file),
+                      'src_rgbs'      : src_rgbs,
+                      'src_cameras'   : torch.from_numpy(src_cameras),
+                      'depth_range'   : depth_range,
+                      'eval_gain'     : eval_gain}
+        batch_dict['src_rgbs_clean'] = torch.from_numpy(src_rgbs_clean[..., :3])
+        batch_dict['rgb_clean'] = rgb_clean
+        batch_dict['rgb_noisy'] = rgb_noisy
+            
+        return batch_dict
 
     def create_deblur_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
                                 gt_depth=None, eval_gain=1, rgb_noisy=None, src_rgbs_clean=None):

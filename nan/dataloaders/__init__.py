@@ -24,6 +24,7 @@ from .spaces_dataset import *
 from .nerf_synthetic import *
 from .deblur_data import *
 from .deblur_scene_data import *
+from .objaverse_scene_data import *
 # from .dtu_data import *
 # from .seanerf_data import *
 
@@ -38,8 +39,11 @@ dataset_dict = {
     'llff_test': LLFFTestDataset,
     'deblur_test' : DeblurTestDataset,
     'deblur'    : DeblurTrainDataset,
-    'deblur_scene'         : DeblurSceneTrainDataset,
-    'deblur_scene_test'    : DeblurSceneTestDataset,
+    'deblur_scene'              : DeblurSceneTrainDataset,
+    'deblur_scene_test'         : DeblurSceneTestDataset,
+    'objaverse_scene'           : ObjaverseSceneDataset,
+    'objaverse_scene_test'      : ObjaverseSceneTestDataset,
+    
     # 'dtu'       : DTUTrainDataset,
     # 'dtu_test'  : DTUTestDataset,
     # 'seanerf_test' : SeaNeRFTestDataset,

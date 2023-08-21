@@ -34,8 +34,8 @@ from nan.dataloaders.basic_dataset import Mode
 from basicsr.utils import DiffJPEG
 
 
-class DeblurSceneDataset(NoiseDataset, ABC):
-    name = 'deblur'
+class ObjaverseSceneDataset(NoiseDataset, ABC):
+    name = 'objaverse'
 
     def __init__(self, args, mode, scenes=(), random_crop=True, **kwargs):
         self.render_rgb_files = []
@@ -180,7 +180,7 @@ class DeblurSceneDataset(NoiseDataset, ABC):
 
         gt_depth = 0
         depth_range = self.final_depth_range(depth_range)
-        return self.create_deblur_scene_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain, rgb_noisy=rgb_noisy, src_rgbs_clean=src_rgbs_clean)
+        return self.create_objaverse_scene_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain, rgb_noisy=rgb_noisy, src_rgbs_clean=src_rgbs_clean)
 
     def get_nearest_pose_ids(self, render_pose, train_poses, subsample_factor, id_render):
         return get_nearest_pose_ids(render_pose,
@@ -190,6 +190,7 @@ class DeblurSceneDataset(NoiseDataset, ABC):
                                     angular_dist_method='dist')
 
     def add_single_scene(self, i, scene_path, holdout):
+        import pdb; pdb.set_trace()
         _, poses, bds, render_poses, i_test, rgb_files = self.load_scene(scene_path, None if 'synthetic' not in str(scene_path) else 1)
         print(scene_path, len(poses))
         near_depth = bds.min()
@@ -213,9 +214,9 @@ class DeblurSceneDataset(NoiseDataset, ABC):
         self.render_ids.extend(i_render)
 
 
-class DeblurSceneTestDataset(DeblurSceneDataset):
-    name = 'deblur_scene_test'
-    dir_name = 'badnerf'
+class ObjaverseSceneTestDataset(ObjaverseSceneDataset):
+    name = 'objaverse_scene_test'
+    dir_name = 'objaverse'
     num_select_high = 2
     min_nearest_pose = 28
 
@@ -239,9 +240,9 @@ class DeblurSceneTestDataset(DeblurSceneDataset):
         return torch.tensor([depth_range[0] * 0.9, depth_range[1] * 1.6])
 
 
-class DeblurSceneTrainDataset(DeblurSceneTestDataset):
-    name = 'deblur_scene'
-    dir_name = 'badnerf'
+class ObjaverseSceneTrainDataset(ObjaverseSceneTestDataset):
+    name = 'objaverse_scene'
+    dir_name = 'objaverse'
     num_select_high = 3
     min_nearest_pose = 20
 

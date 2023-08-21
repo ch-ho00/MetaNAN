@@ -21,7 +21,7 @@ import torch.utils.data.distributed
 
 from configs.config import CustomArgumentParser
 from configs.experiment_setting import DEFAULT_GAIN_LIST
-from configs.local_setting_seanerf import EVAL_CONFIG, TRAIN_CONFIG
+from configs.local_setting_objaverse import EVAL_CONFIG, TRAIN_CONFIG
 from eval.evaluate import eval_multi_scenes
 from eval.summary_BD import summary_multi_gains
 from nan.trainer import Trainer

@@ -17,14 +17,14 @@ ROOT_DIR_DICT = LocalSettingDict()
 
 # config
 CONFIG_TRAIN_DICT = LocalSettingDict()
-CONFIG_TRAIN_DICT[PC_NAME] = 'train_seanerf.yml'
+CONFIG_TRAIN_DICT[PC_NAME] = 'train_objaverse.yml'
 
 CONFIG_EVAL_DICT = LocalSettingDict()
-CONFIG_EVAL_DICT[PC_NAME] = 'eval_seanerf.yml'
+CONFIG_EVAL_DICT[PC_NAME] = 'eval_objaverse.yml'
 
 ROOT_DIR     = ROOT_DIR_DICT[PC_NAME]
 OUT_DIR      = ROOT_DIR / 'out'
-LOG_DIR      = ROOT_DIR / 'logs'
+LOG_DIR      = ROOT_DIR / 'logs_objaverse'
 DATA_DIR     = ROOT_DIR.parent / 'data'
 FIG_DIR      = ROOT_DIR / 'figures'
 
