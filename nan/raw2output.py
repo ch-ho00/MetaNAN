@@ -90,7 +90,7 @@ class RaysOutput:
 
     def append(self, ret):
         for k, v in ret.__dict__.items():
-            if k not in ['rgb', 'depth']:
+            if k not in ['rgb', 'depth', 'weights']:
                 continue
             if v is None:
                 continue

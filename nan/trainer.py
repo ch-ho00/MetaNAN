@@ -35,6 +35,9 @@ alpha=0.9998
 
 class Trainer:
     def __init__(self, args):
+        if args.train_dataset == 'objaverse_scene':
+            from configs.local_setting_objaverse import OUT_DIR, LOG_DIR
+
         self.args = args
         self.device = torch.device(f"cuda:{args.local_rank}")
 
@@ -351,7 +354,8 @@ class Trainer:
             rgb_im[:, :rgb_pred.shape[-2], 2 * w_max:2 * w_max + rgb_pred.shape[-1]] = rgb_pred
 
             depth_im = ret['coarse'].depth.detach().cpu()
-            # acc_map = torch.sum(ret['coarse'].weights, dim=-1).detach().cpu()
+            # import pdb; pdb.set_trace()
+            acc_map = torch.sum(ret['coarse'].weights, dim=-1).detach().cpu()
 
             if ret['fine'] is None:
                 depth_im = img_HWC2CHW(colorize(depth_im, cmap_name='jet', append_cbar=True))
@@ -368,13 +372,13 @@ class Trainer:
                     rgb_im = rgb_im.clamp(min=0., max=1.)
                 depth_im = torch.cat((depth_im, ret['fine'].depth.detach().cpu()), dim=-1)
                 depth_im = img_HWC2CHW(colorize(depth_im, cmap_name='jet', append_cbar=True))
-                # acc_map = torch.cat((acc_map, torch.sum(ret['fine'].weights, dim=-1).detach().cpu()), dim=-1)
-                # acc_map = img_HWC2CHW(colorize(acc_map, range=(0., 1.), cmap_name='jet', append_cbar=False))
+                acc_map = torch.cat((acc_map, torch.sum(ret['fine'].weights, dim=-1).detach().cpu()), dim=-1)
+                acc_map = img_HWC2CHW(colorize(acc_map, range=(0., 1.), cmap_name='jet', append_cbar=False))
 
             # write the pred/gt rgb images and depths
             self.writer.add_image(prefix + 'rgb_gt-coarse-fine' + postfix, rgb_im, global_step)
             self.writer.add_image(prefix + 'depth_gt-coarse-fine'+ postfix, depth_im, global_step)
-            # self.writer.add_image(prefix + 'acc-coarse-fine'+ postfix, acc_map, global_step)
+            self.writer.add_image(prefix + 'acc-coarse-fine'+ postfix, acc_map, global_step)
             if self.args.bpn_prenet:
                 h, w, _ = ret['bpn_reconst'].shape[-3:]
                 reconst_img = ret['bpn_reconst'][0].permute(3,1,0,2).reshape(3,h,-1)[:, ::render_stride, ::render_stride]

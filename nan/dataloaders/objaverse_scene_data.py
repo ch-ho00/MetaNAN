@@ -29,9 +29,8 @@ from nan.dataloaders.basic_dataset import NoiseDataset, re_linearize
 from nan.dataloaders.data_utils import random_crop, get_nearest_pose_ids, random_flip, to_uint
 from nan.dataloaders.llff_data_utils import load_llff_data, batch_parse_llff_poses
 from nan.dataloaders.basic_dataset import Mode
+import os, glob
 
-
-from basicsr.utils import DiffJPEG
 
 
 class ObjaverseSceneDataset(NoiseDataset, ABC):
@@ -51,26 +50,6 @@ class ObjaverseSceneDataset(NoiseDataset, ABC):
         super().__init__(args, mode, scenes=scenes, random_crop=random_crop, **kwargs)
         self.depth_range = self.render_depth_range[0]
 
-        # blur settings for the first degradation
-        self.blur_kernel_size = args.blur_kernel_size
-        self.kernel_list = args.kernel_list
-        self.kernel_prob = args.kernel_prob  # a list for each kernel probability
-        self.blur_sigma = args.blur_sigma
-        self.betag_range = args.betag_range  # betag used in generalized Gaussian blur kernels
-        self.betap_range = args.betap_range  # betap used in plateau blur kernels
-        self.sinc_prob = args.sinc_prob  # the probability for sinc filters
-        self.jpeg_range = args.jpeg_range
-        self.blur_degrade = args.blur_degrade
-        
-        # a final sinc filter
-        self.final_sinc_prob = args.final_sinc_prob
-        self.kernel_range = [2 * v + 1 for v in range(3, 11)]  # kernel size ranges from 7 to 21
-        # TODO: kernel range is now hard-coded, should be in the configure file
-        self.pulse_tensor = torch.zeros(21, 21).float()  # convolving with pulse tensor brings no blurry effect
-        self.pulse_tensor[10, 10] = 1
-        self.jpeger = DiffJPEG(differentiable=False)  # simulate JPEG compression artifacts        
-
-
     def get_i_test(self, N, holdout):
         return np.arange(N)[::holdout]
 
@@ -78,8 +57,34 @@ class ObjaverseSceneDataset(NoiseDataset, ABC):
         return np.array([j for j in np.arange(int(N)) if j not in i_test]) 
 
     @staticmethod
-    def load_scene(scene_path, factor):
-        return load_llff_data(scene_path, load_imgs=False, factor=factor)
+    def load_scene(folder):
+        pose_file = folder / 'camera_matrices.txt'
+        with open(pose_file, 'r') as f:
+            lines = f.readlines()
+        
+        rgb_files = glob.glob(os.path.join(folder, '[0,1][0-9][0-9].png'))
+        rgb_files.sort()
+
+        last_row = np.array([[0,0,0,1]])
+        intrinsics, c2w_mats, bds = [], [], []
+        for line in lines:
+            data = line.strip().split()
+            matrix = np.array(data[:12]).reshape(3, 4).astype(np.float32)
+            # matrix[:, 1:3] *= -1
+            matrix = np.concatenate([matrix, last_row])
+            H, W, focal_x, focal_y, near, far = map(float, data[12:])
+            intrinsic = np.array([[focal_x, 0, W/2, 0],
+                                [0, focal_x, H/2, 0],
+                                [0, 0, 1, 0],
+                                [0, 0, 0, 1]])
+
+            c2w_mats.append(matrix)
+            intrinsics.append(intrinsic)
+
+            bds.append(np.array([near, far])) 
+
+        return np.array(c2w_mats), np.array(intrinsics), np.array(bds), rgb_files
+
 
     def __len__(self):
         return len(self.render_rgb_files) * 100000 if self.mode is Mode.train else len(self.render_rgb_files)
@@ -106,15 +111,14 @@ class ObjaverseSceneDataset(NoiseDataset, ABC):
         eval_gain = 0 # self.args.eval_gain[idx // len(self.render_rgb_files)]
         idx = idx % len(self.render_rgb_files)
         rgb_file: Path = self.render_rgb_files[idx]
-        
-        scene_name = str(rgb_file).split('/')[-3]
-        holdout = self.holdout
+        rgb_file_clean = str(rgb_file).split('/')
+        rgb_file_clean[-1] = 'clean_' + rgb_file_clean[-1]
+        rgb_file_clean = Path('/'.join(rgb_file_clean))
+        scene_name = str(rgb_file).split('/')[-2]
 
         # image (H, W, 3)
-        assert '/images/' in str(rgb_file)
-        rgb_file_clean = str(rgb_file).replace('images', 'images_test')
-        rgb = self.read_image(rgb_file_clean, multiple32=False)
-        rgb_noisy = self.read_image(rgb_file, multiple32=False)
+        rgb = self.read_image(rgb_file_clean, multiple32=False, white_bkgd=False)
+        rgb_noisy = self.read_image(rgb_file, multiple32=False, white_bkgd=False)
         # Rotation | translation (4x4)
         # 0  0  0  | 1
         render_pose = self.render_poses[idx]
@@ -152,18 +156,20 @@ class ObjaverseSceneDataset(NoiseDataset, ABC):
             if src_id is None:
                 # print(self.render_rgb_files[idx])
                 rgb_file = self.render_rgb_files[idx]
-                src_rgb = self.read_image(rgb_file, multiple32=False)
+                src_rgb = self.read_image(rgb_file, multiple32=False, white_bkgd=False)
                 train_pose = self.render_poses[idx]
                 train_intrinsics_ = self.render_intrinsics[idx]
             else:
                 # print(train_rgb_files[src_id])
                 rgb_file = train_rgb_files[src_id]
-                src_rgb = self.read_image(rgb_file, multiple32=False)
+                src_rgb = self.read_image(rgb_file, multiple32=False, white_bkgd=False)
                 train_pose = train_poses[src_id]
                 train_intrinsics_ = train_intrinsics[src_id]
                 
-            rgb_file_clean = str(rgb_file).replace('images', 'images_test')
-            src_rgb_clean = self.read_image(rgb_file_clean, multiple32=False)
+            rgb_file_clean = str(rgb_file).split('/')
+            rgb_file_clean[-1] = 'clean_' + rgb_file_clean[-1]
+            rgb_file_clean = Path('/'.join(rgb_file_clean))
+            src_rgb_clean = self.read_image(rgb_file_clean, multiple32=False, white_bkgd=False)
             src_rgbs_clean.append(src_rgb_clean)
             src_poses.append(train_pose)
             src_rgbs.append(src_rgb)
@@ -190,14 +196,11 @@ class ObjaverseSceneDataset(NoiseDataset, ABC):
                                     angular_dist_method='dist')
 
     def add_single_scene(self, i, scene_path, holdout):
-        import pdb; pdb.set_trace()
-        _, poses, bds, render_poses, i_test, rgb_files = self.load_scene(scene_path, None if 'synthetic' not in str(scene_path) else 1)
-        print(scene_path, len(poses))
+        c2w_mats, intrinsics, bds, rgb_files = self.load_scene(scene_path)
         near_depth = bds.min()
         far_depth = bds.max()
-        intrinsics, c2w_mats = batch_parse_llff_poses(poses)
-        i_test = self.get_i_test(poses.shape[0], holdout)
-        i_blurry = self.get_i_train(poses.shape[0], i_test)
+        i_test = self.get_i_test(c2w_mats.shape[0], holdout)
+        i_blurry = self.get_i_train(c2w_mats.shape[0], i_test)
         i_render = i_blurry if self.mode == Mode.train else i_test
         # Source images
         self.src_intrinsics.append(intrinsics[i_blurry])
@@ -226,8 +229,8 @@ class ObjaverseSceneTestDataset(ObjaverseSceneDataset):
             #crop_h = crop_h + 1 if crop_h % 2 == 1 else crop_h
             #crop_w = int(400 * 600 / crop_h // 128 * 128) #350 * 550
             #crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
-            crop_h = 350
-            crop_w = 550
+            crop_h = 400
+            crop_w = 400
             rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean = random_crop(rgb, camera, src_rgbs, src_cameras,
                                                              (crop_h, crop_w), rgb_noisy=rgb_noisy, src_rgbs_clean=src_rgbs_clean)
 

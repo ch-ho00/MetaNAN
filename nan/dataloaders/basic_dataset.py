@@ -111,7 +111,6 @@ class BurstDataset(Dataset, ABC):
         if self.args.train_dataset == 'objaverse_scene':
             assert isinstance(args.train_scenes, list)
             assert len(args.train_scenes) == 1
-            import pdb; pdb.set_trace()
             scene_root = os.path.join(DATA_DIR, self.dir_name, self.args.train_scenes[0])
             holdout = 16
             self.holdout = holdout
@@ -201,9 +200,12 @@ class BurstDataset(Dataset, ABC):
     #     return imageio.imread(filename).astype(np.float32) / 255.
 
     @staticmethod
-    def read_image(filename, multiple32=True, img_wh=None, **kwargs):
+    def read_image(filename, multiple32=True, img_wh=None, white_bkgd=False, **kwargs):
         
-        img = Image.open(filename).convert('RGB')
+        if white_bkgd:
+            img = Image.open(filename).convert('RGBA')        
+        else:
+            img = Image.open(filename).convert('RGB')
 
         if multiple32 and img_wh == None:
             img = img.resize([1024, 768], Image.LANCZOS)
@@ -211,6 +213,11 @@ class BurstDataset(Dataset, ABC):
             img = img.resize(img_wh, Image.LANCZOS)
 
         img = transform(img)
+        if white_bkgd:
+            # mask = (img[-1:] > 0).float()
+            alpha = img[-1:]
+            img = img[:3] + (1 - alpha)
+
         return img.permute(1,2,0).numpy()
 
     def apply_transform(self, rgb, camera, src_rgbs, src_cameras):

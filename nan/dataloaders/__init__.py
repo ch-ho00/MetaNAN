@@ -41,7 +41,7 @@ dataset_dict = {
     'deblur'    : DeblurTrainDataset,
     'deblur_scene'              : DeblurSceneTrainDataset,
     'deblur_scene_test'         : DeblurSceneTestDataset,
-    'objaverse_scene'           : ObjaverseSceneDataset,
+    'objaverse_scene'           : ObjaverseSceneTrainDataset,
     'objaverse_scene_test'      : ObjaverseSceneTestDataset,
     
     # 'dtu'       : DTUTrainDataset,

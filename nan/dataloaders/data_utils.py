@@ -88,7 +88,10 @@ def random_crop(rgb, camera, src_rgbs, src_cameras, size=(400, 600), center=None
     h, w = rgb.shape[:2]
     out_h, out_w = size[0], size[1]
     if out_w >= w or out_h >= h:
-        return rgb, camera, src_rgbs, src_cameras
+        if isinstance(rgb_noisy, np.ndarray):
+            return rgb_out, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean
+        else:
+            return rgb, camera, src_rgbs, src_cameras
 
     if center is not None:
         center_h, center_w = center
