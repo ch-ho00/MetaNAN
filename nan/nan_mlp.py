@@ -54,45 +54,73 @@ def softmax3d(x, dim):
     return nn.functional.softmax(x.reshape((R, S, -1, C)), dim=-2).view(x.shape)
 
 
+import torch.nn as nn
 import math
+import torch
 
 class CondSeqential(nn.Module):
-    def __init__(self, sequential_module, embedding_size=512):
+    def __init__(self, sequential_module, embedding_size=512, cond_embed_size=8):
         super().__init__()
         self.embedding_size = embedding_size
-        self.sequential_layer = sequential_module
-        self.embedding_layer = nn.ModuleList()
-        layer_sizes = [layer.out_features for layer in self.sequential_layer if isinstance(layer, nn.Linear)][:1] # layer.out_features
-        if len(layer_sizes) > 0:
-            for i in range(len(layer_sizes)):
-                self.embedding_layer.append(nn.Linear(embedding_size, layer_sizes[i]))
+        self.cond_embed_size = cond_embed_size
+        self.original_sequential = sequential_module
+        self.modified_sequential, self.last_predictor = self._modify_sequential(sequential_module)
+        self.embedding_layer = nn.Linear(embedding_size, cond_embed_size)
         self.init_weights()
 
+    def _modify_sequential(self, sequential_module):
+        modified_layers = nn.ModuleList()
+        linear_count = 0
+        last_predictor = None
+        for layer in sequential_module:
+            if isinstance(layer, nn.Linear):
+                linear_count += 1
+                if linear_count == 2:
+                    modified_layer = nn.Linear(layer.in_features + self.cond_embed_size, layer.out_features - 1)
+                    modified_layers.append(modified_layer)
+                    last_predictor = nn.Linear(layer.in_features, 1) # for predicting the last feature
+                    continue
+            modified_layers.append(layer)
+        return modified_layers, last_predictor
+
     def forward(self, x, embedding):
-        linear_cnt = 0
-        for i, layer in enumerate(self.sequential_layer):
-            x = layer(x)
-            if isinstance(layer, nn.Linear) and linear_cnt < len(self.embedding_layer):
-                embedded = self.embedding_layer[linear_cnt](embedding)
-                x = torch.cat([x, embedded.expand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], embedded.shape[0], embedded.shape[1])], dim=-1)
-                linear_cnt += 1
+        linear_count = 0
+        for orig_layer, mod_layer in zip(self.original_sequential, self.modified_sequential):
+            if isinstance(orig_layer, nn.Linear):
+                linear_count += 1
+            if isinstance(orig_layer, nn.Linear) and linear_count == 2:
+                embedded = self.embedding_layer(embedding)
+                sh = list(x.shape[:-1])
+                embedded = embedded.expand(*sh + [self.cond_embed_size,])
+                x_base = torch.cat([x, embedded], dim=-1)
+                x_base = mod_layer(x_base)
+                x_last_out = self.last_predictor(x)
+                x = torch.cat([x_base, x_last_out], dim=-1)
+            else:
+                x = orig_layer(x)
         return x
 
     def init_weights(self):
-        for layer in self.sequential_layer:
-            if isinstance(layer, nn.Linear):
-                nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))
-                if layer.bias is not None:
-                    fan_in, _ = nn.init._calculate_fan_in_and_fan_out(layer.weight)
-                    bound = 1 / math.sqrt(fan_in)
-                    nn.init.uniform_(layer.bias, -bound, bound)
-        for layer in self.embedding_layer:
+        def init_linear(layer):
             nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))
             if layer.bias is not None:
                 fan_in, _ = nn.init._calculate_fan_in_and_fan_out(layer.weight)
                 bound = 1 / math.sqrt(fan_in)
                 nn.init.uniform_(layer.bias, -bound, bound)
-                
+
+        for layer in self.original_sequential:
+            if isinstance(layer, nn.Linear):
+                init_linear(layer)
+
+        for layer in self.modified_sequential:
+            if isinstance(layer, nn.Linear):
+                init_linear(layer)
+
+        init_linear(self.embedding_layer)
+
+        init_linear(self.last_predictor)
+
+
 class KernelBasis(nn.Module):
     def __init__(self, args):
         super().__init__()
@@ -114,7 +142,6 @@ class NanMLP(nn.Module):
         if self.anti_alias_pooling:
             self.s = nn.Parameter(torch.tensor(0.2), requires_grad=True)
 
-        multi = 2 if self.args.cond_renderer else 1
         self.n_samples = n_samples
         base_input_channels = in_feat_ch + (3 if not self.args.exclude_proc_rgb else 0) # + (args.num_latent * 3 if args.blur_render else 0)
 
@@ -122,13 +149,6 @@ class NanMLP(nn.Module):
                                         self.activation_func,
                                         nn.Linear(16, base_input_channels), #  
                                         self.activation_func)
-        if self.args.cond_renderer:
-            self.base_fc2 = nn.Sequential(nn.Linear(base_input_channels, base_input_channels),
-                                        self.activation_func,
-                                        nn.Linear(base_input_channels * multi, base_input_channels),
-                                        self.activation_func)
-        else:
-            self.base_fc2 = None
 
         base_input_channels = base_input_channels * 3
         if self.args.noise_feat:
@@ -153,7 +173,7 @@ class NanMLP(nn.Module):
 
         self.vis_fc2 = nn.Sequential(nn.Linear(32, 32),
                                      self.activation_func,
-                                     nn.Linear(32 * multi, 1),
+                                     nn.Linear(32, 1),
                                      torch.nn.Sigmoid()
                                      )
 
@@ -174,14 +194,9 @@ class NanMLP(nn.Module):
         self.rgb_reduce_fn = self.rgb_reduce_factory()
 
         if self.args.cond_renderer:
-
             # self.base_fc         =  CondSeqential(self.base_fc        )
-            # self.vis_fc          =  CondSeqential(self.vis_fc         )
-            self.base_fc2        =  CondSeqential(self.base_fc2)
-            self.vis_fc2         =  CondSeqential(self.vis_fc2        )
-            # self.geometry_fc     =  CondSeqential(self.geometry_fc    )
-            # self.out_geometry_fc =  CondSeqential(self.out_geometry_fc)
-            # self.rgb_fc          =  CondSeqential(self.rgb_fc         )
+            self.vis_fc          =  CondSeqential(self.vis_fc         )
+            # self.vis_fc2         =  CondSeqential(self.vis_fc2        )
 
         # positional encoding
         self.pos_enc_d = 16
@@ -241,15 +256,18 @@ class NanMLP(nn.Module):
         ext_feat, weight = self.compute_extended_features(ray_diff, rgb_feat, mask, num_valid_obs, sigma_est, degrade_vec=degrade_vec)
         torch.cuda.empty_cache()
 
-        x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32)
-        x_vis = self.vis_fc(x * weight)
+        # if isinstance(self.base_fc, CondSeqential):
+        #     x = self.base_fc(ext_feat, degrade_vec)  # ((32 + 3) x 3) --> MLP --> (32
+        # else:
+        x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32
+        if isinstance(self.vis_fc, CondSeqential):
+            x_vis = self.vis_fc(x * weight, degrade_vec)        
+        else:
+            x_vis = self.vis_fc(x * weight)
         x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
         vis = torch.sigmoid(vis) * mask
         x = x + x_res
-        if isinstance(self.vis_fc2, CondSeqential):
-            vis = self.vis_fc2(x * vis, degrade_vec) * mask        
-        else:
-            vis = self.vis_fc2(x * vis) * mask
+        vis = self.vis_fc2(x * vis) * mask
 
         torch.cuda.empty_cache()
 
@@ -264,10 +282,10 @@ class NanMLP(nn.Module):
         direction_feat = self.ray_dir_fc(ray_diff)  # [n_rays, n_samples, k, k, n_views, 35]
         rgb_feat = rgb_feat[:, :, self.k_mid:self.k_mid + 1, 
                     self.k_mid:self.k_mid + 1] + direction_feat  # [n_rays, n_samples, 1, 1, n_views, 35]
-        if self.args.cond_renderer and self.base_fc2 != None:
-            feat = self.base_fc2(rgb_feat, degrade_vec)            
-        else:
-            feat = rgb_feat
+        # if self.args.cond_renderer and self.base_fc2 != None:
+        #     feat = self.base_fc2(rgb_feat, degrade_vec)            
+        # else:
+        feat = rgb_feat
 
         if self.args.views_attn:
             r, s, k, _, v, f = feat.shape
