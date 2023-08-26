@@ -216,7 +216,7 @@ class BurstDataset(Dataset, ABC):
         if white_bkgd:
             # mask = (img[-1:] > 0).float()
             alpha = img[-1:]
-            img = img[:3] + (1 - alpha)
+            img = img[:3] * alpha + (1 - alpha)
 
         return img.permute(1,2,0).numpy()
 

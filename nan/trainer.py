@@ -37,6 +37,9 @@ class Trainer:
     def __init__(self, args):
         if args.train_dataset == 'objaverse_scene':
             from configs.local_setting_objaverse import OUT_DIR, LOG_DIR
+        elif args.train_dataset == 'deblur_scene':
+            from configs.local_setting_deblur import OUT_DIR, LOG_DIR
+
 
         self.args = args
         self.device = torch.device(f"cuda:{args.local_rank}")

@@ -30,13 +30,14 @@ from nan.dataloaders.data_utils import random_crop, get_nearest_pose_ids, random
 from nan.dataloaders.llff_data_utils import load_llff_data, batch_parse_llff_poses
 from nan.dataloaders.basic_dataset import Mode
 import os, glob
-
+import json
 
 
 class ObjaverseSceneDataset(NoiseDataset, ABC):
     name = 'objaverse'
 
     def __init__(self, args, mode, scenes=(), random_crop=True, **kwargs):
+        self.args = args 
         self.render_rgb_files = []
         self.render_intrinsics = []
         self.render_poses = []
@@ -58,30 +59,46 @@ class ObjaverseSceneDataset(NoiseDataset, ABC):
 
     @staticmethod
     def load_scene(folder):
-        pose_file = folder / 'camera_matrices.txt'
-        with open(pose_file, 'r') as f:
-            lines = f.readlines()
+        pose_file = folder / 'transforms.json'  # Update the file name to read from JSON
         
-        rgb_files = glob.glob(os.path.join(folder, '[0,1][0-9][0-9].png'))
-        rgb_files.sort()
+        # Load the JSON data
+        with open(pose_file, 'r') as f:
+            data = json.load(f)
+        
+        frames = data['frames']
+        blender2opencv = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+        # Extract RGB files
+        rgb_files = [frame['file_path'] for frame in frames]
 
-        last_row = np.array([[0,0,0,1]])
-        intrinsics, c2w_mats, bds = [], [], []
-        for line in lines:
-            data = line.strip().split()
-            matrix = np.array(data[:12]).reshape(3, 4).astype(np.float32)
-            # matrix[:, 1:3] *= -1
-            matrix = np.concatenate([matrix, last_row])
-            H, W, focal_x, focal_y, near, far = map(float, data[12:])
-            intrinsic = np.array([[focal_x, 0, W/2, 0],
-                                [0, focal_x, H/2, 0],
-                                [0, 0, 1, 0],
-                                [0, 0, 0, 1]])
+        c2w_mats = []
+        far = 0
+        for frame in frames:
+            matrix = np.array(frame['transform_matrix'])
+            matrix = matrix @ blender2opencv
 
             c2w_mats.append(matrix)
-            intrinsics.append(intrinsic)
+            if far < np.linalg.norm(matrix[:3,-1]):
+                far = np.linalg.norm(matrix[:3,-1]) * 2
 
-            bds.append(np.array([near, far])) 
+        # 0.6194058656692505
+        camera_angle_x = data['camera_angle_x']
+        f = 0.5 * 800 / np.tan(0.5 * camera_angle_x)  # original focal length
+        f *= 400 / 800  # modify focal length to match size self.img_wh
+        w, h = 400 , 400
+
+        intrinsics = np.array([[f, 0, w / 2., 0],
+                            [0, f, h / 2., 0],
+                            [0, 0, 1, 0],
+                            [0, 0, 0, 1]])
+
+        # If you still need the intrinsics, you can extract them similar to above 
+        # (assuming they're in the JSON). Otherwise, the following is a placeholder.
+        intrinsics = [intrinsics for _ in frames]  # Placeholder - update if needed
+
+        # Assuming 'near' and 'far' are not provided in the JSON, 
+        # the following is a placeholder.
+        print(far)
+        bds = [np.array([0.1, far]) for _ in frames]  # Placeholder - update if needed
 
         return np.array(c2w_mats), np.array(intrinsics), np.array(bds), rgb_files
 
@@ -117,8 +134,8 @@ class ObjaverseSceneDataset(NoiseDataset, ABC):
         scene_name = str(rgb_file).split('/')[-2]
 
         # image (H, W, 3)
-        rgb = self.read_image(rgb_file_clean, multiple32=False, white_bkgd=False)
-        rgb_noisy = self.read_image(rgb_file, multiple32=False, white_bkgd=False)
+        rgb = self.read_image(rgb_file_clean, multiple32=False, white_bkgd=self.args.white_bkgd)
+        rgb_noisy = self.read_image(rgb_file, multiple32=False, white_bkgd=self.args.white_bkgd)
         # Rotation | translation (4x4)
         # 0  0  0  | 1
         render_pose = self.render_poses[idx]
@@ -156,20 +173,20 @@ class ObjaverseSceneDataset(NoiseDataset, ABC):
             if src_id is None:
                 # print(self.render_rgb_files[idx])
                 rgb_file = self.render_rgb_files[idx]
-                src_rgb = self.read_image(rgb_file, multiple32=False, white_bkgd=False)
+                src_rgb = self.read_image(rgb_file, multiple32=False, white_bkgd=self.args.white_bkgd)
                 train_pose = self.render_poses[idx]
                 train_intrinsics_ = self.render_intrinsics[idx]
             else:
                 # print(train_rgb_files[src_id])
                 rgb_file = train_rgb_files[src_id]
-                src_rgb = self.read_image(rgb_file, multiple32=False, white_bkgd=False)
+                src_rgb = self.read_image(rgb_file, multiple32=False, white_bkgd=self.args.white_bkgd)
                 train_pose = train_poses[src_id]
                 train_intrinsics_ = train_intrinsics[src_id]
                 
             rgb_file_clean = str(rgb_file).split('/')
             rgb_file_clean[-1] = 'clean_' + rgb_file_clean[-1]
             rgb_file_clean = Path('/'.join(rgb_file_clean))
-            src_rgb_clean = self.read_image(rgb_file_clean, multiple32=False, white_bkgd=False)
+            src_rgb_clean = self.read_image(rgb_file_clean, multiple32=False, white_bkgd=self.args.white_bkgd)
             src_rgbs_clean.append(src_rgb_clean)
             src_poses.append(train_pose)
             src_rgbs.append(src_rgb)

@@ -195,6 +195,38 @@ class DeblurSceneDataset(NoiseDataset, ABC):
         near_depth = bds.min()
         far_depth = bds.max()
         intrinsics, c2w_mats = batch_parse_llff_poses(poses)
+        pos = c2w_mats[:,:3,-1]
+        # (Pdb) np.linalg.norm(pos, axis=-1)
+        # array([0.99870587, 0.71167385, 0.56205436, 0.77025098, 1.07907911,
+        #     1.29201   , 1.2188023 , 0.62464911, 0.29759275, 0.53668943,
+        #     0.92407008, 1.23544016, 1.32808956, 1.12848655, 0.11818794,
+        #     0.6111464 , 1.05354517, 1.25006437, 1.24143969, 1.10390915,
+        #     0.73591837, 0.62919473, 1.03139568, 1.22629831, 1.20513471,
+        #     0.9996407 , 0.78548411, 0.64054821, 1.16982776])        
+        dist = pos[:,None] - pos[None]
+        # (Pdb) np.linalg.norm(dist, axis=-1).shape
+        # (29, 29)
+        dist = np.linalg.norm(dist, axis=-1)
+        # (Pdb) dist[dist > 0].min()
+        # 0.19623380555560946
+        # (Pdb) dist[dist > 0].max()
+        # 2.5679482285347324
+        zaxis = c2w_mats[:,:3,2] 
+        angle = np.sum(zaxis[:,None] * zaxis[None], axis=-1)
+        yaxis = c2w_mats[:,:3,1] 
+        angle_y = np.sum(yaxis[:,None] * yaxis[None], axis=-1)
+        # (Pdb) angle = np.sum(zaxis[:,None] * zaxis[None], axis=-1)
+        # (Pdb) angle.max()
+        # 1.0000000593996152
+        # (Pdb) angle.min()
+        # 0.9735833565809835
+        # (Pdb) yaxis = c2w_mats[:,:3,1] 
+        # (Pdb) angle_y = np.sum(yaxis[:,None] * yaxis[None], axis=-1)
+        # (Pdb) angle_y.max()
+        # 1.0000000894665655
+        # (Pdb) angle_y.min()
+        # 0.9745698082104737
+
         i_test = self.get_i_test(poses.shape[0], holdout)
         i_blurry = self.get_i_train(poses.shape[0], i_test)
         i_render = i_blurry if self.mode == Mode.train else i_test
