@@ -214,18 +214,10 @@ class Trainer:
             src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
             src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)], dim=-1)
             src_latent_camera[:,:,0] = ray_batch['src_cameras']
-            if self.model.args.include_orig:
-                featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None], featmaps['latent_imgs']], dim=1)
-                ray_batch['src_cameras'] = torch.cat([ray_batch['src_cameras'][:,:,None],src_latent_camera], dim=2).reshape(1,-1,34)
-            else:
-                ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
+            ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
         else:
-            if self.model.args.include_orig:
-                featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None], proc_src_rgbs[0].permute(0,3,1,2)[:,None]], dim=1)
-                ray_batch['src_cameras'] = ray_batch['src_cameras'].repeat(1,1,2).reshape(1,-1,34)
-            else:
-                featmaps['latent_imgs'] = proc_src_rgbs[0].permute(0,3,1,2)[:,None]
-                ray_batch['src_cameras'] = ray_batch['src_cameras'].reshape(1,-1,34)
+            featmaps['latent_imgs'] = proc_src_rgbs[0].permute(0,3,1,2)[:,None]
+            ray_batch['src_cameras'] = ray_batch['src_cameras'].reshape(1,-1,34)
                 
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
@@ -255,9 +247,10 @@ class Trainer:
             self.scalars_to_log['train/fine_noise_loss'] = fine_noise_loss * self.args.lambda_blur_loss
 
         if self.args.lambda_latent_loss > 0:
+            decay = 2 ** - (global_step // 40000)
             latent_loss = F.l1_loss(proc_src_rgbs, ray_sampler.src_rgbs_clean.to(self.device))
-            loss += latent_loss * self.args.lambda_latent_loss
-            self.scalars_to_log['train/latent_loss'] = latent_loss * self.args.lambda_latent_loss
+            loss += latent_loss * self.args.lambda_latent_loss * decay
+            self.scalars_to_log['train/latent_loss'] = latent_loss * self.args.lambda_latent_loss * decay
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()

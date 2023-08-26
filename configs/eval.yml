@@ -1,8 +1,8 @@
 ### INPUT
 
-ckpt_path     : ckpts_test/orig_nan_255000.pth
+# ckpt_path     : ckpts_test/orig_nan_255000.pth
 # ckpt_path                   :  ckpts_test/degae_ablation_255000.pth
-# ckpt_path                   :  ckpts_test/degae_preBPN_weightsum_ablation_255000.pth
+ckpt_path                   :  ckpts_test/degae_preBPN_weightsum_ablation_255000.pth
 # ckpt_path                   : ckpts_test/DegAE_AllCondRenderer_preBPN_weightSumFilter_perImg_ftEmbed_embedLoss1e3_200000.pth
 distributed                 : False
 no_load_opt                 : True
@@ -16,11 +16,12 @@ noise_feat                  : True
 rgb_weights                 : True
 
 ##
-degae_feat                  : False #True
-weightsum_filtered          : False #True
-bpn_prenet                  : False #True
-bpn_per_img                 : False #True
+degae_feat                  : True
+weightsum_filtered          : True
+bpn_prenet                  : True
+bpn_per_img                 : True
 cond_renderer               : False #True
+basis_dim                   : 64
 
 ## dataset
 eval_dataset : llff_test

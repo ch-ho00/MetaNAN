@@ -22,16 +22,12 @@ from nan.utils.io_utils import print_link, colorize
 from nan.utils.eval_utils import mse2psnr, img2psnr
 import pickle
 from pprint import pprint
-import lpips
-import pytorch_msssim
-
 
 sys.argv = sys.argv + ['--config', str(EVAL_CONFIG)]
 # Create training args
 parser = CustomArgumentParser.config_parser()
 args = parser.parse_args(verbose=True)
 device = torch.device(f"cuda:{args.local_rank}")
-lpips_loss = lpips.LPIPS(net='vgg') #.to(device)
 
 for key, value in sorted(vars(args).items()):
     print(f"{key:<30}: {value}")
@@ -45,7 +41,7 @@ if args.distributed:
 model_name = str(args.ckpt_path).split('/')[-1][:-4]
 save_folder = Path(f'eval_result/{model_name}')
 save_folder.mkdir(parents=True, exist_ok=True)
-skip_forward = False
+skip_forward = True
 
 args.eval_gain = [1,2,4,8,16,20] # 
 if not skip_forward:
@@ -102,22 +98,14 @@ if not skip_forward:
                 del depth_im 
             # write scalar
             pred_rgb = ret['fine'].rgb
-
-            pred_rgb_tensor = de_linearize(ret['fine'].rgb, ray_sampler.white_level).clamp(0,1).permute(2,0,1)[None]
-            gt_rgb_tensor = de_linearize(gt_img[::args.render_stride, ::args.render_stride], ray_sampler.white_level).clamp(0,1).permute(2,0,1)[None]
-            # Calculate LPIPS
-            lpips_value = lpips_loss(pred_rgb_tensor, gt_rgb_tensor).item()
-            # Calculate SSIM
-            ssim_value = pytorch_msssim.ssim(pred_rgb_tensor, gt_rgb_tensor).item()
-            psnr_curr_img = img2psnr(pred_rgb_tensor, gt_rgb_tensor)
-            print(gain_level, psnr_curr_img, ssim_value, lpips_value)
+            psnr_curr_img = img2psnr(de_linearize(pred_rgb.detach().cpu(), ray_sampler.white_level).clamp(0,1),
+                                    de_linearize(gt_img[::args.render_stride, ::args.render_stride], ray_sampler.white_level).clamp(0,1))
+            print(gain_level, psnr_curr_img)
 
             render_result[idx][gain_level] = {
-                'psnr': psnr_curr_img,
-                'lpips': lpips_value,
-                'ssim': ssim_value,
-                'depth': ret['fine'].depth.detach().cpu(),
-                'rgb': pred_rgb_tensor
+                'psnr' : psnr_curr_img,
+                'depth' : ret['fine'].depth.detach().cpu(),
+                'rgb' : de_linearize(rgb_fine, ray_sampler.white_level).clamp(min=0., max=1.)
             }
 
         with open(f'./{str(save_folder)}/result.pkl', 'wb') as fp:
@@ -130,21 +118,13 @@ with open(f'./{str(save_folder)}/result.pkl', 'rb') as fp:
 
 final_result = {}
 results_level = {k : [] for k in args.eval_gain}
-results_lpips = {k : [] for k in args.eval_gain}
-results_ssim = {k : [] for k in args.eval_gain}
-
 for img_idx in render_result.keys():
     for gain_level in render_result[img_idx].keys():
         results_level[gain_level].append(render_result[img_idx][gain_level]['psnr'])
-        results_level[gain_level].append(render_result[img_idx][gain_level]['psnr'])
-        results_lpips[gain_level].append(render_result[img_idx][gain_level]['lpips'])
-        results_ssim[gain_level].append(render_result[img_idx][gain_level]['ssim'])
 
 
 for level in args.eval_gain:
     results_level[str(level) + "_avg"] = np.mean(results_level[level])
-    results_level[str(level) + "_avg_lpips"] = np.mean(results_lpips[level])
-    results_level[str(level) + "_avg_ssim"] = np.mean(results_ssim[level])
 
 final_result.update(results_level)
 pprint(results_level)
@@ -158,22 +138,22 @@ for img_idx in render_result.keys():
     depth_std[img_idx] = np.std(pred_depths, axis=0).mean()
 
 
-# percentile = 15
-
-# rgb_std   = np.array(list(rgb_std.values()))
-# rgb_top = np.percentile(rgb_std , percentile)
-# rgb_bottom = np.percentile(rgb_std , 100 - percentile)
-# final_result['mean_rgb_std']   = np.std(rgb_std[(rgb_std >= rgb_top) & (rgb_std <= rgb_bottom)])
-
-# depth_std   = np.array(list(depth_std.values()))
-# depth_top = np.percentile(depth_std , percentile)
-# depth_bottom = np.percentile(depth_std , 100 - percentile)
-# final_result['mean_depth_std']   = np.std(depth_std[(depth_std >= depth_top) & (depth_std <= depth_bottom)])
-
-with open(f'./{str(save_folder)}/result_final.pkl', 'wb') as fp:
-    pickle.dump(final_result, fp)
-
 import pdb; pdb.set_trace()
+percentile = 15
+
+rgb_std   = np.array(list(rgb_std.values()))
+rgb_top = np.percentile(rgb_std , percentile)
+rgb_bottom = np.percentile(rgb_std , 100 - percentile)
+final_result['mean_rgb_std']   = np.std(rgb_std[(rgb_std >= rgb_top) & (rgb_std <= rgb_bottom)])
+
+depth_std   = np.array(list(depth_std.values()))
+depth_top = np.percentile(depth_std , percentile)
+depth_bottom = np.percentile(depth_std , 100 - percentile)
+final_result['mean_depth_std']   = np.std(depth_std[(depth_std >= depth_top) & (depth_std <= depth_bottom)])
+
+# with open(f'./{str(save_folder)}/result_final.pkl', 'wb') as fp:
+#     pickle.dump(final_result, fp)
+
 pprint(final_result)
 
 

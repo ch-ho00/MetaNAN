@@ -90,10 +90,8 @@ def render_single_image(ray_sampler: RaySampler,
         all_ret['fine'] = RaysOutput.empty_ret()
     N_rays = ray_sampler.rays_o.shape[0]
 
-    if model.args.num_latent > 1:
-        featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None].to(device), featmaps['latent_imgs']], dim=1) if model.args.include_orig else  featmaps['latent_imgs']
-    else:
-        featmaps['latent_imgs'] = torch.cat([org_src_rgbs[0].permute(0,3,1,2)[:,None].to(device), src_rgbs[0].permute(0,3,1,2)[:,None]], dim=1) if model.args.include_orig else src_rgbs[0].permute(0,3,1,2)[:,None]
+    if model.args.num_latent == 1:
+        featmaps['latent_imgs'] = src_rgbs[0].permute(0,3,1,2)[:,None]
 
 
     for i in tqdm(range(0, N_rays, args.chunk_size)):
@@ -101,9 +99,9 @@ def render_single_image(ray_sampler: RaySampler,
         ray_batch = ray_sampler.specific_ray_batch(slice(i, i + args.chunk_size, 1), clean=args.sup_clean)
         if model.args.num_latent > 1:
             src_latent_camera[0,:,0] = ray_batch['src_cameras']
-            ray_batch['src_cameras'] = torch.cat([ray_batch['src_cameras'][:,:,None], src_latent_camera], dim=2) if model.args.include_orig else src_latent_camera
+            ray_batch['src_cameras'] = src_latent_camera
         else:
-            ray_batch['src_cameras'] = ray_batch['src_cameras'].repeat(1,1,2) if model.args.include_orig else ray_batch['src_cameras']
+            ray_batch['src_cameras'] = ray_batch['src_cameras']
         ray_batch['src_cameras'] = ray_batch['src_cameras'].reshape(1,-1,34)
 
         if args.sum_filtered:
