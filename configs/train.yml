@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : degAE_condRenderVis2_targetRef_excludeProcRGB_woNoiseEst_WeightSumFilter_preBPN_latent1e0 #origFeat_targetNov_origRgbFeat_preBPN_woProcRgbSample_StepDecay40k-2LatentLoss1e0_SumFilter # 0.99995Annea #origFeat_run_400x600_preBPN64_weightSum_subsample2_novelView_ablation
+expname                     : test #degAE_condRenderVis2_targetRef_excludeProcRGB_woNoiseEst_WeightSumFilter_preBPN_latent1e0 #origFeat_targetNov_origRgbFeat_preBPN_woProcRgbSample_StepDecay40k-2LatentLoss1e0_SumFilter # 0.99995Annea #origFeat_run_400x600_preBPN64_weightSum_subsample2_novelView_ablation
 render_stride               : 2  # used in evaluation
 distributed                 : False
 

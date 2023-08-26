@@ -2,7 +2,7 @@
 
 # ckpt_path     : ckpts_test/orig_nan_255000.pth
 # ckpt_path                   :  ckpts_test/degae_ablation_255000.pth
-ckpt_path                   :  ckpts_test/degae_preBPN_weightsum_ablation_255000.pth
+ckpt_path                   :  out/degae_targetRef_origRgbFeat_WeightSum_preBPN_woProcRgbSample_RevisedStepDecay40k-2_LatentLoss1e0__tar__full__pre__3_3_3__views_attn__l1/model_010000.pth
 # ckpt_path                   : ckpts_test/DegAE_AllCondRenderer_preBPN_weightSumFilter_perImg_ftEmbed_embedLoss1e3_200000.pth
 distributed                 : False
 no_load_opt                 : True
@@ -12,7 +12,7 @@ include_target              : True
 views_attn                  : True
 kernel_size                 : [3, 3]
 pre_net                     : True
-noise_feat                  : True
+noise_feat                  : False
 rgb_weights                 : True
 
 ##
@@ -20,6 +20,7 @@ degae_feat                  : True
 weightsum_filtered          : True
 bpn_prenet                  : True
 bpn_per_img                 : True
+exclude_proc_rgb            : True
 cond_renderer               : False #True
 basis_dim                   : 64
 
@@ -29,7 +30,7 @@ eval_scenes  : fern
 
 ### TESTING
 chunk_size    : 2048
-render_stride : 1
+render_stride : 4
 
 ## ADDITIONAL
 same          : True

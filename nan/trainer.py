@@ -39,6 +39,8 @@ class Trainer:
             from configs.local_setting_objaverse import OUT_DIR, LOG_DIR
         elif args.train_dataset == 'deblur_scene':
             from configs.local_setting_deblur import OUT_DIR, LOG_DIR
+        elif args.train_dataset == 'llff':
+            from configs.local_setting import OUT_DIR, LOG_DIR
 
 
         self.args = args
@@ -248,7 +250,10 @@ class Trainer:
 
         if self.args.lambda_latent_loss > 0:
             decay = 2 ** - (global_step // 40000)
-            latent_loss = F.l1_loss(proc_src_rgbs, ray_sampler.src_rgbs_clean.to(self.device))
+            if self.args.include_target:
+                latent_loss = F.l1_loss(proc_src_rgbs[0,1:], ray_sampler.src_rgbs_clean[0,1:].to(self.device))                
+            else:
+                latent_loss = F.l1_loss(proc_src_rgbs, ray_sampler.src_rgbs_clean.to(self.device))
             loss += latent_loss * self.args.lambda_latent_loss * decay
             self.scalars_to_log['train/latent_loss'] = latent_loss * self.args.lambda_latent_loss * decay
 

@@ -31,6 +31,7 @@ from nan.dataloaders.llff_data_utils import load_llff_data, batch_parse_llff_pos
 from nan.dataloaders.basic_dataset import Mode
 import os, glob
 import json
+import imageio
 
 
 class ObjaverseSceneDataset(NoiseDataset, ABC):
@@ -77,15 +78,17 @@ class ObjaverseSceneDataset(NoiseDataset, ABC):
             matrix = matrix @ blender2opencv
 
             c2w_mats.append(matrix)
-            if far < np.linalg.norm(matrix[:3,-1]):
-                far = np.linalg.norm(matrix[:3,-1]) * 2
+            far = 1.333
+            # if far < np.linalg.norm(matrix[:3,-1]):
+            #     far = np.linalg.norm(matrix[:3,-1]) * 2
 
         # 0.6194058656692505
         camera_angle_x = data['camera_angle_x']
         f = 0.5 * 800 / np.tan(0.5 * camera_angle_x)  # original focal length
         f *= 400 / 800  # modify focal length to match size self.img_wh
-        w, h = 400 , 400
 
+        sh = imageio.imread(rgb_files[0]).shape
+        w, h = sh[:2]
         intrinsics = np.array([[f, 0, w / 2., 0],
                             [0, f, h / 2., 0],
                             [0, 0, 1, 0],

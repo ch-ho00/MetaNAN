@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : blurhouse2_bpn_latent1e0_whiteBkgd_far2 #test_wo-1_bpn_rerun #nan_blurpool_targetNov_noisySrc_plain_src8 #nan_targetNov_woGroupConv_blurLoss0_latentLoss1e0_src5_lat3 #nan_revised_targetNov_blurTargetOnly_reconst1e0_woOrig_src5 #nan_targetNov_blurTarget_perImgBasis_src3_lat5_woOrig #nan_targetRef_AnnealReconstLoss1e-2_groupBPN_commonBasis_includeOrig_src3_lat5 #_plainBPN_src8 # 
+expname                     : test_revise_intrinsic #blurhouse2_bpn_latent1e0_whiteBkgd_far2 #test_wo-1_bpn_rerun #nan_blurpool_targetNov_noisySrc_plain_src8 #nan_targetNov_woGroupConv_blurLoss0_latentLoss1e0_src5_lat3 #nan_revised_targetNov_blurTargetOnly_reconst1e0_woOrig_src5 #nan_targetNov_blurTarget_perImgBasis_src3_lat5_woOrig #nan_targetRef_AnnealReconstLoss1e-2_groupBPN_commonBasis_includeOrig_src3_lat5 #_plainBPN_src8 # 
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -24,21 +24,19 @@ degae_feat_ckpt             : ./ckpts/0619.pth #./ckpts/model_045000.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-sum_filtered                : True
+sum_filtered                : False #True
 weightsum_filtered          : False
-bpn_prenet                  : True
-bpn_per_img                 : True
+bpn_prenet                  : False #True
+bpn_per_img                 : False #True
 ft_embed_fc                 : False
 cond_renderer               : False
 blur_render                 : False
-train_scenes                : [blurhouse2]
+train_scenes                : [blurindoor]
 lambda_latent_loss          : 1.0
 lambda_blur_loss            : 0.0
 num_source_views            : 8
 num_latent                  : 1
-group_conv                  : False
 channel_upfactor            : 2
-include_orig                : False
 white_bkgd                  : True
 ### TESTING
 chunk_size                  : 2048 #2048 # can be biggerd depend on the gpu memory
@@ -51,7 +49,7 @@ N_samples                   : 64
 inv_uniform                 : True
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 1500
+i_img                       : 1000
 i_print                     : 100
 i_tb                        : 20
 i_weights                   : 5000
