@@ -59,43 +59,39 @@ import math
 import torch
 
 class CondSeqential(nn.Module):
-    def __init__(self, sequential_module, embedding_size=512, cond_embed_size=8):
+    def __init__(self, sequential_module, embedding_size=512, cond_embed_size=16):
         super().__init__()
         self.embedding_size = embedding_size
         self.cond_embed_size = cond_embed_size
         self.original_sequential = sequential_module
-        self.modified_sequential, self.last_predictor = self._modify_sequential(sequential_module)
+        self.modified_sequential, self.cond_linear = self._modify_sequential(sequential_module)
         self.embedding_layer = nn.Linear(embedding_size, cond_embed_size)
         self.init_weights()
 
     def _modify_sequential(self, sequential_module):
         modified_layers = nn.ModuleList()
-        linear_count = 0
-        last_predictor = None
+        cond_linear = None
         for layer in sequential_module:
-            if isinstance(layer, nn.Linear):
-                linear_count += 1
-                if linear_count == 2:
-                    modified_layer = nn.Linear(layer.in_features + self.cond_embed_size, layer.out_features - 1)
-                    modified_layers.append(modified_layer)
-                    last_predictor = nn.Linear(layer.in_features, 1) # for predicting the last feature
-                    continue
-            modified_layers.append(layer)
-        return modified_layers, last_predictor
+            if isinstance(layer, nn.Linear) and cond_linear is None:
+                half_out_features = layer.out_features // 2
+                modified_layer = nn.Linear(layer.in_features, half_out_features)
+                modified_layers.append(modified_layer)
+                
+                cond_linear = nn.Linear(layer.in_features + self.cond_embed_size, half_out_features)
+            else:
+                modified_layers.append(layer)
+        return modified_layers, cond_linear
 
     def forward(self, x, embedding):
-        linear_count = 0
-        for orig_layer, mod_layer in zip(self.original_sequential, self.modified_sequential):
-            if isinstance(orig_layer, nn.Linear):
-                linear_count += 1
-            if isinstance(orig_layer, nn.Linear) and linear_count == 2:
-                embedded = self.embedding_layer(embedding)
-                sh = list(x.shape[:-1])
-                embedded = embedded.expand(*sh + [self.cond_embed_size,])
-                x_base = torch.cat([x, embedded], dim=-1)
-                x_base = mod_layer(x_base)
-                x_last_out = self.last_predictor(x)
-                x = torch.cat([x_base, x_last_out], dim=-1)
+        embedded = self.embedding_layer(embedding)
+        sh = list(x.shape[:-1])
+        embedded = embedded.expand(*sh + [self.cond_embed_size,])
+
+        for idx, (orig_layer, mod_layer) in enumerate(zip(self.original_sequential, self.modified_sequential)):
+            if isinstance(orig_layer, nn.Linear) and idx == 0:
+                x_uncond = mod_layer(x)
+                x_cond = self.cond_linear(torch.cat([x, embedded], dim=-1))
+                x = torch.cat([x_uncond, x_cond], dim=-1)
             else:
                 x = orig_layer(x)
         return x
@@ -117,8 +113,8 @@ class CondSeqential(nn.Module):
                 init_linear(layer)
 
         init_linear(self.embedding_layer)
+        init_linear(self.cond_linear)
 
-        init_linear(self.last_predictor)
 
 
 class KernelBasis(nn.Module):
@@ -195,8 +191,8 @@ class NanMLP(nn.Module):
 
         if self.args.cond_renderer:
             # self.base_fc         =  CondSeqential(self.base_fc        )
-            self.vis_fc          =  CondSeqential(self.vis_fc         )
-            # self.vis_fc2         =  CondSeqential(self.vis_fc2        )
+            # self.vis_fc          =  CondSeqential(self.vis_fc         )
+            self.vis_fc2         =  CondSeqential(self.vis_fc2        )
 
         # positional encoding
         self.pos_enc_d = 16
@@ -256,19 +252,24 @@ class NanMLP(nn.Module):
         ext_feat, weight = self.compute_extended_features(ray_diff, rgb_feat, mask, num_valid_obs, sigma_est, degrade_vec=degrade_vec)
         torch.cuda.empty_cache()
 
-        # if isinstance(self.base_fc, CondSeqential):
-        #     x = self.base_fc(ext_feat, degrade_vec)  # ((32 + 3) x 3) --> MLP --> (32
-        # else:
-        x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32
+        if isinstance(self.base_fc, CondSeqential):
+            x = self.base_fc(ext_feat, degrade_vec)  # ((32 + 3) x 3) --> MLP --> (32
+        else:
+            x = self.base_fc(ext_feat)  # ((32 + 3) x 3) --> MLP --> (32
+
         if isinstance(self.vis_fc, CondSeqential):
             x_vis = self.vis_fc(x * weight, degrade_vec)        
         else:
             x_vis = self.vis_fc(x * weight)
+
         x_res, vis = torch.split(x_vis, [x_vis.shape[-1] - 1, 1], dim=-1)
         vis = torch.sigmoid(vis) * mask
         x = x + x_res
-        vis = self.vis_fc2(x * vis) * mask
 
+        if isinstance(self.vis_fc2, CondSeqential):
+            vis = self.vis_fc2(x * vis, degrade_vec) * mask
+        else:
+            vis = self.vis_fc2(x * vis) * mask
         torch.cuda.empty_cache()
 
         rho_out, rho_globalfeat = self.compute_rho(x[:, :, 0, 0], vis[:, :, 0, 0], num_valid_obs[:, :, 0, 0], degrade_vec)
