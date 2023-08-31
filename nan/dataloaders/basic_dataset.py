@@ -142,8 +142,8 @@ class BurstDataset(Dataset, ABC):
             if self.args.train_dataset == 'deblur':
                 self.scenes = self.args.eval_scenes if mode != Mode.train else [scene for scene in self.scenes if scene not in self.args.eval_scenes]
             else:
-                self.scenes = ['blurcozy2room',  'blurpool' ,  'blurwine',  'roomblur_low', 'blurfactory'  ,  'blurtanabata',  'dark'    ,  'roomblur_high']
-                # self.scenes = ['blurfactory', 'blurcozy2room', 'blurpool', 'blurtanabata'] 
+                # self.scenes = ['blurcozy2room',  'blurpool' ,  'blurwine',  'roomblur_low', 'blurfactory'  ,  'blurtanabata',  'dark'    ,  'roomblur_high']
+                self.scenes = ['blurfactory', 'blurcozy2room', 'blurpool', 'blurtanabata'] 
             
             print(f"############ Loading {s} Dataset #############")
             for cnt, scene in enumerate(self.scenes):

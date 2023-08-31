@@ -96,6 +96,13 @@ class ObjaverseDataset(NoiseDataset, ABC):
         c2w_mats = np.array(c2w_mats)
         c2w_mats = recenter_poses(c2w_mats)
 
+        bds = [np.array([near, far]) for _ in frames] 
+        bds  = np.array(bds)
+        scale = 1. / (bds.min() * 0.75)
+
+        bds *= scale
+        c2w_mats[:, :3, 3] *= scale
+
         camera_angle_x = data['camera_angle_x']
         f = 0.5 * 800 / np.tan(0.5 * camera_angle_x)  # original focal length
         f *= w / 800  # modify focal length to match size self.img_wh
@@ -107,10 +114,9 @@ class ObjaverseDataset(NoiseDataset, ABC):
 
         intrinsics = [intrinsics for _ in frames]
         print("Dimension", [round(dim, 3) for dim in data['dimensions']], " //  Radius", data['radius']) 
-        print("Near Far : ",near, far)
-        bds = [np.array([near, far]) for _ in frames] 
+        print("Near Far : ",bds[0], bds[1])
 
-        return c2w_mats, np.array(intrinsics), np.array(bds), rgb_files
+        return c2w_mats, np.array(intrinsics), bds, rgb_files
 
 
 

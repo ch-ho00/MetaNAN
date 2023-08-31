@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : general_deblur_BPN_src5_lat3_reviseFxy_wRecenter_near0.1R_far2R #_firstRun #nan_tanabata_general_burst_targetNov_latentLoss1e0_src5_lat3 #_wGroupConv_latentLoss1e0_src5_lat3 #_latentLoss1e0_src5
+expname                     : general_deblur_BPN_src5_lat3_latloss1e0_up1dim64_whiteBkgd_near0.1R_far2R
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -35,6 +35,8 @@ lambda_blur_loss            : 0.0
 num_source_views            : 5
 num_latent                  : 3
 center_ratio                : 0.6
+channel_upfactor            : 1
+basis_dim                   : 64
 ### TESTING
 chunk_size                  : 2048 #2048 # can be biggerd depend on the gpu memory
 clean_src_imgs              : False
@@ -44,7 +46,7 @@ add_burst_noise             : False
 N_importance                : 64
 N_samples                   : 64
 inv_uniform                 : True
-white_bkgd                  : False
+white_bkgd                  : True
 
 ### CONSOLE AND TENSORBOARD
 i_img                       : 1500

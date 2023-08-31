@@ -379,15 +379,15 @@ class DeblurBPN(nn.Module):
             nn.ELU(inplace=True),
             nn.Conv2d(64, 32, kernel_size=3, dilation=1, stride=2, padding=0),
             nn.ELU(inplace=True),
-            nn.Conv2d(32, 32, kernel_size=3, dilation=1, stride=2, padding=0),
-            nn.ELU(inplace=True),
-            nn.Conv2d(32, 16, kernel_size=1, dilation=1, stride=1, padding=0),
-            nn.Conv2d(16, 6, kernel_size=1, dilation=1, stride=1, padding=0),
+            # nn.Conv2d(32, 32, kernel_size=3, dilation=1, stride=2, padding=0),
+            # nn.ELU(inplace=True),
+            # nn.Conv2d(32, 16, kernel_size=1, dilation=1, stride=1, padding=0),
+            nn.Conv2d(32, 6, kernel_size=1, dilation=1, stride=1, padding=0),
         )
 
         for module in self.offset_conv.modules():
             if isinstance(module, nn.Conv2d):
-                init.normal_(module.weight, mean=0, std=1e-6)
+                init.normal_(module.weight, mean=0, std=1e-3)
                 if module.bias is not None:
                     init.constant_(module.bias, 0)
 

@@ -23,8 +23,8 @@ CONFIG_EVAL_DICT = LocalSettingDict()
 CONFIG_EVAL_DICT[PC_NAME] = 'eval_objaverse.yml'
 
 ROOT_DIR     = ROOT_DIR_DICT[PC_NAME]
-OUT_DIR      = ROOT_DIR / 'out'
-LOG_DIR      = ROOT_DIR / 'logs_objaverse'
+OUT_DIR      = ROOT_DIR / 'out_deblur'
+LOG_DIR      = ROOT_DIR / 'logs_deblur'
 DATA_DIR     = ROOT_DIR.parent / 'data'
 FIG_DIR      = ROOT_DIR / 'figures'
 
