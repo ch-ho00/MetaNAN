@@ -1,10 +1,10 @@
 ### INPUT
-expname                     : nan_tanabata_general_burst_targetNov_latentLoss1e0_src5_lat3 #_wGroupConv_latentLoss1e0_src5_lat3 #_latentLoss1e0_src5
+expname                     : general_deblur_BPN_src5_lat3_reviseFxy_wRecenter_near0.1R_far2R #_firstRun #nan_tanabata_general_burst_targetNov_latentLoss1e0_src5_lat3 #_wGroupConv_latentLoss1e0_src5_lat3 #_latentLoss1e0_src5
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
 ## dataset
-train_dataset               : deblur
+train_dataset               : objaverse #deblur
 eval_dataset                : deblur_test
 # eval_scenes                 : ['blurstair'] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
 
@@ -27,22 +27,18 @@ img_size                    : 256
 sum_filtered                : True
 weightsum_filtered          : False
 bpn_prenet                  : True
-bpn_per_img                 : True
 ft_embed_fc                 : False
 cond_renderer               : False
 blur_render                 : False
-eval_scenes                 : [blurtanabata] # 
 lambda_latent_loss          : 1.0
 lambda_blur_loss            : 0.0
 num_source_views            : 5
 num_latent                  : 3
-group_conv                  : False
-channel_upfactor            : 2
-include_orig                : False
+center_ratio                : 0.6
 ### TESTING
 chunk_size                  : 2048 #2048 # can be biggerd depend on the gpu memory
 clean_src_imgs              : False
-add_burst_noise             : True
+add_burst_noise             : False
 
 ### RENDERING
 N_importance                : 64
@@ -51,7 +47,7 @@ inv_uniform                 : True
 white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 2500
+i_img                       : 1500
 i_print                     : 100
 i_tb                        : 20
 i_weights                   : 5000

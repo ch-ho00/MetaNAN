@@ -192,7 +192,7 @@ class DeblurDataset(NoiseDataset, ABC):
 
     def add_single_scene(self, i, scene_path, holdout):
         _, poses, bds, render_poses, i_test, rgb_files = self.load_scene(scene_path, None)
-        print(scene_path, len(poses))
+        
         near_depth = bds.min()
         far_depth = bds.max()
         intrinsics, c2w_mats = batch_parse_llff_poses(poses)
@@ -214,6 +214,7 @@ class DeblurDataset(NoiseDataset, ABC):
         self.render_depth_range.extend([[near_depth, far_depth]] * num_render)
         self.render_train_set_ids.extend([i] * num_render)
         self.render_ids.extend(i_render)
+        print(scene_path, len(poses), len(i_test), near_depth, far_depth)
 
 
 class DeblurTestDataset(DeblurDataset):

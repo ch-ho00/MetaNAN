@@ -180,9 +180,9 @@ class NANScheme(nn.Module):
         if args.pre_net:
             if args.bpn_prenet:
                 if args.num_latent > 1:
-                    self.pre_net = DeblurBPN(n_latent_layers=args.num_latent, burst_length=1, group_conv=args.group_conv, channel_upfactor=args.channel_upfactor, skip_connect=args.skip_connect).to(device)
+                    self.pre_net = DeblurBPN(basis_dim=args.basis_dim, n_latent_layers=args.num_latent, channel_upfactor=args.channel_upfactor).to(device)
                 else:
-                    self.pre_net = BPN(bpn_per_img=args.bpn_per_img, burst_length=1, basis_size=args.basis_dim).to(device)
+                    self.pre_net = BPN(burst_length=1, basis_size=args.basis_dim).to(device)
             else:
                 if args.weightsum_filtered:
                     self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(13, 13), sigma=(1.5, 1.5)).to(device)                

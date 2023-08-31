@@ -25,8 +25,7 @@ from .nerf_synthetic import *
 from .deblur_data import *
 from .deblur_scene_data import *
 from .objaverse_scene_data import *
-# from .dtu_data import *
-# from .seanerf_data import *
+from .objaverse_data import *
 
 dataset_dict = {
     'spaces': SpacesFreeDataset,
@@ -43,6 +42,8 @@ dataset_dict = {
     'deblur_scene_test'         : DeblurSceneTestDataset,
     'objaverse_scene'           : ObjaverseSceneTrainDataset,
     'objaverse_scene_test'      : ObjaverseSceneTestDataset,
+    'objaverse'                 : ObjaverseTrainDataset,
+    'objaverse_test'            : ObjaverseTestDataset,
     
     # 'dtu'       : DTUTrainDataset,
     # 'dtu_test'  : DTUTestDataset,

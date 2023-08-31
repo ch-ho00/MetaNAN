@@ -35,7 +35,7 @@ alpha=0.9998
 
 class Trainer:
     def __init__(self, args):
-        if args.train_dataset == 'objaverse_scene':
+        if 'objaverse' in args.train_dataset:
             from configs.local_setting_objaverse import OUT_DIR, LOG_DIR
         elif args.train_dataset == 'deblur_scene':
             from configs.local_setting_deblur import OUT_DIR, LOG_DIR
@@ -427,6 +427,7 @@ class Trainer:
         cnt = 0
         torch.cuda.empty_cache()
         psnr_results = {}
+        psnr_scene_results = {}
         val_interval = 4 if self.args.eval_dataset == 'llff_test' else 2
         for val_idx in range(len(self.val_dataset)):
             if val_idx % len(self.val_dataset.render_rgb_files) in [0, (len(self.val_dataset.render_rgb_files) - 1) // 2, len(self.val_dataset.render_rgb_files) - 1]:
@@ -444,11 +445,19 @@ class Trainer:
             H, W = tmp_ray_sampler.H, tmp_ray_sampler.W
             gt_img = tmp_ray_sampler.rgb_clean.reshape(H, W, 3)
             eval_gain = val_data['eval_gain']
+            scene_name = val_data['rgb_path'].split('/')[-3]
             psnr = self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_gain{eval_gain}_iter{cnt}", visualize=visualize)
+
             if eval_gain in psnr_results.keys():
                 psnr_results[eval_gain].append(psnr)
             else:
                 psnr_results[eval_gain] = [psnr]
+
+            if self.args.train_dataset == 'objaverse' and self.args.eval_dataset == 'deblur_test':
+                if scene_name in psnr_scene_results.keys():
+                    psnr_scene_results[scene_name] += [psnr]
+                else:
+                    psnr_scene_results[scene_name] = [psnr]
 
             del tmp_ray_sampler, val_data, gt_img 
             torch.cuda.empty_cache()
@@ -458,6 +467,10 @@ class Trainer:
             self.writer.add_scalar('val/' + f'psnr_gain{k}', np.mean(psnr_results[k]), global_step)
             for idx, psnr in enumerate(psnr_results[k]):
                 self.writer.add_scalar('val/' + f'psnr_gain{k}/img{idx}', psnr, global_step)
+
+        if len(psnr_scene_results.keys()) > 0:
+            for k in psnr_scene_results.keys():
+                self.writer.add_scalar('val/' + f'scene/{k}', np.mean(psnr_scene_results[k]), global_step)
 
         print('Logging current training view...')
         tmp_ray_train_sampler = RaySampler(train_data, self.device,

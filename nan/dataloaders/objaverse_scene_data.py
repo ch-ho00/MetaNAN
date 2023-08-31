@@ -59,7 +59,7 @@ class ObjaverseSceneDataset(NoiseDataset, ABC):
         return np.array([j for j in np.arange(int(N)) if j not in i_test]) 
 
     @staticmethod
-    def load_scene(folder):
+    def load_scene(folder, forward_facing=True):
         pose_file = folder / 'transforms.json'  # Update the file name to read from JSON
         
         # Load the JSON data
@@ -69,39 +69,44 @@ class ObjaverseSceneDataset(NoiseDataset, ABC):
         frames = data['frames']
         blender2opencv = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
         # Extract RGB files
-        rgb_files = [frame['file_path'] for frame in frames]
+        rgb_files = [os.path.join(folder, frame['file_path'].split(os.sep)[-1]) for frame in frames]
+
+        sh = imageio.imread(rgb_files[0]).shape
+        h, w = sh[:2]
+        forward_facing = True if 'dimensions' not in data.keys() else False
 
         c2w_mats = []
         far = 0
+        near = 100
         for frame in frames:
             matrix = np.array(frame['transform_matrix'])
             matrix = matrix @ blender2opencv
-
+            matrix[:3, -1] = matrix[:3, -1]
             c2w_mats.append(matrix)
-            far = 1.333
-            # if far < np.linalg.norm(matrix[:3,-1]):
-            #     far = np.linalg.norm(matrix[:3,-1]) * 2
+            if forward_facing:
+                near    = 0.1
+                far     = 0.6
+            else:
+                if far < np.linalg.norm(matrix[:3,-1]):
+                    far = np.linalg.norm(matrix[:3,-1]) * 2
 
-        # 0.6194058656692505
+                if near > np.linalg.norm(matrix[:3,-1]) * 0.1:
+                    near = np.linalg.norm(matrix[:3,-1]) * 0.1
+
         camera_angle_x = data['camera_angle_x']
         f = 0.5 * 800 / np.tan(0.5 * camera_angle_x)  # original focal length
-        f *= 400 / 800  # modify focal length to match size self.img_wh
+        f *= w / 800  # modify focal length to match size self.img_wh
 
-        sh = imageio.imread(rgb_files[0]).shape
-        w, h = sh[:2]
         intrinsics = np.array([[f, 0, w / 2., 0],
-                            [0, f, h / 2., 0],
-                            [0, 0, 1, 0],
-                            [0, 0, 0, 1]])
+                               [0, f, h / 2., 0],
+                               [0, 0, 1, 0],
+                               [0, 0, 0, 1]])
 
-        # If you still need the intrinsics, you can extract them similar to above 
-        # (assuming they're in the JSON). Otherwise, the following is a placeholder.
-        intrinsics = [intrinsics for _ in frames]  # Placeholder - update if needed
 
-        # Assuming 'near' and 'far' are not provided in the JSON, 
-        # the following is a placeholder.
-        print(far)
-        bds = [np.array([0.1, far]) for _ in frames]  # Placeholder - update if needed
+        intrinsics = [intrinsics for _ in frames]
+        print("Dimension", data['dimensions'], " //  Radius", data['radius']) 
+        print("Near Far : ",near, far)
+        bds = [np.array([near, far]) for _ in frames]
 
         return np.array(c2w_mats), np.array(intrinsics), np.array(bds), rgb_files
 

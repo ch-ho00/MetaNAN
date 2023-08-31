@@ -17,7 +17,7 @@ from basicsr.utils.img_process_util import filter2D
 from basicsr.data.degradations import circular_lowpass_kernel, random_mixed_kernels
 import itertools
 from pprint import pprint
-
+import glob
 
 class Mode(Enum):
     train = "train"
@@ -107,8 +107,19 @@ class BurstDataset(Dataset, ABC):
         self.mode = mode
         self.num_source_views = args.num_source_views
         self.random_crop = random_crop
+        s = 'Test ' if mode != Mode.train else ' Train'
 
-        if self.args.train_dataset == 'objaverse_scene':
+        if self.args.train_dataset == 'objaverse' and mode == Mode.train:
+
+            scene_root = os.path.join(DATA_DIR, self.dir_name)
+            holdout = 8
+            self.holdout = holdout            
+            self.scenes_dirs = glob.glob(f'{scene_root}/final_render/*/*')
+            for i, scene_path in enumerate(self.scenes_dirs):
+                print(scene_path)
+                self.add_single_scene(i, scene_path, holdout)
+
+        elif self.args.train_dataset == 'objaverse_scene':
             assert isinstance(args.train_scenes, list)
             assert len(args.train_scenes) == 1
             scene_root = os.path.join(DATA_DIR, self.dir_name, self.args.train_scenes[0])
@@ -124,40 +135,21 @@ class BurstDataset(Dataset, ABC):
             self.holdout = holdout
             self.add_single_scene(0, Path(scene_root), holdout)
 
-        elif self.args.train_dataset == 'deblur':
+        elif self.args.train_dataset == 'deblur' or self.args.train_dataset == 'objaverse':
 
-            self.scenes = ['blurcozy2room',  'blurpool'    ,  'blurwine',  'roomblur_low', 'blurfactory'  ,  'blurtanabata',  'dark'    ,  'roomblur_high']
+            self.scenes = ['blurcozy2room',  'blurpool' ,  'blurwine',  'roomblur_low', 'blurfactory'  ,  'blurtanabata',  'dark'    ,  'roomblur_high']
             self.scenes.sort()
-            self.scenes = self.args.eval_scenes if mode != Mode.train else [scene for scene in self.scenes if scene not in self.args.eval_scenes]
+            if self.args.train_dataset == 'deblur':
+                self.scenes = self.args.eval_scenes if mode != Mode.train else [scene for scene in self.scenes if scene not in self.args.eval_scenes]
+            else:
+                self.scenes = ['blurcozy2room',  'blurpool' ,  'blurwine',  'roomblur_low', 'blurfactory'  ,  'blurtanabata',  'dark'    ,  'roomblur_high']
+                # self.scenes = ['blurfactory', 'blurcozy2room', 'blurpool', 'blurtanabata'] 
             
-            s = 'Test ' if mode != Mode.train else ' Train'
             print(f"############ Loading {s} Dataset #############")
             for cnt, scene in enumerate(self.scenes):
                 data_root = os.path.join(DATA_DIR, self.dir_name)
                 scene_root = os.path.join(data_root, scene)
                 self.add_single_scene(cnt, Path(scene_root), holdout=8)
-
-        elif self.args.train_dataset == 'seanerf':
-            self.scenes = ['Curasao',  'IUI3-RedSea',  'JapaneseGradens-RedSea',  'Panama']
-            self.scenes.sort()
-            n_train_scenes = 3 
-            self.tmp_scenes = scenes[:n_train_scenes] if self.mode == Mode.train else scenes[n_train_scenes:]
-
-            for cnt, scene in enumerate(self.scenes):
-                data_root = os.path.join(DATA_DIR, self.dir_name)
-                scene_root = os.path.join(data_root, scene)
-                files = os.listdir(scene_root)
-
-                self.add_single_scene(cnt, Path(scene_root))
-
-
-        elif self.args.train_dataset == 'dtu':
-            self.scene_root = os.path.join(DATA_DIR, self.dir_name)
-            self.scene_dirs = os.listdir(self.scene_root)
-            self.scene_dirs = [os.path.join(self.scene_root, scene) for scene in self.scene_dirs]
-            self.scene_dirs.sort()
-            for i, scene_path in enumerate(self.scene_dirs):
-                self.add_single_scene(i, scene_path)
 
         else:
             self.scenes_dirs = self.pick_scenes(scenes)
@@ -175,7 +167,7 @@ class BurstDataset(Dataset, ABC):
             for i, scene_path in enumerate(self.scenes_dirs):
                 self.add_single_scene(i, scene_path)
 
-        print(f"Loaded img file = {len(self.render_rgb_files)}")
+        print(f"Loaded {s} Img File = {len(self.render_rgb_files)}")
         
     def pick_scenes(self, scenes):
         if len(scenes) > 0:
