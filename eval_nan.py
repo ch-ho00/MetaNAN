@@ -108,7 +108,7 @@ if not skip_forward:
             # Calculate LPIPS
             lpips_value = lpips_loss(pred_rgb_tensor, gt_rgb_tensor).item()
             # Calculate SSIM
-            ssim_value = pytorch_msssim.ssim(pred_rgb_tensor, gt_rgb_tensor).item()
+            ssim_value = pytorch_msssim.ssim(pred_rgb_tensor, gt_rgb_tensor, data_range=1, size_average=True).item()
             psnr_curr_img = img2psnr(pred_rgb_tensor, gt_rgb_tensor)
             print(gain_level, psnr_curr_img, ssim_value, lpips_value)
 

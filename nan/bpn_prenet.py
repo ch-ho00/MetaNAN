@@ -375,14 +375,14 @@ class DeblurBPN(nn.Module):
 
         self.bpn = BPN(n_latent_layers=n_latent_layers, basis_size=basis_dim, channel_upfactor=channel_upfactor)
         self.offset_conv = nn.Sequential(
-            nn.Conv2d(self.bpn.decode_channels[1] * (channel_upfactor if n_latent_layers > 1 else 1), 64, kernel_size=3, dilation=1, stride=2, padding=0),
+            nn.Conv2d(self.bpn.decode_channels[1] * (channel_upfactor if n_latent_layers > 1 else 1), 128, kernel_size=3, dilation=1, stride=2, padding=0),
             nn.ELU(inplace=True),
-            nn.Conv2d(64, 32, kernel_size=3, dilation=1, stride=2, padding=0),
+            nn.Conv2d(128, 64, kernel_size=3, dilation=1, stride=2, padding=0),
             nn.ELU(inplace=True),
+            nn.Conv2d(64, 6, kernel_size=1, dilation=1, stride=1, padding=0),
             # nn.Conv2d(32, 32, kernel_size=3, dilation=1, stride=2, padding=0),
             # nn.ELU(inplace=True),
             # nn.Conv2d(32, 16, kernel_size=1, dilation=1, stride=1, padding=0),
-            nn.Conv2d(32, 6, kernel_size=1, dilation=1, stride=1, padding=0),
         )
 
         for module in self.offset_conv.modules():

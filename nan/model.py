@@ -220,8 +220,8 @@ class NANScheme(nn.Module):
             params_list.append({'params': self.net_fine.parameters(), 'lr': self.args.lrate_mlp})
 
         if self.args.num_latent > 1:
-            params_list.append({'params': self.pre_net.bpn.parameters(), 'lr': self.args.lrate_feature  * 1e-1})
-            params_list.append({'params': self.pre_net.offset_conv.parameters(), 'lr': self.args.lrate_feature * 1e-1})                
+            params_list.append({'params': self.pre_net.bpn.parameters(), 'lr': self.args.lrate_feature})
+            params_list.append({'params': self.pre_net.offset_conv.parameters(), 'lr': self.args.lrate_feature * 1e-2})                
 
         elif self.args.pre_net:
             params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})

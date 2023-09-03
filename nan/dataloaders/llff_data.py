@@ -191,7 +191,7 @@ class COLMAPDataset(NoiseDataset, ABC):
             if random.random() < 0.5:
                 rgb_ref = np.flip(rgb_ref, axis=-2).copy()
 
-            white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
+            white_level = (10 ** -torch.rand(1)) * 0.4 + 0.6
         else:
             white_level = torch.Tensor([1])
 
@@ -372,7 +372,7 @@ class LLFFTestDataset(COLMAPDataset):
     def apply_transform(self, rgb, camera, src_rgbs, src_cameras):
         if self.mode is Mode.train and self.random_crop:
             # crop_h = np.random.randint(low=320, high=850) // 128 * 128
-            crop_h = 384 #crop_h + 1 if crop_h % 2 == 1 else crop_h
+            crop_h = 512 #384 #crop_h + 1 if crop_h % 2 == 1 else crop_h
             crop_w = 512 #int(400 * 600 / crop_h // 128 * 128) # 350 * 550
             crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
             rgb, camera, src_rgbs, src_cameras = random_crop(rgb, camera, src_rgbs, src_cameras,

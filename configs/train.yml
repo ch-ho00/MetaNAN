@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : test #degAE_condRenderVis2_targetRef_excludeProcRGB_woNoiseEst_WeightSumFilter_preBPN_latent1e0 #origFeat_targetNov_origRgbFeat_preBPN_woProcRgbSample_StepDecay40k-2LatentLoss1e0_SumFilter # 0.99995Annea #origFeat_run_400x600_preBPN64_weightSum_subsample2_novelView_ablation
+expname                     : degAE_fixWL_nhead3_targetRef_512x512_includeProcRGB_wNoiseEst_WeightSumFilter_preBPN_dim64_latent1e0 #origFeat_targetNov_origRgbFeat_preBPN_woProcRgbSample_StepDecay40k-2LatentLoss1e0_SumFilter # 0.99995Annea #origFeat_run_400x600_preBPN64_weightSum_subsample2_novelView_ablation
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -31,9 +31,9 @@ lambda_latent_loss          : 1.0
 lambda_embed_loss           : 0
 bpn_prenet                  : True
 bpn_per_img                 : True
-ft_embed_fc                 : True
-cond_renderer               : True
-exclude_proc_rgb            : True
+ft_embed_fc                 : False
+cond_renderer               : False
+exclude_proc_rgb            : False
 basis_dim                   : 64
 
 ### TESTING
@@ -66,7 +66,7 @@ std                         : [-3.0, -0.5, -2.0, -0.5]
 views_attn                  : True
 kernel_size                 : [3, 3]
 pre_net                     : True
-noise_feat                  : False
+noise_feat                  : True
 rgb_weights                 : True
 
 local_rank                  : 0

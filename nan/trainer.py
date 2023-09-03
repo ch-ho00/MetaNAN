@@ -428,14 +428,14 @@ class Trainer:
         torch.cuda.empty_cache()
         psnr_results = {}
         psnr_scene_results = {}
-        val_interval = 4 if self.args.eval_dataset == 'llff_test' else 2
+        val_interval = 4 if self.args.eval_dataset == 'llff_test' else 1
         for val_idx in range(len(self.val_dataset)):
-            if val_idx % len(self.val_dataset.render_rgb_files) in [0, (len(self.val_dataset.render_rgb_files) - 1) // 2, len(self.val_dataset.render_rgb_files) - 1]:
-                visualize = True
-            elif global_step == 1 and val_idx > 0:
+            if global_step == 1 and val_idx > 0:
                 break
             elif (val_idx % len(self.val_dataset.render_rgb_files)) % val_interval == 0 :
-                visualize = False
+                visualize = True
+                # if val_idx % len(self.val_dataset.render_rgb_files) in [0, (len(self.val_dataset.render_rgb_files) - 1) // 2, len(self.val_dataset.render_rgb_files) - 1]:
+                #     visualize = True
             else:
                 continue
             cnt += 1 

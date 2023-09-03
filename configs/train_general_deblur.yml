@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : general_deblur_BPN_src5_lat3_latloss1e0_up1dim64_whiteBkgd_near0.1R_far2R
+expname                     : general_revisedObjaverse_plain_src5_NoWhiteBkgd #BPN_src5_lat3_lr1e0_-2_latloss1e0_up3dim64_NoWhiteBkgd_near0.1R_far2R
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -24,16 +24,16 @@ degae_feat_ckpt             : ./ckpts/0619.pth #./ckpts/model_045000.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-sum_filtered                : True
+sum_filtered                : False #True
 weightsum_filtered          : False
-bpn_prenet                  : True
+bpn_prenet                  : False #True
 ft_embed_fc                 : False
 cond_renderer               : False
 blur_render                 : False
-lambda_latent_loss          : 1.0
+lambda_latent_loss          : 0.0
 lambda_blur_loss            : 0.0
 num_source_views            : 5
-num_latent                  : 3
+num_latent                  : 1
 center_ratio                : 0.6
 channel_upfactor            : 1
 basis_dim                   : 64
@@ -46,7 +46,7 @@ add_burst_noise             : False
 N_importance                : 64
 N_samples                   : 64
 inv_uniform                 : True
-white_bkgd                  : True
+white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
 i_img                       : 1500

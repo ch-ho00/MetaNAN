@@ -232,7 +232,7 @@ class ObjaverseDataset(NoiseDataset, ABC):
         c2w_mats, intrinsics, bds, rgb_files = self.load_scene(scene_path)
         near_depth = bds.min()
         far_depth = bds.max()
-        i_test = [] if self.mode == Mode.train else self.get_i_test(poses.shape[0], holdout)
+        i_test = [] if self.mode == Mode.train else self.get_i_test(c2w_mats.shape[0], holdout)
         i_blurry = self.get_i_train(c2w_mats.shape[0], i_test)
         i_render = i_blurry if self.mode == Mode.train else i_test
         # Source images
