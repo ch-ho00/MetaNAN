@@ -152,6 +152,7 @@ class Trainer:
         :return:
         """
 
+        w = alpha ** global_step
         # Create object that generate and sample rays
         ray_sampler = RaySampler(train_data, self.device)
         N_rand = int(1.0 * self.args.N_rand * self.args.num_source_views / train_data['src_rgbs'][0].shape[0])
@@ -167,9 +168,8 @@ class Trainer:
             org_src_rgbs = ray_sampler.src_rgbs_clean.to(self.device)
         else:
             org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
-        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, white_level=ray_batch['white_level'], inference=False)
+        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, white_level=ray_batch['white_level'], weight=w)
 
-        w = alpha ** global_step
         self.scalars_to_log['weight'] = w 
         if self.args.sum_filtered:
             org_src_rgbs_ = proc_src_rgbs

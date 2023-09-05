@@ -132,7 +132,8 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument("--basis_dim", type=int, default=64)
         
         # blur render
-        parser.add_argument("--channel_upfactor", type=int, default=1)
+        parser.add_argument('--proc_rgb_feat', default=False, action="store_true")
+        parser.add_argument("--channel_upfactor", type=float, default=1)
         parser.add_argument('--clean_src_imgs', default=False, action="store_true")
         parser.add_argument('--skip_connect', default=True, action="store_false")
         parser.add_argument('--group_conv', default=False, action="store_true")

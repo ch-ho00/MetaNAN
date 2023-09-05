@@ -50,6 +50,11 @@ def render_single_image(ray_sampler: RaySampler,
     :param: N_importance: additional samples along each ray produced by importance sampling (for fine model)
     :return: {'coarse': {'rgb': numpy, 'depth': numpy, ...}, 'fine': {}}
     """
+    if eval_:
+        w = 0
+    else:
+        w = alpha ** global_step
+
     device = torch.device(f'cuda:{args.local_rank}')
     ray_render = RayRender(model=model, args=args, device=device, save_pixel=save_pixel)
     if args.clean_src_imgs:
@@ -57,7 +62,7 @@ def render_single_image(ray_sampler: RaySampler,
     else:
         org_src_rgbs = ray_sampler.src_rgbs.to(device)
     
-    src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs, white_level=ray_sampler.white_level, inference=True)
+    src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs, white_level=ray_sampler.white_level, weight=w)
 
     if model.args.num_latent > 1:
         src_cameras = ray_sampler.src_cameras.to(featmaps['pred_offset'].device)
@@ -107,11 +112,7 @@ def render_single_image(ray_sampler: RaySampler,
         if args.sum_filtered:
             org_src_rgbs = src_rgbs
         elif args.weightsum_filtered:
-            if eval_:
-                org_src_rgbs = src_rgbs
-            else:
-                w = alpha ** global_step
-                org_src_rgbs = src_rgbs * (1 - w) + org_src_rgbs.to(device) * w
+            org_src_rgbs = src_rgbs * (1 - w) + org_src_rgbs.to(device) * w
 
         ret       = ray_render.render_batch(ray_batch=ray_batch,
                                             proc_src_rgbs=src_rgbs,

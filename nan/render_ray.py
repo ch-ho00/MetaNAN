@@ -341,7 +341,7 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs, white_level=None, inference=False):
+    def calc_featmaps(self, src_rgbs, white_level=None, weight=None):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)
@@ -380,6 +380,8 @@ class RayRender:
         # input for feature extractor
         if self.model.args.num_latent > 1:
             process_rgbs = src_rgbs
+        elif self.model.args.proc_rgb_feat and self.model.args.weightsum_filtered:
+            process_rgbs = src_rgbs * (1-weight) + orig_rgbs[0].permute(0,3,1,2) * weight
         else:
             process_rgbs = orig_rgbs[0].permute(0,3,1,2)
 
