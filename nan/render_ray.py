@@ -341,7 +341,7 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs, white_level=None, weight=None):
+    def calc_featmaps(self, src_rgbs, white_level=None, weight=None, nearby_idxs=None):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)
@@ -350,24 +350,29 @@ class RayRender:
         """
         conv1_weights = None
         orig_rgbs = src_rgbs
+        _, N, H, W = orig_rgbs.shape[:4]
         featmaps = {}
+        src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
         if self.model.pre_net is not None:
             if self.model.args.bpn_prenet:
-                src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
+                if nearby_idxs != None:
+                    input_rgbs = torch.stack([src_rgbs[ids] for ids in nearby_idxs])
+                else:
+                    input_rgbs = src_rgbs[:, None, :3]
                 if self.model.args.num_latent > 1:
                     src_rgbs, pred_offset = self.model.pre_net(src_rgbs)
                     featmaps['latent_imgs'] = src_rgbs                    
                     featmaps['pred_offset'] = pred_offset
                 else:
-                    src_rgbs, _ = self.model.pre_net(src_rgbs, src_rgbs[:, None, :3])
+                    src_rgbs, bpn_feats = self.model.pre_net(input_rgbs.reshape(N, -1, H, W), input_rgbs)
 
+                del input_rgbs
                 torch.cuda.empty_cache()
             else:
-                src_rgbs = self.model.pre_net(src_rgbs.squeeze(0).permute(0, 3, 1, 2))  # (N, 3, H, W)
+                src_rgbs = self.model.pre_net(src_rgbs)  # (N, 3, H, W)
 
 
         noise_vec = None
-        H, W = orig_rgbs.shape[2:4]
         if self.model.args.cond_renderer:
             with torch.no_grad():
                 start_h = 0 if H < 384 else (H - 384) // 2
@@ -404,6 +409,10 @@ class RayRender:
 
         if self.model.args.num_latent > 1:
             src_rgbs = src_rgbs[:,0]
+        elif self.model.args.bpn_prenet and self.model.args.bpn_rgb_src:
+            featmaps['coarse']  = torch.cat([featmaps['coarse'], bpn_feats[:,:self.model.args.coarse_feat_dim]], dim=0)
+            featmaps['fine']    = torch.cat([featmaps['fine']  , bpn_feats[:,self.model.args.coarse_feat_dim:]], dim=0)
+
         src_rgbs = src_rgbs.permute(0, 2, 3, 1).unsqueeze(0)
         featmaps['noise_vec'] = noise_vec
 

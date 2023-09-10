@@ -180,6 +180,7 @@ class BPN(nn.Module):
         self.initial_conv = SingleConv(self.in_channel, self.decode_channels[0])
         self.down_conv1 = DownBlock(self.decode_channels[0] , self.decode_channels[0])
         self.down_conv2 = DownBlock(self.decode_channels[0] , self.decode_channels[0])
+        self.out_conv = DownBlock(self.decode_channels[0] , self.decode_channels[0])
         self.features_conv1 = SingleConv(self.decode_channels[0], int(self.decode_channels[1] * channel_upfactor))
         # Decoder for coeff
         self.up_coeff_conv1 = UpBlock((int(self.decode_channels[1] * channel_upfactor)  + self.decode_channels[0]),  int(self.decode_channels[1]  * channel_upfactor))
@@ -272,6 +273,7 @@ class BPN(nn.Module):
             F.max_pool2d(down_conv1, kernel_size=2, stride=2))
         features = self.features_conv1(
             F.max_pool2d(down_conv2, kernel_size=2, stride=2))
+        out_feats = self.out_conv(down_conv2)
 
         up_coeff_conv1 = self.up_coeff_conv1(torch.cat([down_conv2,
                                                         self.pad_before_cat(
@@ -365,7 +367,7 @@ class BPN(nn.Module):
         del kernels
         torch.cuda.empty_cache()
 
-        return pred_burst[:,0], features
+        return pred_burst[:,0], out_feats
 
 
 import torch.nn.init as init

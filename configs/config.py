@@ -132,6 +132,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument("--basis_dim", type=int, default=64)
         
         # blur render
+        parser.add_argument('--bpn_rgb_src', default=False, action="store_true")
         parser.add_argument('--proc_rgb_feat', default=False, action="store_true")
         parser.add_argument("--channel_upfactor", type=float, default=1)
         parser.add_argument('--clean_src_imgs', default=False, action="store_true")
@@ -144,6 +145,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument('--lambda_align_loss', type=float, default=0)
         parser.add_argument('--lambda_reconst_loss', type=float, default=0)
         parser.add_argument("--num_latent", type=int, default=1)
+        parser.add_argument("--burst_length", type=int, default=1)
 
         ## Plain AE to NAN
         parser.add_argument('--ssim_alpha', type=float, default=0)
