@@ -227,20 +227,15 @@ class Trainer:
 
 
         sigma_est = ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None
-        if self.args.sum_filtered:
-            org_src_rgbs_ = proc_src_rgbs
-        elif self.args.bpn_rgb_src:
-            org_src_rgbs_ = torch.cat([org_src_rgbs, proc_src_rgbs], dim=1)
-            ray_batch['src_cameras'] = ray_batch['src_cameras'].repeat(1,2,1)
-            if sigma_est != None:
-                sigma_est = sigma_est.repeat(1,2,1,1,1)
-        elif not self.args.weightsum_filtered:
-            org_src_rgbs_ = org_src_rgbs
-        else:
+        if self.args.proc_rgb_feat and self.args.weightsum_filtered:
             org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
+        elif self.args.num_latent > 1 or self.args.proc_rgb_feat or self.args.sum_filtered:
+            org_src_rgbs_ = proc_src_rgbs
+        else:
+            org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
 
         # Render the rgb values of the pixels that were sampled
-        batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs if not self.args.bpn_rgb_src else org_src_rgbs_, featmaps=featmaps,
+        batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
                                                 org_src_rgbs=org_src_rgbs_,
                                                 sigma_estimate=sigma_est)
         # compute loss

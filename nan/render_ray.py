@@ -364,7 +364,7 @@ class RayRender:
                     featmaps['latent_imgs'] = src_rgbs                    
                     featmaps['pred_offset'] = pred_offset
                 else:
-                    src_rgbs, bpn_feats = self.model.pre_net(input_rgbs.reshape(N, -1, H, W), input_rgbs)
+                    src_rgbs = self.model.pre_net(input_rgbs.reshape(N, -1, H, W), input_rgbs)
 
                 del input_rgbs
                 torch.cuda.empty_cache()
@@ -383,10 +383,10 @@ class RayRender:
                 torch.cuda.empty_cache()
 
         # input for feature extractor
-        if self.model.args.num_latent > 1:
-            process_rgbs = src_rgbs
-        elif self.model.args.proc_rgb_feat and self.model.args.weightsum_filtered:
+        if self.model.args.proc_rgb_feat and self.model.args.weightsum_filtered:
             process_rgbs = src_rgbs * (1-weight) + orig_rgbs[0].permute(0,3,1,2) * weight
+        elif self.model.args.num_latent > 1 or self.model.args.proc_rgb_feat:
+            process_rgbs = src_rgbs
         else:
             process_rgbs = orig_rgbs[0].permute(0,3,1,2)
 
@@ -409,9 +409,6 @@ class RayRender:
 
         if self.model.args.num_latent > 1:
             src_rgbs = src_rgbs[:,0]
-        elif self.model.args.bpn_prenet and self.model.args.bpn_rgb_src:
-            featmaps['coarse']  = torch.cat([featmaps['coarse'], bpn_feats[:,:self.model.args.coarse_feat_dim]], dim=0)
-            featmaps['fine']    = torch.cat([featmaps['fine']  , bpn_feats[:,self.model.args.coarse_feat_dim:]], dim=0)
 
         src_rgbs = src_rgbs.permute(0, 2, 3, 1).unsqueeze(0)
         featmaps['noise_vec'] = noise_vec

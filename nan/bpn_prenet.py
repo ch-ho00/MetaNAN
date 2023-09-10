@@ -176,27 +176,28 @@ class BPN(nn.Module):
 
         # Layer definition in each block
         # Encoder
-        self.decode_channels = [64 // factor, 128 // factor]
-        self.initial_conv = SingleConv(self.in_channel, self.decode_channels[0])
-        self.down_conv1 = DownBlock(self.decode_channels[0] , self.decode_channels[0])
-        self.down_conv2 = DownBlock(self.decode_channels[0] , self.decode_channels[0])
-        self.out_conv = DownBlock(self.decode_channels[0] , self.decode_channels[0])
-        self.features_conv1 = SingleConv(self.decode_channels[0], int(self.decode_channels[1] * channel_upfactor))
-        # Decoder for coeff
-        self.up_coeff_conv1 = UpBlock((int(self.decode_channels[1] * channel_upfactor)  + self.decode_channels[0]),  int(self.decode_channels[1]  * channel_upfactor))
-        self.up_coeff_conv2 = UpBlock((int(self.decode_channels[1] * channel_upfactor)  + self.decode_channels[0]),  int(self.decode_channels[0]  * channel_upfactor))
-        self.up_coeff_conv3 = UpBlock((int(self.decode_channels[0] * channel_upfactor)  + self.decode_channels[0]),  int(self.decode_channels[0]  * channel_upfactor))
-        self.coeff_conv1 = SingleConv(int(self.decode_channels[0] * channel_upfactor), int(self.decode_channels[0] * channel_upfactor))
-        self.coeff_conv3 = SingleConv(int(self.decode_channels[0] * channel_upfactor), self.coeff_channel)
+        self.deconv_channels = [64, 128, 256] # [32, 64, 128]
+        self.initial_conv = SingleConv(self.in_channel, self.deconv_channels[0])
+        self.down_conv1 = DownBlock(self.deconv_channels[0], self.deconv_channels[0])
+        self.down_conv2 = DownBlock(self.deconv_channels[0], self.deconv_channels[1])
+        self.down_conv3 = DownBlock(self.deconv_channels[1], self.deconv_channels[2])
+        self.features_conv1 = SingleConv(self.deconv_channels[2], int(self.deconv_channels[2]  * channel_upfactor))
+        # Decoder for coefficients
+        self.up_coeff_conv1 = UpBlock(self.deconv_channels[2] + self.deconv_channels[2], self.deconv_channels[1])
+        self.up_coeff_conv2 = UpBlock(self.deconv_channels[1] + self.deconv_channels[1], self.deconv_channels[0])
+        self.up_coeff_conv3 = UpBlock(self.deconv_channels[0] + self.deconv_channels[0], self.deconv_channels[0])
+        self.coeff_conv1 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
+        self.coeff_conv2 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
+        self.coeff_conv3 = SingleConv(self.deconv_channels[0], self.coeff_channel)
+        self.out_coeff = nn.Softmax(dim=1)
 
         # # Decoder for basis
-        self.up_basis_conv1 = UpBlock((int(self.decode_channels[1] * channel_upfactor)  + self.decode_channels[0] ),  int(self.decode_channels[1]  * channel_upfactor))
-        self.up_basis_conv2 = UpBlock((int(self.decode_channels[1] * channel_upfactor)  + self.decode_channels[0] ),  int(self.decode_channels[0]  * channel_upfactor))
-        self.up_basis_conv3 = UpBlock((int(self.decode_channels[0] * channel_upfactor)  + self.decode_channels[0] ),  int(self.decode_channels[0]  * channel_upfactor))
-        self.basis_conv1 = CutEdgeConv(int(self.decode_channels[0] * channel_upfactor), int(self.decode_channels[0] * channel_upfactor))
-        self.basis_conv3 = SingleConv( int(self.decode_channels[0] * channel_upfactor) , self.basis_channel )
-
-        self.out_coeff = nn.Softmax(dim=1)
+        self.up_basis_conv1 = UpBlock(self.deconv_channels[2] + self.deconv_channels[2], self.deconv_channels[1])
+        self.up_basis_conv2 = UpBlock(self.deconv_channels[1] + self.deconv_channels[1], self.deconv_channels[0])
+        self.up_basis_conv3 = UpBlock(self.deconv_channels[0] + self.deconv_channels[0], self.deconv_channels[0])
+        self.basis_conv1 = CutEdgeConv(self.deconv_channels[0], self.deconv_channels[0])
+        self.basis_conv2 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
+        self.basis_conv3 = SingleConv(self.deconv_channels[0], self.basis_channel)
         self.out_basis = nn.Softmax(dim=1)
 
 
@@ -267,44 +268,62 @@ class BPN(nn.Module):
         initial_conv = self.initial_conv(data_with_est)
 
         # down sampling
-        down_conv1 = self.down_conv1(
-            F.max_pool2d(initial_conv, kernel_size=2, stride=2))
+        down_conv1 = self.down_conv1(initial_conv)
+        del data_with_est, initial_conv 
         down_conv2 = self.down_conv2(
             F.max_pool2d(down_conv1, kernel_size=2, stride=2))
-        features = self.features_conv1(
+        down_conv3 = self.down_conv3(
             F.max_pool2d(down_conv2, kernel_size=2, stride=2))
-        out_feats = self.out_conv(down_conv2)
+        features = self.features_conv1(
+            F.max_pool2d(down_conv3, kernel_size=2, stride=2))
 
-        up_coeff_conv1 = self.up_coeff_conv1(torch.cat([down_conv2,
+        # up sampling with skip connection, for coefficients
+        up_coeff_conv1 = self.up_coeff_conv1(torch.cat([down_conv3,
                                                         self.pad_before_cat(
-                                                            down_conv2,
+                                                            down_conv3,
                                                             F.interpolate(
                                                                 features,
                                                                 scale_factor=2,
                                                                 mode=self.upMode))],
-                                                    dim=1))
-        up_coeff_conv2 = self.up_coeff_conv2(torch.cat([down_conv1,
+                                                       dim=1))
+        up_basis_conv1 = self.up_basis_conv1(torch.cat([self.pool_before_cat(
+            down_conv3, tosize=int((self.kernel_size + 1) / 4)), F.interpolate(
+            F.adaptive_avg_pool2d(features, (1, 1)), scale_factor=2,
+            mode=self.upMode)], dim=1))
+        del down_conv3
+
+        up_coeff_conv2 = self.up_coeff_conv2(torch.cat([down_conv2,
                                                         self.pad_before_cat(
-                                                            down_conv1,
+                                                            down_conv2,
                                                             F.interpolate(
                                                                 up_coeff_conv1,
                                                                 scale_factor=2,
                                                                 mode=self.upMode))],
-                                                    dim=1))
-        del up_coeff_conv1
-        up_coeff_conv3 = self.up_coeff_conv3(torch.cat([initial_conv,
+                                                       dim=1))
+        up_basis_conv2 = self.up_basis_conv2(torch.cat([self.pool_before_cat(
+            down_conv2, tosize=int((self.kernel_size + 1) / 2)), F.interpolate(
+            up_basis_conv1, scale_factor=2, mode=self.upMode)], dim=1))
+        del down_conv2, up_coeff_conv1, up_basis_conv1
+
+        up_coeff_conv3 = self.up_coeff_conv3(torch.cat([down_conv1,
                                                         self.pad_before_cat(
-                                                            initial_conv,
+                                                            down_conv1,
                                                             F.interpolate(
                                                                 up_coeff_conv2,
                                                                 scale_factor=2,
                                                                 mode=self.upMode))],
-                                                    dim=1))
-        del up_coeff_conv2
+                                                       dim=1))
+        up_basis_conv3 = self.up_basis_conv3(torch.cat([self.pool_before_cat(
+            down_conv1, tosize=int((self.kernel_size + 1) / 1)), F.interpolate(
+            up_basis_conv2, scale_factor=2, mode=self.upMode)], dim=1))
+        del down_conv1, up_basis_conv2, up_coeff_conv2
+
         coeff1 = self.coeff_conv1(up_coeff_conv3)
         del up_coeff_conv3
-        coeff3 = self.coeff_conv3(coeff1)
-        del coeff1 
+        coeff2 = self.coeff_conv2(coeff1)
+        del coeff1
+        coeff3 = self.coeff_conv3(coeff2)
+        del coeff2
 
         if self.n_latent_layers > 1:
             coeffs = []
@@ -314,31 +333,18 @@ class BPN(nn.Module):
             coeff = self.out_coeff(coeff3)
         del coeff3
 
-        
-        # up sampling with pooled-skip connection, for basis
-        up_basis_conv1 = self.up_basis_conv1(torch.cat([self.pool_before_cat(
-            initial_conv, tosize=int((self.kernel_size + 1) / 4)), F.interpolate(
-            F.adaptive_avg_pool2d(features, (1, 1)), scale_factor=2,
-            mode=self.upMode)], dim=1))
-        del initial_conv
-        up_basis_conv2 = self.up_basis_conv2(torch.cat([self.pool_before_cat(
-            down_conv2, tosize=int((self.kernel_size + 1) / 2)), F.interpolate(
-            up_basis_conv1, scale_factor=2, mode=self.upMode)], dim=1))
-        del up_basis_conv1, down_conv2
-        up_basis_conv3 = self.up_basis_conv3(torch.cat([self.pool_before_cat(
-            down_conv1, tosize=int((self.kernel_size + 1) / 1)), F.interpolate(
-            up_basis_conv2, scale_factor=2, mode=self.upMode)], dim=1))
-        del up_basis_conv2, down_conv1
-
         basis1 = self.basis_conv1(up_basis_conv3)
         del up_basis_conv3
-        basis3 = self.basis_conv3(basis1).view(basis1.size(0),
+        basis2 = self.basis_conv2(basis1)
+        del basis1
+        basis3 = self.basis_conv3(basis2).view(basis2.size(0),
                                                self.basis_size * self.n_latent_layers,
                                                self.burst_length,
                                                self.color_channel,
                                                self.kernel_size,
                                                self.kernel_size)
-        del basis1
+        del basis2
+
         if self.n_latent_layers > 1:
             # basis = self.out_basis(basis3)
             pred_imgs = []
@@ -361,13 +367,14 @@ class BPN(nn.Module):
         kernels = self.kernel_predict(coeff, basis, coeff.size(0),
                                     self.burst_length, self.kernel_size,
                                     self.color_channel)
+        torch.cuda.empty_cache()
         del coeff, basis
         # clean burst prediction
         pred_burst = self.kernel_conv(data, kernels)
         del kernels
         torch.cuda.empty_cache()
 
-        return pred_burst[:,0], out_feats
+        return pred_burst[:,0]
 
 
 import torch.nn.init as init

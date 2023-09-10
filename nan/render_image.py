@@ -110,15 +110,12 @@ def render_single_image(ray_sampler: RaySampler,
         featmaps['latent_imgs'] = src_rgbs[0].permute(0,3,1,2)[:,None]
 
 
-    if args.sum_filtered:
-        org_src_rgbs = src_rgbs
-    elif args.bpn_rgb_src:
-        org_src_rgbs = torch.cat([org_src_rgbs.to(device), src_rgbs], dim=1)
-        if sigma_est != None:
-            sigma_est = sigma_est.repeat(1,2,1,1,1)
-    elif args.weightsum_filtered:
-        org_src_rgbs = src_rgbs * (1 - w) + org_src_rgbs.to(device) * w
-
+    if args.proc_rgb_feat and args.weightsum_filtered:
+        proc_src_rgbs = src_rgbs * (1 - w) + org_src_rgbs.to(device) * w
+    elif args.num_latent > 1 or args.proc_rgb_feat or args.sum_filtered:
+        proc_src_rgbs = src_rgbs
+    else:
+        proc_src_rgbs = org_src_rgbs.to(device)
 
     for i in tqdm(range(0, N_rays, args.chunk_size)):
         # print('batch', i)
@@ -126,16 +123,14 @@ def render_single_image(ray_sampler: RaySampler,
         if model.args.num_latent > 1:
             src_latent_camera[0,:,0] = ray_batch['src_cameras']
             ray_batch['src_cameras'] = src_latent_camera
-        elif args.bpn_rgb_src :
-            ray_batch['src_cameras'] = ray_batch['src_cameras'].repeat(1,2,1)
 
         ray_batch['src_cameras'] = ray_batch['src_cameras'].reshape(1,-1,34)
 
 
         ret       = ray_render.render_batch(ray_batch=ray_batch,
-                                            proc_src_rgbs=src_rgbs if not args.bpn_rgb_src else org_src_rgbs,
+                                            proc_src_rgbs=src_rgbs,
                                             featmaps=featmaps,
-                                            org_src_rgbs=org_src_rgbs,
+                                            org_src_rgbs=proc_src_rgbs,
                                             sigma_estimate=sigma_est)
         all_ret['coarse'].append(ret['coarse'])
         if ret['fine'] is not None:
