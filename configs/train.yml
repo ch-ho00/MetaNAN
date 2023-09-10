@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : degAE_procRGBfeat_fixWL_nhead3_targetNov_includeProcRGB_wNoiseEst_WeightSumFilter_preBPN1X_dim64_latent1e0 #origFeat_targetNov_origRgbFeat_preBPN_woProcRgbSample_StepDecay40k-2LatentLoss1e0_SumFilter # 0.99995Annea #origFeat_run_400x600_preBPN64_weightSum_subsample2_novelView_ablation
+expname                     : origFeat_targetNov_burst1_SumFilter_RevisedVer2PreBPN2X_dim64_latent1e0 #origFeat_targetNov_origRgbFeat_preBPN_woProcRgbSample_StepDecay40k-2LatentLoss1e0_SumFilter # 0.99995Annea #origFeat_run_400x600_preBPN64_weightSum_subsample2_novelView_ablation
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -19,13 +19,13 @@ losses                      : [l2, l1, l1_grad, ssim]
 losses_weights              : [0,  1,  0,       0]
 workers                     : 0
 
-degae_feat                  : True
+degae_feat                  : False
 degae_feat_ckpt             : ./ckpts/0619.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-weightsum_filtered          : True
-sum_filtered                : False
+weightsum_filtered          : False
+sum_filtered                : True
 downscale_input_img         : False
 lambda_latent_loss          : 1.0
 lambda_embed_loss           : 0
@@ -37,6 +37,8 @@ exclude_proc_rgb            : False
 proc_rgb_feat               : True
 basis_dim                   : 64
 channel_upfactor            : 1.0
+burst_length                : 1
+num_source_views            : 8
 
 ### TESTING
 chunk_size                  : 2048 #2048 # can be bigger depend on the gpu memory

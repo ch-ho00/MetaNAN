@@ -29,6 +29,7 @@ import torch.nn.functional as F
 from nan.se3 import SE3_to_se3_N, get_spline_poses
 # from nan.projection import warp_latent_imgs
 from nan.content_loss import reconstruction_loss
+from nan.dataloaders.data_utils import get_nearest_pose_ids
 
 import random
 alpha=0.9998
@@ -169,15 +170,18 @@ class Trainer:
             org_src_rgbs = ray_sampler.src_rgbs_clean.to(self.device)
         else:
             org_src_rgbs = ray_sampler.src_rgbs.to(self.device)
-        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, white_level=ray_batch['white_level'], weight=w)
+
+        if self.args.burst_length > 1:
+            nearby_idxs = []
+            poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4).cpu().numpy()
+            for pose in poses:
+                ids = get_nearest_pose_ids(pose, poses, self.args.burst_length, angular_dist_method='dist')
+                nearby_idxs.append(ids)
+        else:
+            nearby_idxs = None
+        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, white_level=ray_batch['white_level'], weight=w, nearby_idxs=nearby_idxs)
 
         self.scalars_to_log['weight'] = w 
-        if self.args.sum_filtered:
-            org_src_rgbs_ = proc_src_rgbs
-        elif not self.args.weightsum_filtered:
-            org_src_rgbs_ = org_src_rgbs
-        else:
-            org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
 
         if self.model.args.blur_render:
             assert self.model.args.num_latent > 1, 'Require Offset Prediction Module for Blur Render'
@@ -221,11 +225,20 @@ class Trainer:
         else:
             featmaps['latent_imgs'] = proc_src_rgbs[0].permute(0,3,1,2)[:,None]
             ray_batch['src_cameras'] = ray_batch['src_cameras'].reshape(1,-1,34)
-                
+
+
+        sigma_est = ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None
+        if self.args.proc_rgb_feat and self.args.weightsum_filtered:
+            org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
+        elif self.args.num_latent > 1 or self.args.proc_rgb_feat or self.args.sum_filtered:
+            org_src_rgbs_ = proc_src_rgbs
+        else:
+            org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
+
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
                                                 org_src_rgbs=org_src_rgbs_,
-                                                sigma_estimate=ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None)
+                                                sigma_estimate=sigma_est)
         # compute loss
         torch.cuda.empty_cache()
         self.model.optimizer.zero_grad()

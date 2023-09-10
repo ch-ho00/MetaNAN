@@ -23,7 +23,7 @@ from nan.raw2output import RaysOutput
 from nan.sample_ray import RaySampler
 from nan.se3 import SE3_to_se3_N, get_spline_poses
 from nan.projection import warp_latent_imgs
-
+from nan.dataloaders.data_utils import get_nearest_pose_ids
 
 alpha=0.9998
 
@@ -61,12 +61,23 @@ def render_single_image(ray_sampler: RaySampler,
         org_src_rgbs = ray_sampler.src_rgbs_clean.to(device)
     else:
         org_src_rgbs = ray_sampler.src_rgbs.to(device)
-    
-    src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs, white_level=ray_sampler.white_level, weight=w)
+    sigma_est = ray_sampler.sigma_estimate.to(device) if ray_sampler.sigma_estimate != None else None
+    src_cameras = ray_sampler.src_cameras.to(device)[:,:,-16:]
+
+    if args.burst_length > 1:
+        nearby_idxs = []
+        poses = src_cameras.reshape(-1, 4, 4).cpu().numpy()
+        for pose in poses:
+            ids = get_nearest_pose_ids(pose, poses, args.burst_length, angular_dist_method='dist')
+            nearby_idxs.append(ids)
+    else:
+        nearby_idxs = None
+
+
+    src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs, white_level=ray_sampler.white_level, weight=w, nearby_idxs=nearby_idxs)
 
     if model.args.num_latent > 1:
-        src_cameras = ray_sampler.src_cameras.to(featmaps['pred_offset'].device)
-        src_poses = src_cameras[:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
+        src_poses = src_cameras.reshape(-1, 4, 4)[:,:3,:4]
         src_se3_start = SE3_to_se3_N(src_poses)
         src_se3_end = src_se3_start + featmaps['pred_offset']
         src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=model.args.num_latent)
@@ -99,26 +110,28 @@ def render_single_image(ray_sampler: RaySampler,
         featmaps['latent_imgs'] = src_rgbs[0].permute(0,3,1,2)[:,None]
 
 
+    if args.proc_rgb_feat and args.weightsum_filtered:
+        proc_src_rgbs = src_rgbs * (1 - w) + org_src_rgbs.to(device) * w
+    elif args.num_latent > 1 or args.proc_rgb_feat or args.sum_filtered:
+        proc_src_rgbs = src_rgbs
+    else:
+        proc_src_rgbs = org_src_rgbs.to(device)
+
     for i in tqdm(range(0, N_rays, args.chunk_size)):
         # print('batch', i)
         ray_batch = ray_sampler.specific_ray_batch(slice(i, i + args.chunk_size, 1), clean=args.sup_clean)
         if model.args.num_latent > 1:
             src_latent_camera[0,:,0] = ray_batch['src_cameras']
             ray_batch['src_cameras'] = src_latent_camera
-        else:
-            ray_batch['src_cameras'] = ray_batch['src_cameras']
+
         ray_batch['src_cameras'] = ray_batch['src_cameras'].reshape(1,-1,34)
 
-        if args.sum_filtered:
-            org_src_rgbs = src_rgbs
-        elif args.weightsum_filtered:
-            org_src_rgbs = src_rgbs * (1 - w) + org_src_rgbs.to(device) * w
 
         ret       = ray_render.render_batch(ray_batch=ray_batch,
                                             proc_src_rgbs=src_rgbs,
                                             featmaps=featmaps,
-                                            org_src_rgbs=org_src_rgbs,
-                                            sigma_estimate=ray_sampler.sigma_estimate.to(device) if ray_sampler.sigma_estimate != None else None)
+                                            org_src_rgbs=proc_src_rgbs,
+                                            sigma_estimate=sigma_est)
         all_ret['coarse'].append(ret['coarse'])
         if ret['fine'] is not None:
             all_ret['fine'].append(ret['fine'])
