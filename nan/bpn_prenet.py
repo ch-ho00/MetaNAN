@@ -157,7 +157,7 @@ class KernelConv(nn.Module):
 
 
 class BPN(nn.Module):
-    def __init__(self, color=True, burst_length=1, blind_est=True, kernel_size=7, basis_size=64, upMode='bilinear', n_latent_layers=None, channel_upfactor=1):
+    def __init__(self, color=True, burst_length=1, blind_est=True, kernel_size=7, basis_size=64, upMode='bilinear', n_latent_layers=1, channel_upfactor=1):
         super(BPN, self).__init__()
         self.blind_est = blind_est
         self.kernel_size = kernel_size
@@ -166,7 +166,7 @@ class BPN(nn.Module):
         self.color_channel = 3 if color else 1
         self.burst_length = burst_length   
         self.in_channel = self.color_channel * self.burst_length
-        self.n_latent_layers = n_latent_layers if n_latent_layers != None else 1
+        self.n_latent_layers = n_latent_layers
         self.color_channel = self.color_channel 
         factor = 1
 
@@ -203,6 +203,19 @@ class BPN(nn.Module):
 
         # Predict clean images by using local convolutions with kernels
         self.kernel_conv = KernelConv(self.kernel_size)
+
+        if self.n_latent_layers > 1:
+            self.offset_conv = nn.Sequential(
+                nn.Conv2d(self.deconv_channels[2], self.deconv_channels[1], kernel_size=1, dilation=1, stride=1, padding=0),
+                nn.ELU(inplace=True),
+                nn.Conv2d(self.deconv_channels[1], 6, kernel_size=1, dilation=1, stride=1, padding=0),
+            )
+
+            for module in self.offset_conv.modules():
+                if isinstance(module, nn.Conv2d):
+                    init.normal_(module.weight, mean=0, std=1e-5)
+                    if module.bias is not None:
+                        init.constant_(module.bias, 0)
 
         # Model weights initialization
         self.apply(self._init_weights)
@@ -346,11 +359,11 @@ class BPN(nn.Module):
         del basis2
 
         if self.n_latent_layers > 1:
-            img_basis = self.out_basis(basis3)
+            # img_basis = self.out_basis(basis3)
             pred_imgs = []
             nchannels = self.basis_size
             for img_idx in range(self.n_latent_layers):
-                # img_basis = self.out_basis(basis3[:,nchannels * img_idx: nchannels * (img_idx + 1)])
+                img_basis = self.out_basis(basis3[:,nchannels * img_idx: nchannels * (img_idx + 1)])
                 kernels = self.kernel_predict(coeffs[img_idx], img_basis,
                                             coeffs[img_idx].size(0), self.burst_length, self.kernel_size,
                                             self.color_channel)
@@ -359,7 +372,8 @@ class BPN(nn.Module):
                 pred_imgs.append(pred_burst)
             pred_imgs = torch.stack(pred_imgs, dim=1)
             torch.cuda.empty_cache()
-            return pred_imgs, features
+            pred_offset = self.offset_conv(features)
+            return pred_imgs, pred_offset.mean(-1).mean(-1)
         else:
             basis = self.out_basis(basis3)
         del basis3
@@ -376,55 +390,3 @@ class BPN(nn.Module):
 
         return pred_burst[:,0]
 
-
-import torch.nn.init as init
-class DeblurBPN(nn.Module):
-    def __init__(self, basis_dim, n_latent_layers, channel_upfactor):
-        super(DeblurBPN, self).__init__()
-
-        self.bpn = BPN(n_latent_layers=n_latent_layers, basis_size=basis_dim, channel_upfactor=channel_upfactor)
-        self.offset_conv = nn.Sequential(
-            # nn.Conv2d(int(self.bpn.decode_channels[1] * (channel_upfactor if n_latent_layers > 1 else 1)), 128, kernel_size=3, dilation=1, stride=2, padding=0),
-            # nn.ELU(inplace=True),
-            # nn.Conv2d(128, 64, kernel_size=3, dilation=1, stride=2, padding=0),
-            nn.Conv2d(128, 64, kernel_size=1, dilation=1, stride=1, padding=0),
-            nn.ELU(inplace=True),
-            nn.Conv2d(64, 6, kernel_size=1, dilation=1, stride=1, padding=0),
-            # nn.Conv2d(32, 32, kernel_size=3, dilation=1, stride=2, padding=0),
-            # nn.ELU(inplace=True),
-            # nn.Conv2d(32, 16, kernel_size=1, dilation=1, stride=1, padding=0),
-        )
-
-        for module in self.offset_conv.modules():
-            if isinstance(module, nn.Conv2d):
-                init.normal_(module.weight, mean=0, std=1e-5)
-                if module.bias is not None:
-                    init.constant_(module.bias, 0)
-
-        # self.offset_fc = nn.Sequential(
-        #     nn.Linear(16 * 9, 64),
-        #     nn.ELU(inplace=True),
-        #     nn.Linear(64, 16),
-        #     nn.ELU(inplace=True),
-        #     nn.Linear(16, 6),
-        #     nn.Sigmoid()
-        #     # nn.Tanh()
-        # )
-        
-        # for m in self.offset_fc.modules():
-        #     if isinstance(m, nn.Linear):
-        #         init.normal_(m.weight, mean=0, std=1e-3)
-        #         init.normal_(m.bias, mean=0, std=1e-3)
-
-    def forward(self, input_imgs):
-        '''
-        Input
-            (B,V,3,H,W)
-        Output
-            (B, n_latent_layers, 3, H, W)
-            (B,6)
-        '''
-        pred_latent_imgs, feature = self.bpn(input_imgs)
-        # pred_latent_imgs, feature = self.bpn(input_imgs, input_imgs[:,None, :3])
-        pred_offset = self.offset_conv(feature).mean(-1).mean(-1)
-        return pred_latent_imgs, pred_offset

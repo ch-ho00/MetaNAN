@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : general_run2_DeblurxDeblur_LED_2FC_src3_src5_LatLoss1e-1_NoWhiteBkgd #BPN_src5_lat3_lr1e0_-2_latloss1e0_up3dim64_NoWhiteBkgd_near0.1R_far2R
+expname                     : general_DeblurxDeblur_burst1_RevisedBPN_2FC_src3_src5_LatLoss1e-1_alignLoss1e0
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -32,6 +32,8 @@ cond_renderer               : False
 blur_render                 : False
 lambda_latent_loss          : 0.1
 lambda_blur_loss            : 0.0
+lambda_align_loss           : 1.0
+burst_length                : 1
 num_source_views            : 3
 num_latent                  : 5
 center_ratio                : 0.6

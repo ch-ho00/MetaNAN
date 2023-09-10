@@ -62,11 +62,11 @@ def render_single_image(ray_sampler: RaySampler,
     else:
         org_src_rgbs = ray_sampler.src_rgbs.to(device)
     sigma_est = ray_sampler.sigma_estimate.to(device) if ray_sampler.sigma_estimate != None else None
-    src_cameras = ray_sampler.src_cameras.to(device)[:,:,-16:]
+    src_cameras = ray_sampler.src_cameras.to(device)
 
     if args.burst_length > 1:
         nearby_idxs = []
-        poses = src_cameras.reshape(-1, 4, 4).cpu().numpy()
+        poses = src_cameras[:,:,-16:].reshape(-1, 4, 4).cpu().numpy()
         for pose in poses:
             ids = get_nearest_pose_ids(pose, poses, args.burst_length, angular_dist_method='dist')
             nearby_idxs.append(ids)
@@ -77,7 +77,7 @@ def render_single_image(ray_sampler: RaySampler,
     src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs, white_level=ray_sampler.white_level, weight=w, nearby_idxs=nearby_idxs)
 
     if model.args.num_latent > 1:
-        src_poses = src_cameras.reshape(-1, 4, 4)[:,:3,:4]
+        src_poses = src_cameras[:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
         src_se3_start = SE3_to_se3_N(src_poses)
         src_se3_end = src_se3_start + featmaps['pred_offset']
         src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=model.args.num_latent)

@@ -30,7 +30,7 @@ from nan.nan_mlp import NanMLP
 from nan.utils.io_utils import get_latest_file, print_link
 from degae.model import DegAE
 from degae.decoder import BasicBlock
-from nan.bpn_prenet import BPN, DeblurBPN
+from nan.bpn_prenet import BPN
 
 def de_parallel(model):
     return model.module if hasattr(model, 'module') else model
@@ -179,10 +179,7 @@ class NANScheme(nn.Module):
 
         if args.pre_net:
             if args.bpn_prenet:
-                if args.num_latent > 1:
-                    self.pre_net = DeblurBPN(basis_dim=args.basis_dim, n_latent_layers=args.num_latent, channel_upfactor=args.channel_upfactor).to(device)
-                else:
-                    self.pre_net = BPN(burst_length=args.burst_length, basis_size=args.basis_dim, channel_upfactor=args.channel_upfactor).to(device)
+                    self.pre_net = BPN(burst_length=args.burst_length, n_latent_layers=args.num_latent, basis_size=args.basis_dim, channel_upfactor=args.channel_upfactor).to(device)
             else:
                 if args.weightsum_filtered:
                     self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(13, 13), sigma=(1.5, 1.5)).to(device)                
@@ -219,13 +216,21 @@ class NANScheme(nn.Module):
         if self.net_fine is not None:
             params_list.append({'params': self.net_fine.parameters(), 'lr': self.args.lrate_mlp})
 
-        if self.args.num_latent > 1:
-            params_list.append({'params': self.pre_net.bpn.parameters(), 'lr': self.args.lrate_feature})
-            params_list.append({'params': self.pre_net.offset_conv.parameters(), 'lr': self.args.lrate_feature * 1e-2})                
-
-        elif self.args.pre_net:
-            params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
-
+        if self.args.pre_net:
+            if self.args.num_latent > 1:
+                bpn_params = []
+                offset_params = []
+                for k, v in self.pre_net.named_parameters():
+                    if 'offset' in k:
+                        print(k)
+                        offset_params.append(v)
+                    else:
+                        bpn_params.append(v)
+                params_list.append({'params': bpn_params, 'lr': self.args.lrate_feature})
+                params_list.append({'params': offset_params, 'lr': self.args.lrate_feature * 1e-3})
+            else:
+                params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
+                
 
 
         optimizer = torch.optim.Adam(params_list)

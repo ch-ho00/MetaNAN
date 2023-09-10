@@ -360,7 +360,7 @@ class RayRender:
                 else:
                     input_rgbs = src_rgbs[:, None, :3]
                 if self.model.args.num_latent > 1:
-                    src_rgbs, pred_offset = self.model.pre_net(src_rgbs)
+                    src_rgbs, pred_offset = self.model.pre_net(input_rgbs.reshape(N, -1, H, W), input_rgbs)
                 else:
                     src_rgbs = self.model.pre_net(input_rgbs.reshape(N, -1, H, W), input_rgbs)
 

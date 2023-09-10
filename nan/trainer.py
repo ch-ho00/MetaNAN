@@ -27,7 +27,7 @@ from nan.utils.io_utils import print_link, colorize
 from nan.ssim_l1_loss import MS_SSIM_L1_LOSS
 import torch.nn.functional as F
 from nan.se3 import SE3_to_se3_N, get_spline_poses
-# from nan.projection import warp_latent_imgs
+from nan.projection import warp_latent_imgs
 from nan.content_loss import reconstruction_loss
 from nan.dataloaders.data_utils import get_nearest_pose_ids
 
@@ -215,8 +215,7 @@ class Trainer:
             src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
             H, W = ray_batch['src_cameras'][0,0,:2]
             intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)
-            # warped_imgs, warp_masks = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
-
+            warped_imgs, warp_masks = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
             # Attach intrinsics and HW vector
             src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
             src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)], dim=-1)
@@ -261,6 +260,12 @@ class Trainer:
             loss += (coarse_noise_loss + fine_noise_loss) * self.args.lambda_blur_loss
             self.scalars_to_log['train/coarse_noise_loss'] = coarse_noise_loss * self.args.lambda_blur_loss
             self.scalars_to_log['train/fine_noise_loss'] = fine_noise_loss * self.args.lambda_blur_loss
+
+        if self.args.lambda_align_loss > 0:
+            align_loss = warp_masks[:, 1:, None].float() * torch.abs(warped_imgs[:,:1].repeat(1, self.args.num_latent -1, 1, 1,1) - warped_imgs[:,1:])
+            align_loss = torch.mean(align_loss) * self.args.lambda_align_loss
+            loss += align_loss
+            self.scalars_to_log['train/align_loss'] = align_loss
 
         if self.args.lambda_latent_loss > 0:
             decay = 2 ** - (global_step // 40000)
