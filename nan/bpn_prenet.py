@@ -338,11 +338,11 @@ class BPN(nn.Module):
                                                self.kernel_size)
         del basis1
         if self.n_latent_layers > 1:
-            # basis = self.out_basis(basis3)
+            img_basis = self.out_basis(basis3)
             pred_imgs = []
             nchannels = self.basis_size
             for img_idx in range(self.n_latent_layers):
-                img_basis = self.out_basis(basis3[:,nchannels * img_idx: nchannels * (img_idx + 1)])
+                # img_basis = self.out_basis(basis3[:,nchannels * img_idx: nchannels * (img_idx + 1)])
                 kernels = self.kernel_predict(coeffs[img_idx], img_basis,
                                             coeffs[img_idx].size(0), self.burst_length, self.kernel_size,
                                             self.color_channel)
@@ -375,9 +375,10 @@ class DeblurBPN(nn.Module):
 
         self.bpn = BPN(n_latent_layers=n_latent_layers, basis_size=basis_dim, channel_upfactor=channel_upfactor)
         self.offset_conv = nn.Sequential(
-            nn.Conv2d(self.bpn.decode_channels[1] * (channel_upfactor if n_latent_layers > 1 else 1), 128, kernel_size=3, dilation=1, stride=2, padding=0),
-            nn.ELU(inplace=True),
-            nn.Conv2d(128, 64, kernel_size=3, dilation=1, stride=2, padding=0),
+            # nn.Conv2d(int(self.bpn.decode_channels[1] * (channel_upfactor if n_latent_layers > 1 else 1)), 128, kernel_size=3, dilation=1, stride=2, padding=0),
+            # nn.ELU(inplace=True),
+            # nn.Conv2d(128, 64, kernel_size=3, dilation=1, stride=2, padding=0),
+            nn.Conv2d(128, 64, kernel_size=1, dilation=1, stride=1, padding=0),
             nn.ELU(inplace=True),
             nn.Conv2d(64, 6, kernel_size=1, dilation=1, stride=1, padding=0),
             # nn.Conv2d(32, 32, kernel_size=3, dilation=1, stride=2, padding=0),
@@ -387,7 +388,7 @@ class DeblurBPN(nn.Module):
 
         for module in self.offset_conv.modules():
             if isinstance(module, nn.Conv2d):
-                init.normal_(module.weight, mean=0, std=1e-3)
+                init.normal_(module.weight, mean=0, std=1e-5)
                 if module.bias is not None:
                     init.constant_(module.bias, 0)
 
@@ -414,7 +415,7 @@ class DeblurBPN(nn.Module):
             (B, n_latent_layers, 3, H, W)
             (B,6)
         '''
-        pred_latent_imgs, feature = self.bpn(input_imgs, input_imgs[:,None, :3])
+        pred_latent_imgs, feature = self.bpn(input_imgs)
+        # pred_latent_imgs, feature = self.bpn(input_imgs, input_imgs[:,None, :3])
         pred_offset = self.offset_conv(feature).mean(-1).mean(-1)
-
         return pred_latent_imgs, pred_offset

@@ -63,6 +63,7 @@ class RaySampler:
         self.device                         = device
 
         self.rgb                            = data['rgb'] if 'rgb' in data.keys() else None
+        self.alpha                          = data['alpha_clean'].squeeze().reshape(-1).nonzero().reshape(-1) if 'alpha_clean' in data.keys() else None
         self.src_rgbs                       = data['src_rgbs'] if 'src_rgbs' in data.keys() else None
         self.rgb_clean                      = data['rgb_clean'] if 'rgb_clean' in data.keys() else None
         self.rgb_noisy                      = data['rgb_noisy'] if 'rgb_noisy' in data.keys() else None
@@ -139,8 +140,12 @@ class RaySampler:
         }
         return ret
 
-    def sample_random_pixels(self, N_rand, sample_mode, center_ratio=0.8):
-        if sample_mode == 'center':
+    def sample_random_pixels(self, N_rand, sample_mode, center_ratio=0.8, alpha_sample=False):
+        if alpha_sample:
+            inds = torch.randint(self.alpha.shape[0], (N_rand,))
+            select_inds = self.alpha[inds]           
+
+        elif sample_mode == 'center':
             border_H = int(self.H * (1 - center_ratio) / 2.)
             border_W = int(self.W * (1 - center_ratio) / 2.)
 
@@ -171,7 +176,7 @@ class RaySampler:
 
         return select_inds
 
-    def random_ray_batch(self, N_rand, sample_mode, center_ratio=0.8, clean=False):
+    def random_ray_batch(self, N_rand, sample_mode, center_ratio=0.8, clean=False, alpha_sample=False):
         """
         Select random N_rand rays.
         :param N_rand: number of rays in a batch (R)
@@ -194,7 +199,7 @@ class RaySampler:
                                                                            white_level: (1, 1)}
         """
 
-        select_inds = self.sample_random_pixels(N_rand, sample_mode, center_ratio)
+        select_inds = self.sample_random_pixels(N_rand, sample_mode, center_ratio, alpha_sample=alpha_sample)
 
         return self.specific_ray_batch(select_inds, clean=clean)
 

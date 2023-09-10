@@ -229,8 +229,8 @@ class DeblurTestDataset(DeblurDataset):
             #crop_h = crop_h + 1 if crop_h % 2 == 1 else crop_h
             #crop_w = int(400 * 600 / crop_h // 128 * 128) #350 * 550
             #crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
-            crop_h = 350
-            crop_w = 550
+            crop_h = 384 #350
+            crop_w = 512 #550
             rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean = random_crop(rgb, camera, src_rgbs, src_cameras,
                                                              (crop_h, crop_w), rgb_noisy=rgb_noisy, src_rgbs_clean=src_rgbs_clean)
 

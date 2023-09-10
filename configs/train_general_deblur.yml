@@ -1,12 +1,12 @@
 ### INPUT
-expname                     : general_revisedObjaverse_plain_src5_NoWhiteBkgd #BPN_src5_lat3_lr1e0_-2_latloss1e0_up3dim64_NoWhiteBkgd_near0.1R_far2R
+expname                     : general_run2_DeblurxDeblur_LED_2FC_src3_src5_LatLoss1e-1_NoWhiteBkgd #BPN_src5_lat3_lr1e0_-2_latloss1e0_up3dim64_NoWhiteBkgd_near0.1R_far2R
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
 ## dataset
-train_dataset               : objaverse #deblur
+train_dataset               : deblur
 eval_dataset                : deblur_test
-# eval_scenes                 : ['blurstair'] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
+eval_scenes                 : [blurcozy2room] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
 
 ### TRAINING
 n_iters                     : 255000
@@ -24,16 +24,16 @@ degae_feat_ckpt             : ./ckpts/0619.pth #./ckpts/model_045000.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-sum_filtered                : False #True
+sum_filtered                : True
 weightsum_filtered          : False
-bpn_prenet                  : False #True
+bpn_prenet                  : True
 ft_embed_fc                 : False
 cond_renderer               : False
 blur_render                 : False
-lambda_latent_loss          : 0.0
+lambda_latent_loss          : 0.1
 lambda_blur_loss            : 0.0
-num_source_views            : 5
-num_latent                  : 1
+num_source_views            : 3
+num_latent                  : 5
 center_ratio                : 0.6
 channel_upfactor            : 1
 basis_dim                   : 64

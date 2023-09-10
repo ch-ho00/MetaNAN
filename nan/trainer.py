@@ -37,7 +37,7 @@ class Trainer:
     def __init__(self, args):
         if 'objaverse' in args.train_dataset:
             from configs.local_setting_objaverse import OUT_DIR, LOG_DIR
-        elif args.train_dataset == 'deblur_scene':
+        elif 'deblur' in args.train_dataset:
             from configs.local_setting_deblur import OUT_DIR, LOG_DIR
         elif args.train_dataset == 'llff':
             from configs.local_setting import OUT_DIR, LOG_DIR
@@ -161,7 +161,8 @@ class Trainer:
         ray_batch = ray_sampler.random_ray_batch(N_rand,
                                                  sample_mode=self.args.sample_mode,
                                                  center_ratio=self.args.center_ratio,
-                                                 clean=self.args.sup_clean)
+                                                 clean=self.args.sup_clean, 
+                                                 alpha_sample='objaverse' in self.args.train_dataset)
         # Calculate the feature maps of all views.
         # This step is seperated because in evaluation time we want to do it once for each image.
         if self.args.clean_src_imgs:

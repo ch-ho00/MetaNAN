@@ -18,6 +18,7 @@ from basicsr.data.degradations import circular_lowpass_kernel, random_mixed_kern
 import itertools
 from pprint import pprint
 import glob
+import json 
 
 class Mode(Enum):
     train = "train"
@@ -114,8 +115,25 @@ class BurstDataset(Dataset, ABC):
             scene_root = os.path.join(DATA_DIR, self.dir_name)
             holdout = 8
             self.holdout = holdout            
-            self.scenes_dirs = glob.glob(f'{scene_root}/final_render/*/*')
-            for i, scene_path in enumerate(self.scenes_dirs):
+            self.scenes_dirs = glob.glob(f'{scene_root}/gcloud2/*/*') #final_render_0905
+            new_scene_dirs = []
+            for i, folder in enumerate(self.scenes_dirs):
+                folder_path = Path(folder)
+                pose_file = folder_path / 'transforms.json'  # Update the file name to read from JSON
+                if os.path.exists(pose_file):
+                    with open(pose_file, 'r') as f:
+                        data = json.load(f)
+                    near = data['near'] * 0.8
+                    far = data['far'] * 1.2
+                    scale = 1 / (near * 0.75)
+                    far *= scale
+                    print(folder, far)
+                    if far > 5:
+                        new_scene_dirs.append(folder)
+
+            self.scenes_dirs = new_scene_dirs
+
+            for i, scene_path in enumerate(self.scenes_dirs): 
                 print(scene_path)
                 self.add_single_scene(i, scene_path, holdout)
 
@@ -168,7 +186,7 @@ class BurstDataset(Dataset, ABC):
                 self.add_single_scene(i, scene_path)
 
         print(f"Loaded {s} Img File = {len(self.render_rgb_files)}")
-        
+
     def pick_scenes(self, scenes):
         if len(scenes) > 0:
             if isinstance(scenes, str):
@@ -206,9 +224,9 @@ class BurstDataset(Dataset, ABC):
 
         img = transform(img)
         if white_bkgd:
-            # mask = (img[-1:] > 0).float()
             alpha = img[-1:]
             img = img[:3] * alpha + (1 - alpha)
+            return img.permute(1,2,0).numpy(), alpha.permute(1,2,0).numpy()
 
         return img.permute(1,2,0).numpy()
 
@@ -441,7 +459,7 @@ class NoiseDataset(BurstDataset, ABC):
         return batch_dict
 
     def create_objaverse_scene_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
-                                gt_depth=None, eval_gain=1, rgb_noisy=None, src_rgbs_clean=None):
+                                gt_depth=None, eval_gain=1, rgb_noisy=None, src_rgbs_clean=None, alpha_clean=None):
         if rgb_clean is not None:
             rgb_clean = torch.from_numpy(rgb_clean[..., :3])
             # if self.mode is Mode.train:
@@ -466,6 +484,7 @@ class NoiseDataset(BurstDataset, ABC):
                       'eval_gain'     : eval_gain}
         batch_dict['src_rgbs_clean'] = torch.from_numpy(src_rgbs_clean[..., :3])
         batch_dict['rgb_clean'] = rgb_clean
+        batch_dict['alpha_clean'] = alpha_clean
         batch_dict['rgb_noisy'] = rgb_noisy
             
         return batch_dict

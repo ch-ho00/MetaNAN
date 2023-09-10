@@ -93,6 +93,12 @@ class ObjaverseDataset(NoiseDataset, ABC):
                 if near > np.linalg.norm(matrix[:3,-1]) * 0.1:
                     near = np.linalg.norm(matrix[:3,-1]) * 0.1
 
+        print("Before :", near, far)
+
+        near = data['near'] * 0.8
+        far = data['far'] * 1.2
+        print("After :", near, far)
+
         c2w_mats = np.array(c2w_mats)
         c2w_mats = recenter_poses(c2w_mats)
 
@@ -151,8 +157,8 @@ class ObjaverseDataset(NoiseDataset, ABC):
         scene_name = str(rgb_file).split('/')[-2]
 
         # image (H, W, 3)
-        rgb = self.read_image(rgb_file_clean, multiple32=False, white_bkgd=self.args.white_bkgd)
-        rgb_noisy = self.read_image(rgb_file, multiple32=False, white_bkgd=self.args.white_bkgd)
+        rgb, alpha = self.read_image(rgb_file_clean, multiple32=False, white_bkgd=True)
+        rgb_noisy, _ = self.read_image(rgb_file, multiple32=False, white_bkgd=True)
         # Rotation | translation (4x4)
         # 0  0  0  | 1
         render_pose = self.render_poses[idx]
@@ -189,20 +195,20 @@ class ObjaverseDataset(NoiseDataset, ABC):
             if src_id is None:
                 # print(self.render_rgb_files[idx])
                 rgb_file = self.render_rgb_files[idx]
-                src_rgb = self.read_image(rgb_file, multiple32=False, white_bkgd=self.args.white_bkgd)
+                src_rgb, _ = self.read_image(rgb_file, multiple32=False, white_bkgd=True)
                 train_pose = self.render_poses[idx]
                 train_intrinsics_ = self.render_intrinsics[idx]
             else:
                 # print(train_rgb_files[src_id])
                 rgb_file = train_rgb_files[src_id]
-                src_rgb = self.read_image(rgb_file, multiple32=False, white_bkgd=self.args.white_bkgd)
+                src_rgb, _ = self.read_image(rgb_file, multiple32=False, white_bkgd=True)
                 train_pose = train_poses[src_id]
                 train_intrinsics_ = train_intrinsics[src_id]
                 
             rgb_file_clean = str(rgb_file).split('/')
             rgb_file_clean[-1] = 'clean_' + rgb_file_clean[-1]
             rgb_file_clean = Path('/'.join(rgb_file_clean))
-            src_rgb_clean = self.read_image(rgb_file_clean, multiple32=False, white_bkgd=self.args.white_bkgd)
+            src_rgb_clean, _ = self.read_image(rgb_file_clean, multiple32=False, white_bkgd=True)
             src_rgbs_clean.append(src_rgb_clean)
             src_poses.append(train_pose)
             src_rgbs.append(src_rgb)
@@ -215,11 +221,11 @@ class ObjaverseDataset(NoiseDataset, ABC):
         src_rgbs_clean = np.stack(src_rgbs_clean, axis=0)
         src_cameras = np.stack(src_cameras, axis=0) # (num_select, 34)
 
-        rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean = self.apply_transform(rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean)
+        rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean, alpha = self.apply_transform(rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean, alpha)
 
         gt_depth = 0
         depth_range = self.final_depth_range(depth_range)
-        return self.create_objaverse_scene_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain, rgb_noisy=rgb_noisy, src_rgbs_clean=src_rgbs_clean)
+        return self.create_objaverse_scene_batch_from_numpy(rgb, camera, rgb_file, src_rgbs, src_cameras, depth_range, gt_depth=gt_depth, eval_gain=eval_gain, rgb_noisy=rgb_noisy, src_rgbs_clean=src_rgbs_clean, alpha_clean=alpha)
 
     def get_nearest_pose_ids(self, render_pose, train_poses, subsample_factor, id_render):
         return get_nearest_pose_ids(render_pose,
@@ -256,21 +262,21 @@ class ObjaverseTestDataset(ObjaverseDataset):
     num_select_high = 2
     min_nearest_pose = 28
 
-    def apply_transform(self, rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean=None):
+    def apply_transform(self, rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean=None, alpha=None):
         if self.mode is Mode.train and self.random_crop:
             #crop_h = np.random.randint(low=250, high=750) // 128 * 128
             #crop_h = crop_h + 1 if crop_h % 2 == 1 else crop_h
             #crop_w = int(400 * 600 / crop_h // 128 * 128) #350 * 550
             #crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
-            crop_h = 350
-            crop_w = 550
-            rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean = random_crop(rgb, camera, src_rgbs, src_cameras,
-                                                             (crop_h, crop_w), rgb_noisy=rgb_noisy, src_rgbs_clean=src_rgbs_clean)
+            crop_h = 384 #350
+            crop_w = 512 #550
+            rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean, alpha = random_crop(rgb, camera, src_rgbs, src_cameras,
+                                                             (crop_h, crop_w), rgb_noisy=rgb_noisy, src_rgbs_clean=src_rgbs_clean, alpha=alpha)
 
         if self.mode is Mode.train and np.random.choice([0, 1]):
-            rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean = random_flip(rgb, camera, src_rgbs, src_cameras, rgb_noisy=rgb_noisy, src_rgbs_clean=src_rgbs_clean)
+            rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean, alpha = random_flip(rgb, camera, src_rgbs, src_cameras, rgb_noisy=rgb_noisy, src_rgbs_clean=src_rgbs_clean, alpha=alpha)
 
-        return rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean
+        return rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean, alpha
 
 
     def final_depth_range(self, depth_range):

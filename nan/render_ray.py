@@ -356,8 +356,6 @@ class RayRender:
                 src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
                 if self.model.args.num_latent > 1:
                     src_rgbs, pred_offset = self.model.pre_net(src_rgbs)
-                    featmaps['latent_imgs'] = src_rgbs                    
-                    featmaps['pred_offset'] = pred_offset
                 else:
                     src_rgbs, _ = self.model.pre_net(src_rgbs, src_rgbs[:, None, :3])
 
@@ -403,6 +401,9 @@ class RayRender:
             del degfeat
 
         if self.model.args.num_latent > 1:
+            src_rgbs = src_rgbs.reshape(-1, self.model.args.num_latent, 3, H ,W)
+            featmaps['latent_imgs'] = src_rgbs                    
+            featmaps['pred_offset'] = pred_offset
             src_rgbs = src_rgbs[:,0]
         src_rgbs = src_rgbs.permute(0, 2, 3, 1).unsqueeze(0)
         featmaps['noise_vec'] = noise_vec

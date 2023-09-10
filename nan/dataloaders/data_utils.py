@@ -84,7 +84,7 @@ def quaternion_matrix(quaternion):
     ), dtype=np.float64)
 
 
-def random_crop(rgb, camera, src_rgbs, src_cameras, size=(400, 600), center=None, rgb_noisy=None, src_rgbs_clean=None):
+def random_crop(rgb, camera, src_rgbs, src_cameras, size=(400, 600), center=None, rgb_noisy=None, src_rgbs_clean=None, alpha=None):
     h, w = rgb.shape[:2]
     out_h, out_w = size[0], size[1]
     if out_w >= w or out_h >= h:
@@ -117,12 +117,15 @@ def random_crop(rgb, camera, src_rgbs, src_cameras, size=(400, 600), center=None
         src_rgbs_clean = src_rgbs_clean[:, center_h - out_h // 2:center_h + out_h // 2,
                 center_w - out_w // 2:center_w + out_w // 2, :]
 
+        if isinstance(alpha, np.ndarray):
+            alpha = alpha[center_h - out_h // 2:center_h + out_h // 2, center_w - out_w // 2:center_w + out_w // 2, :]
+            return rgb_out, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean, alpha
         return rgb_out, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean
     
     return rgb_out, camera, src_rgbs, src_cameras
 
 
-def random_flip(rgb, camera, src_rgbs, src_cameras, rgb_noisy=None, src_rgbs_clean=None):
+def random_flip(rgb, camera, src_rgbs, src_cameras, rgb_noisy=None, src_rgbs_clean=None, alpha=None):
     h, w = rgb.shape[:2]
     h_r, w_r = src_rgbs.shape[1:3]
     rgb_out = np.flip(rgb, axis=1).copy()
@@ -135,7 +138,11 @@ def random_flip(rgb, camera, src_rgbs, src_cameras, rgb_noisy=None, src_rgbs_cle
     if isinstance(rgb_noisy, np.ndarray):
         rgb_noisy = np.flip(rgb_noisy, axis=1).copy()
         src_rgbs_clean = np.flip(src_rgbs_clean, axis=-2).copy()
+        if isinstance(alpha, np.ndarray):
+            alpha = np.flip(alpha, axis=-1).copy()
+            return rgb_out, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean, alpha
         return rgb_out, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean
+
     return rgb_out, camera, src_rgbs, src_cameras
 
 
