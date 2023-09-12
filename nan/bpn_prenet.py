@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
+from nan.dcn import DeformableConv2d
 
 # BPN basic block: SingleConv
 class SingleConv(nn.Module):
@@ -10,6 +11,20 @@ class SingleConv(nn.Module):
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=3,
                       stride=1, padding=1),
+            nn.ReLU()
+        )
+
+    def forward(self, data):
+        output = self.conv(data)
+        return output
+
+# BPN basic block: SingleConv
+class SingleDeformConv(nn.Module):
+    def __init__(self, in_ch, out_ch):
+        super(SingleDeformConv, self).__init__()
+        self.conv = nn.Sequential(
+            DeformableConv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=3,
+                      stride=1, padding=1, bias=True),
             nn.ReLU()
         )
 
@@ -56,52 +71,6 @@ class UpBlock(nn.Module):
         output = self.conv(data)
         return output
 
-
-# BPN basic block: UpBlock
-class GroupUpBlock(nn.Module):
-    def __init__(self, in_ch, out_ch, groups):
-        super(GroupUpBlock, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=3, groups=groups,
-                      stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=3, groups=groups,
-                      stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=3, groups=groups,
-                      stride=1, padding=1),
-            nn.ReLU()
-        )
-
-    def forward(self, data):
-        output = self.conv(data)
-        return output
-
-class GroupCutEdgeConv(nn.Module):
-    def __init__(self, in_ch, out_ch, groups):
-        super(GroupCutEdgeConv, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=2, groups=groups,
-                      stride=1, padding=0),
-            nn.ReLU()
-        )
-
-    def forward(self, data):
-        output = self.conv(data)
-        return output
-
-class GroupSingleConv(nn.Module):
-    def __init__(self, in_ch, out_ch, groups):
-        super(GroupSingleConv, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=3, groups=groups,
-                      stride=1, padding=1),
-            nn.ReLU()
-        )
-
-    def forward(self, data):
-        output = self.conv(data)
-        return output
 
 
 # BPN basic block: CutEdgeConv
@@ -176,25 +145,30 @@ class BPN(nn.Module):
 
         # Layer definition in each block
         # Encoder
-        self.deconv_channels = [64, 128, 256] # [32, 64, 128]
+        self.deconv_channels = [96, 128, 256] # [32, 64, 128]
         self.initial_conv = SingleConv(self.in_channel, self.deconv_channels[0])
-        self.down_conv1 = DownBlock(self.deconv_channels[0], self.deconv_channels[0])
-        self.down_conv2 = DownBlock(self.deconv_channels[0], self.deconv_channels[1])
+        self.down_conv1 = DownBlock(self.deconv_channels[0], self.deconv_channels[1])
+        self.down_conv2 = DownBlock(self.deconv_channels[1], self.deconv_channels[1])
         self.down_conv3 = DownBlock(self.deconv_channels[1], self.deconv_channels[2])
         self.features_conv1 = SingleConv(self.deconv_channels[2], int(self.deconv_channels[2]  * channel_upfactor))
         # Decoder for coefficients
         self.up_coeff_conv1 = UpBlock(self.deconv_channels[2] + self.deconv_channels[2], self.deconv_channels[1])
         self.up_coeff_conv2 = UpBlock(self.deconv_channels[1] + self.deconv_channels[1], self.deconv_channels[0])
-        self.up_coeff_conv3 = UpBlock(self.deconv_channels[0] + self.deconv_channels[0], self.deconv_channels[0])
-        self.coeff_conv1 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
-        self.coeff_conv2 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
-        self.coeff_conv3 = SingleConv(self.deconv_channels[0], self.coeff_channel)
+        self.up_coeff_conv3 = UpBlock(self.deconv_channels[1] + self.deconv_channels[0], self.deconv_channels[0])
+        if self.n_latent_layers > 1:
+            self.coeff_conv1 = SingleDeformConv(self.deconv_channels[0], self.deconv_channels[0])
+            self.coeff_conv2 = SingleDeformConv(self.deconv_channels[0], self.deconv_channels[0])
+            self.coeff_conv3 = SingleDeformConv(self.deconv_channels[0], self.coeff_channel)        
+        else:
+            self.coeff_conv1 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
+            self.coeff_conv2 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
+            self.coeff_conv3 = SingleConv(self.deconv_channels[0], self.coeff_channel)
         self.out_coeff = nn.Softmax(dim=1)
 
         # # Decoder for basis
         self.up_basis_conv1 = UpBlock(self.deconv_channels[2] + self.deconv_channels[2], self.deconv_channels[1])
         self.up_basis_conv2 = UpBlock(self.deconv_channels[1] + self.deconv_channels[1], self.deconv_channels[0])
-        self.up_basis_conv3 = UpBlock(self.deconv_channels[0] + self.deconv_channels[0], self.deconv_channels[0])
+        self.up_basis_conv3 = UpBlock(self.deconv_channels[1] + self.deconv_channels[0], self.deconv_channels[0])
         self.basis_conv1 = CutEdgeConv(self.deconv_channels[0], self.deconv_channels[0])
         self.basis_conv2 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
         self.basis_conv3 = SingleConv(self.deconv_channels[0], self.basis_channel)
@@ -210,6 +184,13 @@ class BPN(nn.Module):
                 nn.ELU(inplace=True),
                 nn.Conv2d(self.deconv_channels[1], 6, kernel_size=1, dilation=1, stride=1, padding=0),
             )
+            # self.offset_conv = nn.Sequential(
+            #     nn.Conv2d(self.color_channel * self.kernel_size ** 2, self.kernel_size ** 2, kernel_size=7, dilation=1, stride=3, padding=0),
+            #     nn.ELU(inplace=True),
+            #     nn.Conv2d(self.kernel_size ** 2, 16, kernel_size=5, dilation=1, stride=2, padding=0),
+            #     nn.ELU(inplace=True),
+            #     nn.Conv2d(16, 6, kernel_size=1, dilation=1, stride=1, padding=0),
+            # )
 
             for module in self.offset_conv.modules():
                 if isinstance(module, nn.Conv2d):
@@ -330,7 +311,6 @@ class BPN(nn.Module):
             down_conv1, tosize=int((self.kernel_size + 1) / 1)), F.interpolate(
             up_basis_conv2, scale_factor=2, mode=self.upMode)], dim=1))
         del down_conv1, up_basis_conv2, up_coeff_conv2
-
         coeff1 = self.coeff_conv1(up_coeff_conv3)
         del up_coeff_conv3
         coeff2 = self.coeff_conv2(coeff1)
@@ -359,7 +339,6 @@ class BPN(nn.Module):
         del basis2
 
         if self.n_latent_layers > 1:
-            # img_basis = self.out_basis(basis3)
             pred_imgs = []
             nchannels = self.basis_size
             for img_idx in range(self.n_latent_layers):
@@ -370,6 +349,9 @@ class BPN(nn.Module):
                 pred_burst = self.kernel_conv(data, kernels)        
                 pred_burst = torch.mean(pred_burst, dim=1, keepdim=False)
                 pred_imgs.append(pred_burst)
+                # if img_idx == self.n_latent_layers - 1:
+                #     N, _, _, H, W = data.shape
+                #     pred_offset = self.offset_conv(kernels.reshape(N, -1, H, W))
             pred_imgs = torch.stack(pred_imgs, dim=1)
             torch.cuda.empty_cache()
             pred_offset = self.offset_conv(features)

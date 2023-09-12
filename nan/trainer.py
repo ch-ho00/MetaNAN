@@ -179,7 +179,7 @@ class Trainer:
                 nearby_idxs.append(ids)
         else:
             nearby_idxs = None
-        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, white_level=ray_batch['white_level'], weight=w, nearby_idxs=nearby_idxs)
+        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, white_level=ray_batch['white_level'], weight=w, nearby_idxs=nearby_idxs, src_cameras=train_data['src_cameras'].to(self.device))
 
         self.scalars_to_log['weight'] = w 
 
@@ -205,37 +205,42 @@ class Trainer:
                                                     center_ratio=self.args.center_ratio)
             ray_batch = blur_ray_batch
 
-        if self.model.args.num_latent > 1:
-            src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
-            src_se3_start = SE3_to_se3_N(src_poses)
-            src_se3_end = src_se3_start + featmaps['pred_offset']
-            src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=self.model.args.num_latent)
-            src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(self.model.args.num_source_views, self.model.args.num_latent, 1, 1)
-            src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
-            src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
-            H, W = ray_batch['src_cameras'][0,0,:2]
-            intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)
-            warped_imgs, warp_masks = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
-            # Attach intrinsics and HW vector
-            src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
-            src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)], dim=-1)
-            src_latent_camera[:,:,0] = ray_batch['src_cameras']
-            ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
-        else:
+        # if self.model.args.num_latent > 1 and not self.model.args.latent_img_stack:
+        #     src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
+        #     src_se3_start = SE3_to_se3_N(src_poses)
+        #     src_se3_end = src_se3_start + featmaps['pred_offset']
+        #     src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=self.model.args.num_latent)
+        #     src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(self.model.args.num_source_views, self.model.args.num_latent, 1, 1)
+        #     src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
+        #     src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
+        #     H, W = ray_batch['src_cameras'][0,0,:2]
+        #     intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)
+        #     warped_imgs, warp_masks = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
+        #     # Attach intrinsics and HW vector
+        #     src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
+        #     src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)], dim=-1)
+        #     src_latent_camera[:,:,0] = ray_batch['src_cameras']
+        #     ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
+        # else:
+        if self.model.args.num_latent  == 1:
             featmaps['latent_imgs'] = proc_src_rgbs[0].permute(0,3,1,2)[:,None]
-            ray_batch['src_cameras'] = ray_batch['src_cameras'].reshape(1,-1,34)
 
 
         sigma_est = ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None
         if self.args.proc_rgb_feat and self.args.weightsum_filtered:
             org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
+        elif self.args.latent_img_stack:
+            org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
         elif self.args.num_latent > 1 or self.args.proc_rgb_feat or self.args.sum_filtered:
             org_src_rgbs_ = proc_src_rgbs
         else:
             org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
 
+        H, W=  ray_sampler.src_rgbs.shape[-3:-1]
         # Render the rgb values of the pixels that were sampled
-        batch_out = self.ray_render.render_batch(ray_batch=ray_batch, proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
+        batch_out = self.ray_render.render_batch(ray_batch=ray_batch, 
+                                                proc_src_rgbs=proc_src_rgbs if self.args.num_latent  == 1 else featmaps['warped_latent'].reshape(1, self.args.num_source_views, -1, H, W).permute(0,1,3,4,2), 
+                                                featmaps=featmaps,
                                                 org_src_rgbs=org_src_rgbs_,
                                                 sigma_estimate=sigma_est)
         # compute loss
@@ -262,6 +267,8 @@ class Trainer:
             self.scalars_to_log['train/fine_noise_loss'] = fine_noise_loss * self.args.lambda_blur_loss
 
         if self.args.lambda_align_loss > 0:
+            warp_masks = featmaps['warped_masks']
+            warped_imgs = featmaps['warped_latent']
             align_loss = warp_masks[:, 1:, None].float() * torch.abs(warped_imgs[:,:1].repeat(1, self.args.num_latent -1, 1, 1,1) - warped_imgs[:,1:])
             align_loss = torch.mean(align_loss) * self.args.lambda_align_loss
             loss += align_loss

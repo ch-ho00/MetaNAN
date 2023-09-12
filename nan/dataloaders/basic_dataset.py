@@ -532,40 +532,6 @@ class NoiseDataset(BurstDataset, ABC):
         return batch_dict
 
 
-    def create_seanerf_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
-                                gt_depth=None, eval_gain=1):
-        if self.mode in [Mode.train]: #, Mode.validation]:
-            white_level = torch.clamp(10 ** -torch.rand(1), 0.6, 1)
-        else:
-            white_level = torch.Tensor([1])
-
-        if rgb_clean is not None:
-            rgb_clean = re_linearize(torch.from_numpy(rgb_clean[..., :3]), white_level)
-            # if self.mode is Mode.train:
-            #     rgb, _ = self.add_noise(rgb_clean)        
-            # else:
-            #     rgb, _ = self.add_noise_level(rgb_clean, eval_gain)                        
-        else:
-            rgb = None
-        src_rgbs = re_linearize(torch.from_numpy(src_rgbs[..., :3]), white_level)
-
-        # if self.mode is Mode.train:
-        #     src_rgbs, sigma_est = self.add_noise(src_rgbs_clean)
-        # else:
-        #     src_rgbs, sigma_est = self.add_noise_level(src_rgbs_clean, eval_gain)
-                      
-        batch_dict = {'camera'        : torch.from_numpy(camera),
-                      'rgb_path'      : str(rgb_file),
-                      'src_rgbs'      : src_rgbs,
-                      'src_cameras'   : torch.from_numpy(src_cameras),
-                      'depth_range'   : depth_range,
-                      'white_level'   : white_level,
-                      'eval_gain'     : eval_gain}
-
-        if rgb_clean is not None:
-            batch_dict['rgb_clean'] = rgb_clean
-
-        return batch_dict
 
 
 if __name__ == '__main__':

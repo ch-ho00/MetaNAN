@@ -25,6 +25,7 @@ from nan.feature_network import BasicBlock
 from nan.sample_ray import parse_camera
 from nan.se3 import SE3_to_se3_N, get_spline_poses
 from nan.projection import warp_latent_imgs
+from nan.se3 import SE3_to_se3_N
 
 def stack_image(image, N=2, pad=7):
     b, c, h, w = image.size()
@@ -275,7 +276,7 @@ class RayRender:
         # Process the rays and return the coarse phase output
         coarse_ray_out = self.process_rays_batch(ray_batch=ray_batch, pts=pts_coarse, z_vals=z_vals_coarse, save_idx=save_idx,
                                          level='coarse', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                         org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, latent_render=self.model.args.num_latent > 1)
+                                         org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate)
         batch_out['coarse'] = coarse_ray_out
 
         if self.fine_processing:
@@ -287,7 +288,7 @@ class RayRender:
             # Process the rays and return the fine phase output
             fine = self.process_rays_batch(ray_batch=ray_batch, pts=pts_fine, z_vals=z_vals_fine, save_idx=save_idx,
                                            level='fine', proc_src_rgbs=proc_src_rgbs, featmaps=featmaps,
-                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate, latent_render=self.model.args.num_latent > 1)
+                                           org_src_rgbs=org_src_rgbs, sigma_estimate=sigma_estimate)
 
             batch_out['fine'] = fine
 
@@ -299,7 +300,7 @@ class RayRender:
         return batch_out
 
     def process_rays_batch(self, ray_batch, pts, z_vals, save_idx, level, proc_src_rgbs, featmaps,
-                           org_src_rgbs, sigma_estimate, latent_render=False):
+                           org_src_rgbs, sigma_estimate):
         """
         :param sigma_estimate: (1, N, H, W, 3)
         :param org_src_rgbs: (1, N, H, W, 3)
@@ -312,14 +313,11 @@ class RayRender:
         :param save_idx: indices for debug purposes
         :return: RaysOutput object of the rendered values
         """
-        latent_info = None
-        if latent_render:
-            latent_info = [featmaps['latent_imgs']]
         # Project the pts along the rays batch on all others views (src views)
         # based on the target camera and src cameras (intrinsics - K, rotation - R, translation - t)
         proj_out = self.projector.compute(pts, ray_batch['camera'], proc_src_rgbs, org_src_rgbs, sigma_estimate,
                                           ray_batch['src_cameras'],
-                                          featmaps=featmaps[level], latent_info=latent_info)  # [N_rays, N_samples, N_views, x]
+                                          featmaps=featmaps[level])  # [N_rays, N_samples, N_views, x]
         rgb_feat, ray_diff, pts_mask, org_rgb, sigma_est, proj_feat = proj_out
 
         # [N_rays, N_samples, 4]
@@ -341,7 +339,7 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs, white_level=None, weight=None, nearby_idxs=None):
+    def calc_featmaps(self, src_rgbs, white_level=None, weight=None, nearby_idxs=None, src_cameras=None):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)
@@ -380,15 +378,31 @@ class RayRender:
                 del input_rgb
                 torch.cuda.empty_cache()
 
+        if self.model.args.num_latent > 1:
+            src_poses = src_cameras[:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
+            src_se3_start = SE3_to_se3_N(src_poses)
+            src_se3_end = src_se3_start + pred_offset
+            src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=self.model.args.num_latent)
+            src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(self.model.args.num_source_views, self.model.args.num_latent, 1, 1)
+            src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
+            src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
+            intrinsics = src_cameras[:,:,2:18].reshape(-1, 4, 4)
+            warped_imgs, warped_masks = warp_latent_imgs(src_rgbs, intrinsics, src_spline_poses_4x4)
+
+            featmaps['warped_latent'] = warped_imgs        
+            featmaps['warped_masks'] = warped_masks          
+            if self.model.args.latent_img_stack:
+                process_rgbs = torch.cat([orig_rgbs[0].permute(0,3,1,2)[:,None], warped_imgs], dim=1)
+
         # input for feature extractor
-        if self.model.args.proc_rgb_feat and self.model.args.weightsum_filtered:
+        elif self.model.args.proc_rgb_feat and self.model.args.weightsum_filtered:
             process_rgbs = src_rgbs * (1-weight) + orig_rgbs[0].permute(0,3,1,2) * weight
         elif self.model.args.num_latent > 1 or self.model.args.proc_rgb_feat:
             process_rgbs = src_rgbs
         else:
             process_rgbs = orig_rgbs[0].permute(0,3,1,2)
 
-        process_rgbs = process_rgbs.reshape(-1,3, H, W)
+        process_rgbs = process_rgbs.reshape(self.model.args.num_source_views,-1, H, W)
 
         if not self.model.args.degae_feat:
             feature_dict = self.model.feature_net(process_rgbs)
@@ -407,7 +421,7 @@ class RayRender:
 
         if self.model.args.num_latent > 1:
             src_rgbs = src_rgbs.reshape(-1, self.model.args.num_latent, 3, H ,W)
-            featmaps['latent_imgs'] = src_rgbs                    
+            featmaps['latent_imgs'] = src_rgbs
             featmaps['pred_offset'] = pred_offset
             src_rgbs = src_rgbs[:,0]
 

@@ -74,24 +74,7 @@ def render_single_image(ray_sampler: RaySampler,
         nearby_idxs = None
 
 
-    src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs, white_level=ray_sampler.white_level, weight=w, nearby_idxs=nearby_idxs)
-
-    if model.args.num_latent > 1:
-        src_poses = src_cameras[:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
-        src_se3_start = SE3_to_se3_N(src_poses)
-        src_se3_end = src_se3_start + featmaps['pred_offset']
-        src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=model.args.num_latent)
-        src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(model.args.num_source_views, model.args.num_latent, 1, 1)
-        src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
-        src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
-        H, W = src_cameras[0,0,:2]
-        intrinsics = src_cameras[:,:,2:18].reshape(-1, 4, 4)
-        warped_imgs, _ = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
-
-        src_spline_poses_4x4 = src_spline_poses_4x4.reshape(1, model.args.num_source_views, model.args.num_latent, -1)            
-        src_latent_camera = src_cameras[:,:,:-16][:,:, None].repeat(1,1,model.args.num_latent,1)
-        src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4], dim=-1)
-
+    src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs, white_level=ray_sampler.white_level, weight=w, nearby_idxs=nearby_idxs, src_cameras=src_cameras)
     all_ret = OrderedDict([('coarse', RaysOutput.empty_ret()),
                            ('fine', None)])
 
@@ -99,36 +82,42 @@ def render_single_image(ray_sampler: RaySampler,
     if model.args.bpn_prenet:
         all_ret['bpn_reconst'] = src_rgbs
         if model.args.num_latent > 1:
-            all_ret['warped_latent_imgs'] = warped_imgs
-            all_ret['latent_imgs'] = featmaps['latent_imgs']
+            src_poses = src_cameras[:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
+            src_se3_start = SE3_to_se3_N(src_poses)
+            src_se3_end = src_se3_start + featmaps['pred_offset']
+            src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=model.args.num_latent)
+            src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(model.args.num_source_views, model.args.num_latent, 1, 1)
+            src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
+            src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
+            H, W = src_cameras[0,0,:2]
+            intrinsics = src_cameras[:,:,2:18].reshape(-1, 4, 4)
+            warped_imgs, _ = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
+
+            print("OFFSET = ", featmaps['pred_offset'])
+            all_ret['warped_latent_imgs'] =  warped_imgs
+            all_ret['latent_imgs']        =  featmaps['latent_imgs']
 
     if args.N_importance > 0:
         all_ret['fine'] = RaysOutput.empty_ret()
     N_rays = ray_sampler.rays_o.shape[0]
 
-    if model.args.num_latent == 1:
-        featmaps['latent_imgs'] = src_rgbs[0].permute(0,3,1,2)[:,None]
-
 
     if args.proc_rgb_feat and args.weightsum_filtered:
         proc_src_rgbs = src_rgbs * (1 - w) + org_src_rgbs.to(device) * w
-    elif args.num_latent > 1 or args.proc_rgb_feat or args.sum_filtered:
+    elif args.latent_img_stack:
+        proc_src_rgbs = org_src_rgbs.to(device)
+    elif args.num_latent > 1 or args.proc_rgb_feat or args.sum_filtered :
         proc_src_rgbs = src_rgbs
     else:
         proc_src_rgbs = org_src_rgbs.to(device)
 
+    H, W = org_src_rgbs.shape[-3:-1]
     for i in tqdm(range(0, N_rays, args.chunk_size)):
         # print('batch', i)
         ray_batch = ray_sampler.specific_ray_batch(slice(i, i + args.chunk_size, 1), clean=args.sup_clean)
-        if model.args.num_latent > 1:
-            src_latent_camera[0,:,0] = ray_batch['src_cameras']
-            ray_batch['src_cameras'] = src_latent_camera
-
         ray_batch['src_cameras'] = ray_batch['src_cameras'].reshape(1,-1,34)
-
-
         ret       = ray_render.render_batch(ray_batch=ray_batch,
-                                            proc_src_rgbs=src_rgbs,
+                                            proc_src_rgbs=src_rgbs if model.args.num_latent == 1 else warped_imgs.reshape(1, args.num_source_views, -1, H, W).permute(0,1,3,4,2),
                                             featmaps=featmaps,
                                             org_src_rgbs=proc_src_rgbs,
                                             sigma_estimate=sigma_est)

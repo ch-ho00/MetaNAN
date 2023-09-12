@@ -164,7 +164,9 @@ class NANScheme(nn.Module):
         if not args.degae_feat:
             self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
                                     fine_out_ch=args.fine_feat_dim,
-                                    coarse_only=args.coarse_only).to(device)
+                                    coarse_only=args.coarse_only,
+                                    latent_img_stack= args.latent_img_stack,
+                                    num_latent=args.num_latent).to(device)
 
 
         # create coarse NAN mlps
@@ -227,7 +229,7 @@ class NANScheme(nn.Module):
                     else:
                         bpn_params.append(v)
                 params_list.append({'params': bpn_params, 'lr': self.args.lrate_feature})
-                params_list.append({'params': offset_params, 'lr': self.args.lrate_feature * 1e-3})
+                params_list.append({'params': offset_params, 'lr': self.args.lrate_feature * 1e-2})
             else:
                 params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
                 

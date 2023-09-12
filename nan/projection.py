@@ -190,7 +190,7 @@ class Projector:
         ray_diff = ray_diff.reshape((num_views,) + original_shape + (4,))
         return ray_diff
 
-    def compute(self, xyz, query_camera, src_imgs, org_src_imgs, sigma_estimate, src_cameras, featmaps, latent_info=None):
+    def compute(self, xyz, query_camera, src_imgs, org_src_imgs, sigma_estimate, src_cameras, featmaps):
         """ Given 3D points and the camera of the target and src views,
         computing the rgb values of the incident pixels and their kxk environment.
 
@@ -233,11 +233,6 @@ class Projector:
             sigma_estimate = self.reshape_features(sigma_estimate)
         else:
             sigma_estimate = None
-
-        if latent_info != None:
-            src_imgs = latent_info[0].reshape(-1, 3, h.int().item(), w.int().item())
-            org_src_imgs = latent_info[0].reshape(-1, 3, h.int().item(), w.int().item())
-
 
         org_rgbs_sampled = F.grid_sample(org_src_imgs, norm_xys, align_corners=True)
         org_rgbs_sampled = org_rgbs_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, 3]

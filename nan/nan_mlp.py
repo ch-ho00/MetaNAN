@@ -139,7 +139,8 @@ class NanMLP(nn.Module):
             self.s = nn.Parameter(torch.tensor(0.2), requires_grad=True)
 
         self.n_samples = n_samples
-        base_input_channels = in_feat_ch + (3 if not self.args.exclude_proc_rgb else 0) # + (args.num_latent * 3 if args.blur_render else 0)
+        extra_dim = 3 * (self.args.num_latent if self.args.latent_img_stack else 1) if not self.args.exclude_proc_rgb else 0
+        base_input_channels = in_feat_ch + extra_dim
 
         self.ray_dir_fc = nn.Sequential(nn.Linear(4, 16),
                                         self.activation_func,
@@ -157,7 +158,7 @@ class NanMLP(nn.Module):
                                      self.activation_func)
 
         if args.views_attn:
-            input_channel = in_feat_ch + (3 if not self.args.exclude_proc_rgb else 0)
+            input_channel = in_feat_ch + extra_dim
             view_att_nhead = 5
             self.views_attention = MultiHeadAttention(view_att_nhead, input_channel, 7, 8)
 
