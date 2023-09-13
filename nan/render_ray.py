@@ -378,22 +378,23 @@ class RayRender:
                 del input_rgb
                 torch.cuda.empty_cache()
 
-        if self.model.args.num_latent > 1:
-            src_poses = src_cameras[:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
-            src_se3_start = SE3_to_se3_N(src_poses)
-            src_se3_end = src_se3_start + pred_offset
-            src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=self.model.args.num_latent)
-            src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(self.model.args.num_source_views, self.model.args.num_latent, 1, 1)
-            src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
-            src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
-            intrinsics = src_cameras[:,:,2:18].reshape(-1, 4, 4)
-            warped_imgs, warped_masks = warp_latent_imgs(src_rgbs, intrinsics, src_spline_poses_4x4)
+        if self.model.args.latent_img_stack:
+            if self.model.args.num_latent > 1:
+                src_poses = src_cameras[:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
+                src_se3_start = SE3_to_se3_N(src_poses)
+                src_se3_end = src_se3_start + pred_offset
+                src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=self.model.args.num_latent)
+                src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(self.model.args.num_source_views, self.model.args.num_latent, 1, 1)
+                src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
+                src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
+                intrinsics = src_cameras[:,:,2:18].reshape(-1, 4, 4)
+                warped_imgs, warped_masks = warp_latent_imgs(src_rgbs, intrinsics, src_spline_poses_4x4)
 
-            featmaps['warped_latent'] = warped_imgs        
-            featmaps['warped_masks'] = warped_masks          
-            if self.model.args.latent_img_stack:
+                featmaps['warped_latent'] = warped_imgs        
+                featmaps['warped_masks'] = warped_masks          
                 process_rgbs = torch.cat([orig_rgbs[0].permute(0,3,1,2)[:,None], warped_imgs], dim=1)
-
+            else:
+                process_rgbs = torch.cat([orig_rgbs[0].permute(0,3,1,2), src_rgbs], dim=1)
         # input for feature extractor
         elif self.model.args.proc_rgb_feat and self.model.args.weightsum_filtered:
             process_rgbs = src_rgbs * (1-weight) + orig_rgbs[0].permute(0,3,1,2) * weight

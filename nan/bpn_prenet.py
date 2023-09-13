@@ -145,7 +145,7 @@ class BPN(nn.Module):
 
         # Layer definition in each block
         # Encoder
-        self.deconv_channels = [96, 128, 256] # [32, 64, 128]
+        self.deconv_channels = [96, 128, 256] if self.n_latent_layers > 1 else  [64, 64, 128]
         self.initial_conv = SingleConv(self.in_channel, self.deconv_channels[0])
         self.down_conv1 = DownBlock(self.deconv_channels[0], self.deconv_channels[1])
         self.down_conv2 = DownBlock(self.deconv_channels[1], self.deconv_channels[1])
@@ -155,14 +155,12 @@ class BPN(nn.Module):
         self.up_coeff_conv1 = UpBlock(self.deconv_channels[2] + self.deconv_channels[2], self.deconv_channels[1])
         self.up_coeff_conv2 = UpBlock(self.deconv_channels[1] + self.deconv_channels[1], self.deconv_channels[0])
         self.up_coeff_conv3 = UpBlock(self.deconv_channels[1] + self.deconv_channels[0], self.deconv_channels[0])
-        if self.n_latent_layers > 1:
-            self.coeff_conv1 = SingleDeformConv(self.deconv_channels[0], self.deconv_channels[0])
-            self.coeff_conv2 = SingleDeformConv(self.deconv_channels[0], self.deconv_channels[0])
-            self.coeff_conv3 = SingleDeformConv(self.deconv_channels[0], self.coeff_channel)        
-        else:
-            self.coeff_conv1 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
-            self.coeff_conv2 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
-            self.coeff_conv3 = SingleConv(self.deconv_channels[0], self.coeff_channel)
+        self.coeff_conv1 = SingleDeformConv(self.deconv_channels[0], self.deconv_channels[0])
+        self.coeff_conv2 = SingleDeformConv(self.deconv_channels[0], self.deconv_channels[0])
+        self.coeff_conv3 = SingleDeformConv(self.deconv_channels[0], self.coeff_channel)        
+        # self.coeff_conv1 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
+        # self.coeff_conv2 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
+        # self.coeff_conv3 = SingleConv(self.deconv_channels[0], self.coeff_channel)
         self.out_coeff = nn.Softmax(dim=1)
 
         # # Decoder for basis

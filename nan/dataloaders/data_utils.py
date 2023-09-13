@@ -246,7 +246,7 @@ def get_nearest_pose_ids(tar_pose, ref_poses, num_select, tar_id=None, angular_d
     Returns: the selected indices
     """
     num_cams = len(ref_poses)
-    # num_select = min(num_select, num_cams - 1)
+    num_select = min(num_select, num_cams - 1)
     batched_tar_pose = tar_pose[None, ...].repeat(num_cams, 0)
 
     if angular_dist_method == 'matrix':

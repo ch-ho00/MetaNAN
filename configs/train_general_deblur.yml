@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : general_DeblurxDeblur_reviseSum_burst1_deformBPN_coeff_dim90_lr1e-2_2FC_src3_src8_LatLoss1e-1_alignLoss0
+expname                     : nan_DeblurxDeblur_plain_5src #general_DeblurxDeblur_reviseSum_burst1_deformBPN_coeff_dim90_lr1e-2_2FC_src3_src8_LatLoss1e-1_alignLoss0
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -26,17 +26,17 @@ fine_feat_dim               : 32
 img_size                    : 256
 sum_filtered                : False
 weightsum_filtered          : False
-bpn_prenet                  : True
+bpn_prenet                  : False #True
 ft_embed_fc                 : False
 cond_renderer               : False
 blur_render                 : False
-latent_img_stack            : True
-lambda_latent_loss          : 0.1
+latent_img_stack            : False #True
+lambda_latent_loss          : 0.0
 lambda_blur_loss            : 0.0
 lambda_align_loss           : 0.0
 burst_length                : 1
-num_source_views            : 3
-num_latent                  : 8
+num_source_views            : 5
+num_latent                  : 1
 center_ratio                : 0.6
 channel_upfactor            : 1
 basis_dim                   : 90
