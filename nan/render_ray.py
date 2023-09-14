@@ -324,7 +324,8 @@ class RayRender:
         # Process the feature vectors of all 3D points along each ray to predict density and rgb value
         rgb_out, rho_out, *debug_info = self.model.mlps[level](rgb_feat, ray_diff,
                                                                pts_mask.unsqueeze(-3).unsqueeze(-3),
-                                                               org_rgb, sigma_est, featmaps['noise_vec'])
+                                                               org_rgb, sigma_est, 
+                                                               featmaps['noise_vec'] if 'deblur' not in self.model.args.train_dataset else featmaps['pred_offset'])
         ray_outputs = RaysOutput.raw2output(rgb_out, rho_out, z_vals, pts_mask, white_bkgd=self.white_bkgd)
 
         if save_idx is not None:
@@ -396,10 +397,10 @@ class RayRender:
             else:
                 process_rgbs = torch.cat([orig_rgbs[0].permute(0,3,1,2), src_rgbs], dim=1)
         # input for feature extractor
-        elif self.model.args.proc_rgb_feat and self.model.args.weightsum_filtered:
-            process_rgbs = src_rgbs * (1-weight) + orig_rgbs[0].permute(0,3,1,2) * weight
-        elif self.model.args.num_latent > 1 or self.model.args.proc_rgb_feat:
-            process_rgbs = src_rgbs
+        # elif self.model.args.proc_rgb_feat and self.model.args.weightsum_filtered:
+        #     process_rgbs = src_rgbs * (1-weight) + orig_rgbs[0].permute(0,3,1,2) * weight
+        # elif self.model.args.num_latent > 1 or self.model.args.proc_rgb_feat:
+        #     process_rgbs = src_rgbs
         else:
             process_rgbs = orig_rgbs[0].permute(0,3,1,2)
 
@@ -425,6 +426,8 @@ class RayRender:
             featmaps['latent_imgs'] = src_rgbs
             featmaps['pred_offset'] = pred_offset
             src_rgbs = src_rgbs[:,0]
+        else:
+            featmaps['pred_offset'] = None
 
         src_rgbs = src_rgbs.permute(0, 2, 3, 1).unsqueeze(0)
         featmaps['noise_vec'] = noise_vec

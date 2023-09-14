@@ -32,7 +32,6 @@ class SingleDeformConv(nn.Module):
         output = self.conv(data)
         return output
 
-
 class GroupSingleConv(nn.Module):
     def __init__(self, in_ch, out_ch, groups):
         super(GroupSingleConv, self).__init__()
@@ -139,7 +138,7 @@ class KernelConv(nn.Module):
 
 
 class BPN(nn.Module):
-    def __init__(self, color=True, burst_length=1, blind_est=True, kernel_size=7, basis_size=64, upMode='bilinear', n_latent_layers=1, channel_upfactor=1):
+    def __init__(self, color=True, burst_length=1, blind_est=True, kernel_size=15, basis_size=64, upMode='bilinear', n_latent_layers=1, channel_upfactor=1):
         super(BPN, self).__init__()
         self.blind_est = blind_est
         self.kernel_size = kernel_size
@@ -171,8 +170,8 @@ class BPN(nn.Module):
         if self.n_latent_layers > 1:
             self.coeff_conv1 = SingleDeformConv(self.deconv_channels[0], self.deconv_channels[0])
             self.coeff_conv2 = SingleDeformConv(self.deconv_channels[0], self.deconv_channels[0])
-            self.coeff_conv3 = GroupSingleConv(self.deconv_channels[0], self.coeff_channel     , groups=self.n_latent_layers)
             # self.coeff_conv3 = SingleDeformConv(self.deconv_channels[0], self.coeff_channel)        
+            self.coeff_conv3 = GroupSingleConv(self.deconv_channels[0], self.coeff_channel     , groups=self.n_latent_layers)
         else:
             self.coeff_conv1 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
             self.coeff_conv2 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
@@ -183,6 +182,7 @@ class BPN(nn.Module):
         self.up_basis_conv1 = UpBlock(self.deconv_channels[2] + self.deconv_channels[2], self.deconv_channels[1])
         self.up_basis_conv2 = UpBlock(self.deconv_channels[1] + self.deconv_channels[1], self.deconv_channels[0])
         self.up_basis_conv3 = UpBlock(self.deconv_channels[1] + self.deconv_channels[0], self.deconv_channels[0])
+        self.up_basis_conv4 = UpBlock(self.deconv_channels[0] + self.deconv_channels[0], self.deconv_channels[0])
         self.basis_conv1 = CutEdgeConv(self.deconv_channels[0], self.deconv_channels[0])
         self.basis_conv2 = SingleConv(self.deconv_channels[0], self.deconv_channels[0])
         if self.n_latent_layers > 1:
@@ -279,7 +279,7 @@ class BPN(nn.Module):
 
         # down sampling
         down_conv1 = self.down_conv1(initial_conv)
-        del initial_conv 
+        # del data_with_est 
         down_conv2 = self.down_conv2(
             F.max_pool2d(down_conv1, kernel_size=2, stride=2))
         down_conv3 = self.down_conv3(
@@ -297,7 +297,7 @@ class BPN(nn.Module):
                                                                 mode=self.upMode))],
                                                        dim=1))
         up_basis_conv1 = self.up_basis_conv1(torch.cat([self.pool_before_cat(
-            down_conv3, tosize=int((self.kernel_size + 1) / 4)), F.interpolate(
+            down_conv3, tosize=int((self.kernel_size + 1) / 8)), F.interpolate(
             F.adaptive_avg_pool2d(features, (1, 1)), scale_factor=2,
             mode=self.upMode)], dim=1))
         del down_conv3
@@ -311,7 +311,7 @@ class BPN(nn.Module):
                                                                 mode=self.upMode))],
                                                        dim=1))
         up_basis_conv2 = self.up_basis_conv2(torch.cat([self.pool_before_cat(
-            down_conv2, tosize=int((self.kernel_size + 1) / 2)), F.interpolate(
+            down_conv2, tosize=int((self.kernel_size + 1) / 4)), F.interpolate(
             up_basis_conv1, scale_factor=2, mode=self.upMode)], dim=1))
         del down_conv2, up_coeff_conv1, up_basis_conv1
 
@@ -324,7 +324,7 @@ class BPN(nn.Module):
                                                                 mode=self.upMode))],
                                                        dim=1))
         up_basis_conv3 = self.up_basis_conv3(torch.cat([self.pool_before_cat(
-            down_conv1, tosize=int((self.kernel_size + 1) / 1)), F.interpolate(
+            down_conv1, tosize=int((self.kernel_size + 1) / 2)), F.interpolate(
             up_basis_conv2, scale_factor=2, mode=self.upMode)], dim=1))
         del down_conv1, up_basis_conv2, up_coeff_conv2
         coeff1 = self.coeff_conv1(up_coeff_conv3)
@@ -342,8 +342,12 @@ class BPN(nn.Module):
             coeff = self.out_coeff(coeff3)
         del coeff3
 
-        basis1 = self.basis_conv1(up_basis_conv3)
-        del up_basis_conv3
+        up_basis_conv4 = self.up_basis_conv4(torch.cat([self.pool_before_cat(
+            initial_conv, tosize=int((self.kernel_size + 1) / 1)), F.interpolate(
+            up_basis_conv3, scale_factor=2, mode=self.upMode)], dim=1))
+        del initial_conv, up_basis_conv3
+        basis1 = self.basis_conv1(up_basis_conv4)
+        del up_basis_conv4
         basis2 = self.basis_conv2(basis1)
         del basis1
         basis3 = self.basis_conv3(basis2).view(basis2.size(0),

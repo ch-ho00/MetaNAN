@@ -1,11 +1,11 @@
 ### INPUT
-expname                     : nan_DeblurxDeblur_plain_5src #general_DeblurxDeblur_reviseSum_burst1_deformBPN_coeff_dim90_lr1e-2_2FC_src3_src8_LatLoss1e-1_alignLoss0
+expname                     : nan_ObjxObj_woBlurRender_wGroupConv_latentRGBrender_dim90_latStack_5src_lat4_latLoss1e-1_alignLoss0 # nan_ObjxObj_src5
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
 ## dataset
-train_dataset               : deblur
-eval_dataset                : deblur_test
+train_dataset               : objaverse      #deblur
+eval_dataset                : objaverse      #deblur_test
 eval_scenes                 : [blurcozy2room] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
 
 ### TRAINING
@@ -24,19 +24,18 @@ degae_feat_ckpt             : ./ckpts/0619.pth #./ckpts/model_045000.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-sum_filtered                : False
-weightsum_filtered          : False
-bpn_prenet                  : False #True
+bpn_prenet                  : True
 ft_embed_fc                 : False
-cond_renderer               : False
+cond_renderer               : False #True
 blur_render                 : False
-latent_img_stack            : False #True
-lambda_latent_loss          : 0.0
+latent_rgb_softmax          : True
+latent_img_stack            : True
+lambda_latent_loss          : 0.1
 lambda_blur_loss            : 0.0
 lambda_align_loss           : 0.0
 burst_length                : 1
 num_source_views            : 5
-num_latent                  : 1
+num_latent                  : 4
 center_ratio                : 0.6
 channel_upfactor            : 1
 basis_dim                   : 90
@@ -49,7 +48,7 @@ add_burst_noise             : False
 N_importance                : 64
 N_samples                   : 64
 inv_uniform                 : True
-white_bkgd                  : False
+white_bkgd                  : True
 
 ### CONSOLE AND TENSORBOARD
 i_img                       : 1500

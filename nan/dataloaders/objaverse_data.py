@@ -29,7 +29,7 @@ from nan.dataloaders.basic_dataset import NoiseDataset, re_linearize
 from nan.dataloaders.data_utils import random_crop, get_nearest_pose_ids, random_flip, to_uint
 from nan.dataloaders.llff_data_utils import load_llff_data, batch_parse_llff_poses
 from nan.dataloaders.basic_dataset import Mode
-from nan.dataloaders.llff_data_utils import recenter_poses
+from nan.dataloaders.llff_data_utils import recenter_poses, poses_avg
 import json
 from basicsr.utils import DiffJPEG
 
@@ -52,8 +52,11 @@ class ObjaverseDataset(NoiseDataset, ABC):
         self.depth_range = self.render_depth_range[0]
 
 
-    def get_i_test(self, N, holdout):
-        return np.arange(N)[::holdout]
+    def get_i_test(self, poses):
+        c2w = poses_avg(poses)
+        dists = np.sum(np.square(c2w[:3, 3] - poses[:, :3, 3]), -1)
+        i_test = np.argmin(dists)
+        return [i_test] 
 
     def get_i_train(self, N, i_test):
         return np.array([j for j in np.arange(int(N)) if j not in i_test]) 
@@ -93,11 +96,11 @@ class ObjaverseDataset(NoiseDataset, ABC):
                 if near > np.linalg.norm(matrix[:3,-1]) * 0.1:
                     near = np.linalg.norm(matrix[:3,-1]) * 0.1
 
-        print("Before :", near, far)
+        # print("Before :", near, far)
 
         near = data['near'] * 0.8
         far = data['far'] * 1.2
-        print("After :", near, far)
+        # print("After :", near, far)
 
         c2w_mats = np.array(c2w_mats)
         c2w_mats = recenter_poses(c2w_mats)
@@ -119,8 +122,8 @@ class ObjaverseDataset(NoiseDataset, ABC):
                                [0, 0, 0, 1]])
 
         intrinsics = [intrinsics for _ in frames]
-        print("Dimension", [round(dim, 3) for dim in data['dimensions']], " //  Radius", data['radius']) 
-        print("Near Far : ",bds[0], bds[1])
+        # print("Dimension", [round(dim, 3) for dim in data['dimensions']], " //  Radius", data['radius']) 
+        # print("Near Far : ",bds[0], bds[1])
 
         return c2w_mats, np.array(intrinsics), bds, rgb_files
 
@@ -238,7 +241,7 @@ class ObjaverseDataset(NoiseDataset, ABC):
         c2w_mats, intrinsics, bds, rgb_files = self.load_scene(scene_path)
         near_depth = bds.min()
         far_depth = bds.max()
-        i_test = [] if self.mode == Mode.train else self.get_i_test(c2w_mats.shape[0], holdout)
+        i_test = [] if self.mode == Mode.train else self.get_i_test(c2w_mats)
         i_blurry = self.get_i_train(c2w_mats.shape[0], i_test)
         i_render = i_blurry if self.mode == Mode.train else i_test
         # Source images

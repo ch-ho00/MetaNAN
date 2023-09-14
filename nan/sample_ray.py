@@ -63,7 +63,7 @@ class RaySampler:
         self.device                         = device
 
         self.rgb                            = data['rgb'] if 'rgb' in data.keys() else None
-        self.alpha                          = data['alpha_clean'].squeeze().reshape(-1).nonzero().reshape(-1) if 'alpha_clean' in data.keys() else None
+        self.alpha                          = torch.Tensor(data['alpha_clean']).squeeze().reshape(-1).nonzero().reshape(-1) if 'alpha_clean' in data.keys() else None
         self.src_rgbs                       = data['src_rgbs'] if 'src_rgbs' in data.keys() else None
         self.rgb_clean                      = data['rgb_clean'] if 'rgb_clean' in data.keys() else None
         self.rgb_noisy                      = data['rgb_noisy'] if 'rgb_noisy' in data.keys() else None

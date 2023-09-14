@@ -19,6 +19,7 @@ import itertools
 from pprint import pprint
 import glob
 import json 
+from nan.dataloaders.objaverse_test_scenes import objaverse_test_scenes
 
 class Mode(Enum):
     train = "train"
@@ -117,7 +118,10 @@ class BurstDataset(Dataset, ABC):
             self.holdout = holdout            
             self.scenes_dirs = glob.glob(f'{scene_root}/gcloud2/*/*') #final_render_0905
             new_scene_dirs = []
+            scene_dists = {}
             for i, folder in enumerate(self.scenes_dirs):
+                if folder in objaverse_test_scenes:
+                    continue
                 folder_path = Path(folder)
                 pose_file = folder_path / 'transforms.json'  # Update the file name to read from JSON
                 if os.path.exists(pose_file):
@@ -127,14 +131,43 @@ class BurstDataset(Dataset, ABC):
                     far = data['far'] * 1.2
                     scale = 1 / (near * 0.75)
                     far *= scale
-                    print(folder, far)
-                    if far > 5:
+                    # print(folder, far)
+                    if far > 3.5:
                         new_scene_dirs.append(folder)
+                        scene_dists[folder] = far
 
             self.scenes_dirs = new_scene_dirs
 
             for i, scene_path in enumerate(self.scenes_dirs): 
-                print(scene_path)
+                self.add_single_scene(i, scene_path, holdout)
+
+            '''
+            hist, bins = np.histogram(list(scene_dists.values()), bins=10)
+            proportions = hist / sum(hist)
+            scenes_to_select = (proportions * 8).astype(int)
+            missing_scenes = 8 - sum(scenes_to_select)
+            for _ in range(missing_scenes):
+                max_bin_index = np.argmax(scenes_to_select)
+                scenes_to_select[max_bin_index] += 1
+
+            test_scenes = []
+
+            for i in range(len(bins) - 1):
+                folders_in_bin = [folder for folder, far in scene_dists.items() if bins[i] <= far < bins[i+1]]
+                num_scenes_from_bin = scenes_to_select[i]                
+                selected_folders = np.random.choice(folders_in_bin, num_scenes_from_bin, replace=False)
+                test_scenes.extend(selected_folders)
+
+            print(len(list(scene_dists.values())), len(test_scenes))
+            pprint(test_scenes)
+            import pdb; pdb.set_trace()
+            print()
+            '''
+
+        elif self.args.train_dataset == 'objaverse' and mode != Mode.train:
+            holdout = 8
+            self.scenes_dirs = objaverse_test_scenes
+            for i, scene_path in enumerate(self.scenes_dirs): 
                 self.add_single_scene(i, scene_path, holdout)
 
         elif self.args.train_dataset == 'objaverse_scene':
@@ -185,7 +218,7 @@ class BurstDataset(Dataset, ABC):
             for i, scene_path in enumerate(self.scenes_dirs):
                 self.add_single_scene(i, scene_path)
 
-        print(f"Loaded {s} Img File = {len(self.render_rgb_files)}")
+        print(f"Loaded {s} Img File = {len(self.render_rgb_files)} from {len(self.scenes_dirs)} scenes")
 
     def pick_scenes(self, scenes):
         if len(scenes) > 0:

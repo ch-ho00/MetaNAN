@@ -183,10 +183,13 @@ class Trainer:
 
         self.scalars_to_log['weight'] = w 
 
-        if self.model.args.blur_render:
+        blur_render =  False
+        if self.model.args.blur_render and random.random() > 0.5:
             assert self.model.args.num_latent > 1, 'Require Offset Prediction Module for Blur Render'
+            blur_render = True
             num_latent = 8
-            _, tar_offset = self.model.pre_net(train_data['rgb_noisy'].permute(0,3,1,2).to(self.device))
+            noisy_rgb = train_data['rgb_noisy'].permute(0,3,1,2).to(self.device)
+            _, tar_offset = self.model.pre_net(noisy_rgb, noisy_rgb[:, None])
             tar_pose = train_data['camera'][:,-16:].reshape(-1, 4, 4)[:,:3,:4].to(self.device)
             tar_se3_start = SE3_to_se3_N(tar_pose)
             tar_se3_end = tar_se3_start + tar_offset
@@ -224,17 +227,19 @@ class Trainer:
         # else:
         if self.model.args.num_latent  == 1:
             featmaps['latent_imgs'] = proc_src_rgbs[0].permute(0,3,1,2)[:,None]
+        else:
+            ray_batch['pred_offset'] = featmaps['pred_offset']
 
 
         sigma_est = ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None
-        if self.args.proc_rgb_feat and self.args.weightsum_filtered:
-            org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
-        elif self.args.latent_img_stack:
-            org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
-        elif self.args.num_latent > 1 or self.args.proc_rgb_feat or self.args.sum_filtered:
-            org_src_rgbs_ = proc_src_rgbs
-        else:
-            org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
+        # if self.args.proc_rgb_feat and self.args.weightsum_filtered:
+        #     org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
+        # elif self.args.latent_img_stack:
+        #     org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
+        # elif self.args.num_latent > 1 or self.args.proc_rgb_feat or self.args.sum_filtered:
+        #     org_src_rgbs_ = proc_src_rgbs
+        # else:
+        org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
 
         H, W=  ray_sampler.src_rgbs.shape[-3:-1]
         # Render the rgb values of the pixels that were sampled
@@ -248,9 +253,9 @@ class Trainer:
         self.model.optimizer.zero_grad()
         loss = 0
 
-        if self.args.blur_render:
-            coarse_loss         = F.l1_loss(batch_out['coarse'].rgb[0], ray_batch['rgb'])
-            fine_loss           = F.l1_loss(batch_out['fine'].rgb[0], ray_batch['rgb'])
+        if self.args.blur_render and blur_render:
+            coarse_loss         = F.l1_loss(torch.mean(batch_out['coarse'].rgb, dim=0), ray_batch['rgb_noisy'])
+            fine_loss           = F.l1_loss(torch.mean(batch_out['fine'].rgb, dim=0), ray_batch['rgb_noisy'])
         else:
             coarse_loss         = F.l1_loss(batch_out['coarse'].rgb, ray_batch['rgb'])
             fine_loss           = F.l1_loss(batch_out['fine'].rgb, ray_batch['rgb'])
@@ -352,6 +357,8 @@ class Trainer:
         if global_step % self.args.i_print == 0:
             print(logstr)
             print(f"each iter time {dt:.05f} seconds")
+            if self.args.num_latent > 1:
+                print(ray_batch_in['pred_offset'])
 
     def log_view_to_tb(self, global_step, ray_sampler, gt_img, render_stride=1, prefix='', postfix='', visualize=False):
         self.model.switch_to_eval()
@@ -479,7 +486,7 @@ class Trainer:
             else:
                 psnr_results[eval_gain] = [psnr]
 
-            if self.args.train_dataset == 'objaverse' and self.args.eval_dataset == 'deblur_test':
+            if self.args.train_dataset == 'objaverse': #and self.args.eval_dataset == 'deblur_test':
                 if scene_name in psnr_scene_results.keys():
                     psnr_scene_results[scene_name] += [psnr]
                 else:

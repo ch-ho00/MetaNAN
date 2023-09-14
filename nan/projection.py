@@ -69,7 +69,7 @@ def warp_latent_imgs(all_latent_imgs, all_intrinsics, all_spline_pose):
         output_img = torch.zeros_like(latent_imgs[:1])
 
         rays_o, rays_d, batched_pixels = generate_image_plane(hw, intrinsics.repeat(B,1,1), spline_pose)
-        rays_d = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
+        # rays_d = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
         xyz = rays_o + rays_d           # (B, H*W, 3)
         xyz = xyz[:,:,None]             # (B, H*W, 1, 3)
         n_rays, n_samples = xyz.shape[1:3]
@@ -249,6 +249,10 @@ class Projector:
             rgbs_sampled = F.grid_sample(src_imgs, norm_xys, align_corners=True)
             rgbs_sampled = rgbs_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, 3]
             rgb_feat_sampled = torch.cat([rgbs_sampled, feat_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
+
+        if self.args.latent_rgb_softmax:
+            rgbs_sampled = self.reshape_features(rgbs_sampled)
+            org_rgbs_sampled = torch.cat([org_rgbs_sampled, rgbs_sampled], dim=-1)
 
 
         rgb_feat_sampled = self.reshape_features(rgb_feat_sampled)

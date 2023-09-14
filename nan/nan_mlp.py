@@ -191,9 +191,11 @@ class NanMLP(nn.Module):
         self.rgb_reduce_fn = self.rgb_reduce_factory()
 
         if self.args.cond_renderer:
+            latent_dim =  6 if 'deblur' in self.args.train_dataset else 512
+            embed_size = 32
             # self.base_fc         =  CondSeqential(self.base_fc        )
             # self.vis_fc          =  CondSeqential(self.vis_fc         )
-            self.vis_fc2         =  CondSeqential(self.vis_fc2        )
+            self.vis_fc2         =  CondSeqential(self.vis_fc2, embedding_size=latent_dim , cond_embed_size = embed_size)
 
         # positional encoding
         self.pos_enc_d = 16
@@ -218,6 +220,10 @@ class NanMLP(nn.Module):
                 rgb_pre_out_channels *= 3
             if rgb_pre_out_channels < 16:
                 rgb_pre_out_channels = 16
+
+            if self.args.latent_rgb_softmax:
+                rgb_out_channels += rgb_out_channels * self.args.num_latent 
+                rgb_pre_out_channels += rgb_pre_out_channels * self.args.num_latent
 
             rgb_fc = nn.Sequential(nn.Linear(32 + 1 + 4, rgb_pre_out_channels),
                                    self.activation_func,
@@ -387,8 +393,21 @@ class NanMLP(nn.Module):
     @staticmethod
     def expanded_rgb_weighted_rgb_fn(x, mask, rgb_in):
         R, S, k, _, V, C = rgb_in.shape
-        w = x.masked_fill((~mask), -1e9).squeeze().view((R, S, V, k, k, C))
-        w = w.permute((0, 1, 3, 4, 2, 5))
-        blending_weights_valid = softmax3d(w, dim=(2, 3, 4))  # color blending
+        if C != 3:
+            rgb_in = rgb_in.view((R, S, V, k, k, -1, 3))
+            rgb_in = rgb_in.permute((0, 1, 3, 4, 5, 2, 6))
+            rgb_in = rgb_in.reshape(R, S, k, -1, V, 3)
+
+            w = x.masked_fill((~mask), -1e9).squeeze().view((R, S, V, k, k, -1, 3))
+            w = w.permute((0, 1, 3, 4, 5, 2, 6))
+            w = w.reshape(R, S, k, -1, V, 3)
+
+            blending_weights_valid = softmax3d(w, dim=(2, 3, 4, 5))  # color blending
+
+        else:
+            w = x.masked_fill((~mask), -1e9).squeeze().view((R, S, V, k, k, C))
+            w = w.permute((0, 1, 3, 4, 2, 5))
+            blending_weights_valid = softmax3d(w, dim=(2, 3, 4))  # color blending
+
         rgb_out = torch.sum(rgb_in * blending_weights_valid, dim=(2, 3, 4))
         return rgb_out, blending_weights_valid

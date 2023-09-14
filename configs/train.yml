@@ -36,7 +36,7 @@ cond_renderer               : False
 exclude_proc_rgb            : False
 proc_rgb_feat               : False
 latent_img_stack            : True
-basis_dim                   : 64
+basis_dim                   : 90
 channel_upfactor            : 1.0
 burst_length                : 1
 num_source_views            : 8
