@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 from nan.dcn import DeformableConv2d
+from nan.attention import MultiHeadAttention
 
 # BPN basic block: SingleConv
 class SingleConv(nn.Module):
@@ -158,7 +159,7 @@ class BPN(nn.Module):
 
         # Layer definition in each block
         # Encoder
-        self.deconv_channels = [96, 128, 256] if self.n_latent_layers > 1 else  [64, 64, 128]
+        self.deconv_channels = [24, 32, 64] #[96, 128, 256] if self.n_latent_layers > 1 else  [64, 64, 128]
         self.initial_conv = SingleConv(self.in_channel, self.deconv_channels[0])
         self.down_conv1 = DownBlock(self.deconv_channels[0], self.deconv_channels[1])
         self.down_conv2 = DownBlock(self.deconv_channels[1], self.deconv_channels[1])
@@ -201,19 +202,23 @@ class BPN(nn.Module):
                 nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),
                 nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),
             ) 
-            self.offset_fc =  nn.Sequential(
+            self.offset_fc1 =  nn.Sequential(
                 nn.Linear(256, 128),
-                nn.LeakyReLU(0.2, inplace=True),
                 nn.Linear(128, 64),
-                nn.LeakyReLU(0.2, inplace=True),
-                nn.Linear(64, 6)
             )
+            self.offset_fc2  = nn.Linear(64, 6)
+
             for module in self.offset_conv.modules():
                 if isinstance(module, nn.Conv2d):
                     init.normal_(module.weight, mean=0, std=1e-5)
                     if module.bias is not None:
                         init.constant_(module.bias, 0)
 
+            self.offset_attn = True
+            view_att_nhead = 5
+            self.views_attention = MultiHeadAttention(view_att_nhead, self.deconv_channels[2], 7, 8)
+        else:
+            self.offset_attn = False
         # Model weights initialization
         self.apply(self._init_weights)
 
@@ -221,10 +226,12 @@ class BPN(nn.Module):
     def _init_weights(m):
         if isinstance(m, nn.Conv2d):
             nn.init.xavier_normal_(m.weight.data)
-            nn.init.constant_(m.bias.data, 0.0)
+            if m.bias != None:
+                nn.init.constant_(m.bias.data, 0.0)
         elif isinstance(m, nn.Linear):
             nn.init.xavier_normal_(m.weight.data)
-            nn.init.constant_(m.bias.data, 0.0)
+            if m.bias != None:
+                nn.init.constant_(m.bias.data, 0.0)
 
     @staticmethod
     def pad_before_cat(x1, x2):
@@ -276,6 +283,12 @@ class BPN(nn.Module):
         """
         # input
         initial_conv = self.initial_conv(data_with_est)
+        if self.n_latent_layers > 1:
+            offset_feats = self.offset_conv(data_with_est)
+            # offset_feats = F.adaptive_avg_pool2d(offset_feats, (8,8))
+            offset_feats = offset_feats.permute(0, 2, 3, 1)
+            offset_feats = self.offset_fc1(offset_feats)
+            pred_offset  = self.offset_fc2(offset_feats)
 
         # down sampling
         down_conv1 = self.down_conv1(initial_conv)
@@ -286,6 +299,11 @@ class BPN(nn.Module):
             F.max_pool2d(down_conv2, kernel_size=2, stride=2))
         features = self.features_conv1(
             F.max_pool2d(down_conv3, kernel_size=2, stride=2))
+
+        if self.offset_attn:
+            reshaped_feats = features.permute(0,2,3,1)
+            attn_feats, _ = self.views_attention(offset_feats, reshaped_feats, reshaped_feats)
+            features = attn_feats.permute(0,3,1,2)
 
         # up sampling with skip connection, for coefficients
         up_coeff_conv1 = self.up_coeff_conv1(torch.cat([down_conv3,
@@ -369,13 +387,7 @@ class BPN(nn.Module):
                 #     N, _, _, H, W = data.shape
                 #     pred_offset = self.offset_conv(kernels.reshape(N, -1, H, W))
             pred_imgs = torch.stack(pred_imgs, dim=1)
-            torch.cuda.empty_cache()
-            offset_feats = self.offset_conv(data_with_est)
-            offset_feats = F.adaptive_avg_pool2d(offset_feats, (8,8))
-            offset_feats = offset_feats.permute(0, 2, 3, 1)
-            pred_offset = self.offset_fc(offset_feats)
-            pred_offset = pred_offset.mean(1).mean(1)
-            return pred_imgs, pred_offset
+            return pred_imgs, pred_offset.mean(1).mean(1)
         else:
             basis = self.out_basis(basis3)
         del basis3

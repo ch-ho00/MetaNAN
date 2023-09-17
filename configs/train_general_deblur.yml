@@ -1,11 +1,11 @@
 ### INPUT
-expname                     : nan_ObjxObj_woBlurRender_wGroupConv_latentRGBrender_dim90_latStack_5src_lat4_latLoss1e-1_alignLoss0 # nan_ObjxObj_src5
+expname                     : nan_ObjxObj_woBlurRender_Attn_bpn0.25x_dim90_latStack_5src_lat4_latLoss1e-1_alignLossV21e-1 # nan_ObjxObj_src5
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
 ## dataset
-train_dataset               : objaverse      #deblur
-eval_dataset                : objaverse      #deblur_test
+train_dataset               : objaverse #deblur
+eval_dataset                : objaverse #
 eval_scenes                 : [blurcozy2room] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
 
 ### TRAINING
@@ -28,11 +28,11 @@ bpn_prenet                  : True
 ft_embed_fc                 : False
 cond_renderer               : False #True
 blur_render                 : False
-latent_rgb_softmax          : True
+latent_rgb_softmax          : False
 latent_img_stack            : True
 lambda_latent_loss          : 0.1
 lambda_blur_loss            : 0.0
-lambda_align_loss           : 0.0
+lambda_align_loss           : 0.1
 burst_length                : 1
 num_source_views            : 5
 num_latent                  : 4
@@ -58,6 +58,7 @@ i_weights                   : 5000
 
 ### additional
 #ckpt_path                   : out/NAN/model_255000.pth   # use this if you want to train from a specific checkpoint.
+# ckpt_path                   : ./out_deblur/general_DeblurxDeblur_deformBPN_woGroupConv_offsetConv_dim90_src5_src4_includeRGB_LatLoss1e-1_alignLoss1e-1____full__pre__3_3_3__views_attn__l1/model_020000.pth
 no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True

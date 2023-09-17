@@ -274,7 +274,8 @@ class Trainer:
         if self.args.lambda_align_loss > 0:
             warp_masks = featmaps['warped_masks']
             warped_imgs = featmaps['warped_latent']
-            align_loss = warp_masks[:, 1:, None].float() * torch.abs(warped_imgs[:,:1].repeat(1, self.args.num_latent -1, 1, 1,1) - warped_imgs[:,1:])
+            warp_target = ray_sampler.src_rgbs_clean[0][:,None].repeat(1, self.args.num_latent -1, 1, 1,1).to(self.device).permute(0,1,4,2,3)
+            align_loss = warp_masks[:, 1:, None].float() * torch.abs(warp_target - warped_imgs[:,1:])
             align_loss = torch.mean(align_loss) * self.args.lambda_align_loss
             loss += align_loss
             self.scalars_to_log['train/align_loss'] = align_loss

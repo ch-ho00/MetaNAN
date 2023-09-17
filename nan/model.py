@@ -377,8 +377,9 @@ class NANScheme(nn.Module):
             ckpt = self.args.ckpt_path
 
         if ckpt is not None and not self.args.no_reload:
-            step = int(ckpt.stem[-6:])
-            print_link(ckpt, '[*] Reloading from', f"starting at step={step}")
+            # step = int(ckpt.stem[-6:])
+            # print_link(ckpt, '[*] Reloading from', f"starting at step={step}")
+            step = 0
             self.load_model(ckpt)
         else:
             if ckpt is None:

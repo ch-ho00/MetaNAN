@@ -131,7 +131,8 @@ class BurstDataset(Dataset, ABC):
                     far = data['far'] * 1.2
                     scale = 1 / (near * 0.75)
                     far *= scale
-                    # print(folder, far)
+                    print(folder, far)
+                    # new_scene_dirs.append(folder)
                     if far > 3.5:
                         new_scene_dirs.append(folder)
                         scene_dists[folder] = far
@@ -164,7 +165,7 @@ class BurstDataset(Dataset, ABC):
             print()
             '''
 
-        elif self.args.train_dataset == 'objaverse' and mode != Mode.train:
+        elif self.args.eval_dataset == 'objaverse' and mode != Mode.train:
             holdout = 8
             self.scenes_dirs = objaverse_test_scenes
             for i, scene_path in enumerate(self.scenes_dirs): 
@@ -193,8 +194,8 @@ class BurstDataset(Dataset, ABC):
             if self.args.train_dataset == 'deblur':
                 self.scenes = self.args.eval_scenes if mode != Mode.train else [scene for scene in self.scenes if scene not in self.args.eval_scenes]
             else:
-                # self.scenes = ['blurcozy2room',  'blurpool' ,  'blurwine',  'roomblur_low', 'blurfactory'  ,  'blurtanabata',  'dark'    ,  'roomblur_high']
-                self.scenes = ['blurfactory', 'blurcozy2room', 'blurpool', 'blurtanabata'] 
+                self.scenes = ['blurcozy2room',  'blurpool' ,  'blurwine',  'roomblur_low', 'blurfactory'  ,  'blurtanabata',  'dark'    ,  'roomblur_high']
+                # self.scenes = ['blurfactory', 'blurcozy2room', 'blurpool', 'blurtanabata'] 
             
             print(f"############ Loading {s} Dataset #############")
             for cnt, scene in enumerate(self.scenes):
