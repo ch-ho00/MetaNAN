@@ -116,7 +116,7 @@ class BurstDataset(Dataset, ABC):
             scene_root = os.path.join(DATA_DIR, self.dir_name)
             holdout = 8
             self.holdout = holdout            
-            self.scenes_dirs = glob.glob(f'{scene_root}/gcloud2/*/*') #final_render_0905
+            self.scenes_dirs = glob.glob(f'{scene_root}/output_blur_level_0915/*/*/blur_[4,5,6]') #final_render_0905
             new_scene_dirs = []
             scene_dists = {}
             for i, folder in enumerate(self.scenes_dirs):
@@ -132,10 +132,10 @@ class BurstDataset(Dataset, ABC):
                     scale = 1 / (near * 0.75)
                     far *= scale
                     print(folder, far)
-                    # new_scene_dirs.append(folder)
-                    if far > 3.5:
-                        new_scene_dirs.append(folder)
-                        scene_dists[folder] = far
+                    new_scene_dirs.append(folder)
+                    # if far > 3.5:
+                    #     new_scene_dirs.append(folder)
+                    #     scene_dists[folder] = far
 
             self.scenes_dirs = new_scene_dirs
 

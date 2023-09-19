@@ -132,6 +132,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument("--basis_dim", type=int, default=64)
         
         # blur render
+        parser.add_argument('--kernel_stack', default=False, action="store_true")
         parser.add_argument('--latent_rgb_softmax', default=False, action="store_true")
         parser.add_argument('--latent_img_stack', default=False, action="store_true")
         parser.add_argument('--bpn_rgb_src', default=False, action="store_true")

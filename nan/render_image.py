@@ -102,11 +102,12 @@ def render_single_image(ray_sampler: RaySampler,
     N_rays = ray_sampler.rays_o.shape[0]
 
 
-    if args.proc_rgb_feat and args.weightsum_filtered:
-        proc_src_rgbs = src_rgbs * (1 - w) + org_src_rgbs.to(device) * w
-    elif args.latent_img_stack:
-        proc_src_rgbs = org_src_rgbs.to(device)
-    elif args.num_latent > 1 or args.proc_rgb_feat or args.sum_filtered :
+    # if args.proc_rgb_feat and args.weightsum_filtered:
+    #     proc_src_rgbs = src_rgbs * (1 - w) + org_src_rgbs.to(device) * w
+    # elif args.latent_img_stack:
+    #     proc_src_rgbs = org_src_rgbs.to(device)
+    # elif args.num_latent > 1 or args.proc_rgb_feat or args.sum_filtered :
+    if args.sum_filtered :
         proc_src_rgbs = src_rgbs
     else:
         proc_src_rgbs = org_src_rgbs.to(device)

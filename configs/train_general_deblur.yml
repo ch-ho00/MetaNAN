@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_ObjxObj_woBlurRender_Attn_bpn0.25x_dim90_latStack_5src_lat4_latLoss1e-1_alignLossV21e-1 # nan_ObjxObj_src5
+expname                     : nan_ObjxObj_v2_bpn_DetachKernelStack_latent1e-1_src5 #nan_ObjxObj_woBlurRender_Attn_bpn0.25x_dim90_latStack_5src_lat4_latLoss1e-1_alignLossV21e-1 # nan_ObjxObj_src5
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -24,18 +24,18 @@ degae_feat_ckpt             : ./ckpts/0619.pth #./ckpts/model_045000.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
+sum_filtered                : False
 bpn_prenet                  : True
 ft_embed_fc                 : False
 cond_renderer               : False #True
 blur_render                 : False
-latent_rgb_softmax          : False
-latent_img_stack            : True
+kernel_stack                : True
 lambda_latent_loss          : 0.1
 lambda_blur_loss            : 0.0
-lambda_align_loss           : 0.1
+lambda_align_loss           : 0.0
 burst_length                : 1
 num_source_views            : 5
-num_latent                  : 4
+num_latent                  : 1
 center_ratio                : 0.6
 channel_upfactor            : 1
 basis_dim                   : 90

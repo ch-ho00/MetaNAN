@@ -1,8 +1,13 @@
-objaverse_test_scenes = ['/home/chan/data/objaverse/gcloud2/65a60cc3d66249a0a33beeb6a1ad2540/2',
- '/home/chan/data/objaverse/gcloud2/fef8c7a37ebe46efba7efce99e39c3e0/3',
- '/home/chan/data/objaverse/gcloud2/52982f5a24834be48dab4057d2df1c3d/1',
- '/home/chan/data/objaverse/gcloud2/a02952d7b890414ea978e9b86f39d366/1',
- '/home/chan/data/objaverse/gcloud2/e73f9bb9981d469c8a8ccdc1f168faad/2',
- '/home/chan/data/objaverse/gcloud2/ffc6b346b10c447f9adae12ba1e950da/3',
- '/home/chan/data/objaverse/gcloud2/3353cf5bfbda4b8797e845594b0cbfa7/3',
- '/home/chan/data/objaverse/gcloud2/750c1dc950274be39705545f4a492bd9/1']
+objaverse_test_scenes = [
+ '/home/chan/data/objaverse/output_blur_level_0915/0ceb0634c89349b6bec27d19228835e9/3/blur_4',
+ '/home/chan/data/objaverse/output_blur_level_0915/0ceb0634c89349b6bec27d19228835e9/3/blur_5',
+ '/home/chan/data/objaverse/output_blur_level_0915/0ceb0634c89349b6bec27d19228835e9/3/blur_6',
+ '/home/chan/data/objaverse/output_blur_level_0915/1a64ebded0694e2aaf9f2cec3a2b57d2/3/blur_4',
+ '/home/chan/data/objaverse/output_blur_level_0915/1a64ebded0694e2aaf9f2cec3a2b57d2/3/blur_5',
+ '/home/chan/data/objaverse/output_blur_level_0915/1a64ebded0694e2aaf9f2cec3a2b57d2/3/blur_6',
+ '/home/chan/data/objaverse/output_blur_level_0915/3d2fbeed83494547a0a38db053eb4ff3/0/blur_4',
+ '/home/chan/data/objaverse/output_blur_level_0915/3d2fbeed83494547a0a38db053eb4ff3/0/blur_5',
+ '/home/chan/data/objaverse/output_blur_level_0915/3d2fbeed83494547a0a38db053eb4ff3/0/blur_6',
+ '/home/chan/data/objaverse/output_blur_level_0915/6a2b26c8e2c14ba299cd96d73e8bb516/0/blur_4',
+ '/home/chan/data/objaverse/output_blur_level_0915/6a2b26c8e2c14ba299cd96d73e8bb516/0/blur_5',
+ '/home/chan/data/objaverse/output_blur_level_0915/6a2b26c8e2c14ba299cd96d73e8bb516/0/blur_6']

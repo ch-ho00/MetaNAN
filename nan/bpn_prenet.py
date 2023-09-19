@@ -146,9 +146,9 @@ class BPN(nn.Module):
         self.kernel_size = kernel_size
         self.basis_size = basis_size
         self.upMode = upMode
-        self.color_channel = 3 if color else 1
+        self.color_channel = 1 # 3 if color else 1
         self.burst_length = burst_length   
-        self.in_channel = self.color_channel * self.burst_length
+        self.in_channel = 3 * self.burst_length
         self.n_latent_layers = n_latent_layers
         self.color_channel = self.color_channel 
         factor = 1
@@ -271,6 +271,10 @@ class BPN(nn.Module):
         kernels = torch.einsum('ijklmn,ijop->iklmnop', [basis, coeff]).view(
             batch_size, burst_length, kernel_size ** 2, color_channel,
             coeff.size(-2), coeff.size(-1))
+
+        if color_channel == 1:
+            kernels = kernels.repeat(1,1,1,3,1,1)
+
         return kernels
 
     # forward propagation
@@ -285,7 +289,6 @@ class BPN(nn.Module):
         initial_conv = self.initial_conv(data_with_est)
         if self.n_latent_layers > 1:
             offset_feats = self.offset_conv(data_with_est)
-            # offset_feats = F.adaptive_avg_pool2d(offset_feats, (8,8))
             offset_feats = offset_feats.permute(0, 2, 3, 1)
             offset_feats = self.offset_fc1(offset_feats)
             pred_offset  = self.offset_fc2(offset_feats)
@@ -399,8 +402,6 @@ class BPN(nn.Module):
         del coeff, basis
         # clean burst prediction
         pred_burst = self.kernel_conv(data, kernels)
-        del kernels
         torch.cuda.empty_cache()
-
-        return pred_burst[:,0]
+        return pred_burst[:,0], kernels.squeeze()[..., 0, :, :]
 

@@ -184,7 +184,7 @@ class Trainer:
         self.scalars_to_log['weight'] = w 
 
         blur_render =  False
-        if self.model.args.blur_render and random.random() > 0.5:
+        if self.model.args.blur_render and random.random() (0.5, w):
             assert self.model.args.num_latent > 1, 'Require Offset Prediction Module for Blur Render'
             blur_render = True
             num_latent = 8
@@ -236,10 +236,10 @@ class Trainer:
         #     org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
         # elif self.args.latent_img_stack:
         #     org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
-        # elif self.args.num_latent > 1 or self.args.proc_rgb_feat or self.args.sum_filtered:
-        #     org_src_rgbs_ = proc_src_rgbs
-        # else:
-        org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
+        if self.args.sum_filtered:
+            org_src_rgbs_ = proc_src_rgbs
+        else:
+            org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
 
         H, W=  ray_sampler.src_rgbs.shape[-3:-1]
         # Render the rgb values of the pixels that were sampled
@@ -479,7 +479,7 @@ class Trainer:
             H, W = tmp_ray_sampler.H, tmp_ray_sampler.W
             gt_img = tmp_ray_sampler.rgb_clean.reshape(H, W, 3)
             eval_gain = val_data['eval_gain']
-            scene_name = val_data['rgb_path'].split('/')[-3]
+            blur_level = val_data['rgb_path'].split('/')[-2]
             psnr = self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_gain{eval_gain}_iter{cnt}", visualize=visualize)
 
             if eval_gain in psnr_results.keys():
@@ -488,10 +488,10 @@ class Trainer:
                 psnr_results[eval_gain] = [psnr]
 
             if self.args.train_dataset == 'objaverse': #and self.args.eval_dataset == 'deblur_test':
-                if scene_name in psnr_scene_results.keys():
-                    psnr_scene_results[scene_name] += [psnr]
+                if blur_level in psnr_scene_results.keys():
+                    psnr_scene_results[blur_level] += [psnr]
                 else:
-                    psnr_scene_results[scene_name] = [psnr]
+                    psnr_scene_results[blur_level] = [psnr]
 
             del tmp_ray_sampler, val_data, gt_img 
             torch.cuda.empty_cache()
@@ -504,7 +504,7 @@ class Trainer:
 
         if len(psnr_scene_results.keys()) > 0:
             for k in psnr_scene_results.keys():
-                self.writer.add_scalar('val/' + f'scene/{k}', np.mean(psnr_scene_results[k]), global_step)
+                self.writer.add_scalar('val/' + f'{k}/', np.mean(psnr_scene_results[k]), global_step)
 
         print('Logging current training view...')
         tmp_ray_train_sampler = RaySampler(train_data, self.device,

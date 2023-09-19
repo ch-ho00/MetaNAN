@@ -161,12 +161,24 @@ class NANScheme(nn.Module):
                 self.feature_conv_3 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=True).to(device)
 
 
+        if args.pre_net:
+            if args.bpn_prenet:
+                    self.pre_net = BPN(burst_length=args.burst_length, n_latent_layers=args.num_latent, basis_size=args.basis_dim, channel_upfactor=args.channel_upfactor).to(device)
+            else:
+                if args.weightsum_filtered:
+                    self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(13, 13), sigma=(1.5, 1.5)).to(device)                
+                else:
+                    self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(3, 3), sigma=(1.5, 1.5)).to(device)
+        else:
+            self.pre_net = None
+
         if not args.degae_feat:
             self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
                                     fine_out_ch=args.fine_feat_dim,
                                     coarse_only=args.coarse_only,
                                     latent_img_stack= args.latent_img_stack,
-                                    num_latent=args.num_latent).to(device)
+                                    num_latent=args.num_latent,
+                                    kernel_stack=None if (not args.kernel_stack and args.bpn_prenet) else self.pre_net.kernel_size ** 2).to(device)
 
 
         # create coarse NAN mlps
@@ -179,16 +191,6 @@ class NANScheme(nn.Module):
 
         self.mlps: Dict[str, NanMLP] = {'coarse': self.net_coarse, 'fine': self.net_fine}
 
-        if args.pre_net:
-            if args.bpn_prenet:
-                    self.pre_net = BPN(burst_length=args.burst_length, n_latent_layers=args.num_latent, basis_size=args.basis_dim, channel_upfactor=args.channel_upfactor).to(device)
-            else:
-                if args.weightsum_filtered:
-                    self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(13, 13), sigma=(1.5, 1.5)).to(device)                
-                else:
-                    self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(3, 3), sigma=(1.5, 1.5)).to(device)
-        else:
-            self.pre_net = None
             
 
         out_folder = OUT_DIR / args.expname

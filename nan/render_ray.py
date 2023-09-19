@@ -354,14 +354,11 @@ class RayRender:
         src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
         if self.model.pre_net is not None:
             if self.model.args.bpn_prenet:
-                if nearby_idxs != None:
-                    input_rgbs = torch.stack([src_rgbs[ids] for ids in nearby_idxs])
-                else:
-                    input_rgbs = src_rgbs[:, None, :3]
+                input_rgbs = src_rgbs[:, None, :3]
                 if self.model.args.num_latent > 1:
                     src_rgbs, pred_offset = self.model.pre_net(input_rgbs.reshape(N, -1, H, W), input_rgbs)
                 else:
-                    src_rgbs = self.model.pre_net(input_rgbs.reshape(N, -1, H, W), input_rgbs)
+                    src_rgbs, kernels = self.model.pre_net(input_rgbs.reshape(N, -1, H, W), input_rgbs)
 
                 del input_rgbs
                 torch.cuda.empty_cache()
@@ -370,56 +367,17 @@ class RayRender:
 
 
         noise_vec = None
-        if self.model.args.cond_renderer:
-            with torch.no_grad():
-                start_h = 0 if H < 384 else (H - 384) // 2
-                start_w = 0 if W < 384 else (W - 384) // 2
-                input_rgb = orig_rgbs[0, :, start_h:start_h + 384, start_w: start_w + 384].permute(0,3,1,2)
-                noise_vec = self.model.degae.degrep_extractor(input_rgb, white_level.to(orig_rgbs.device))
-                del input_rgb
-                torch.cuda.empty_cache()
 
-        if self.model.args.latent_img_stack:
-            if self.model.args.num_latent > 1:
-                src_poses = src_cameras[:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
-                src_se3_start = SE3_to_se3_N(src_poses)
-                src_se3_end = src_se3_start + pred_offset
-                src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=self.model.args.num_latent)
-                src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(self.model.args.num_source_views, self.model.args.num_latent, 1, 1)
-                src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
-                src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
-                intrinsics = src_cameras[:,:,2:18].reshape(-1, 4, 4)
-                warped_imgs, warped_masks = warp_latent_imgs(src_rgbs, intrinsics, src_spline_poses_4x4)
-
-                featmaps['warped_latent'] = warped_imgs        
-                featmaps['warped_masks'] = warped_masks          
-                process_rgbs = torch.cat([orig_rgbs[0].permute(0,3,1,2)[:,None], warped_imgs], dim=1)
-            else:
-                process_rgbs = torch.cat([orig_rgbs[0].permute(0,3,1,2), src_rgbs], dim=1)
-        # input for feature extractor
-        # elif self.model.args.proc_rgb_feat and self.model.args.weightsum_filtered:
-        #     process_rgbs = src_rgbs * (1-weight) + orig_rgbs[0].permute(0,3,1,2) * weight
-        # elif self.model.args.num_latent > 1 or self.model.args.proc_rgb_feat:
-        #     process_rgbs = src_rgbs
+        if self.model.args.kernel_stack:
+            assert self.model.args.bpn_prenet == True
+            process_rgbs = torch.cat([orig_rgbs[0].permute(0,3,1,2), kernels], dim=1)
         else:
             process_rgbs = orig_rgbs[0].permute(0,3,1,2)
 
         process_rgbs = process_rgbs.reshape(self.model.args.num_source_views,-1, H, W)
 
-        if not self.model.args.degae_feat:
-            feature_dict = self.model.feature_net(process_rgbs)
-            featmaps.update(feature_dict)
-        else:
-            with torch.no_grad():
-                degfeat = self.model.degae.encoder(process_rgbs, img_wh=torch.Tensor([W,H]).int().to(orig_rgbs.device))    
-            degfeat = self.model.feature_conv_0(degfeat) 
-            degfeat = self.model.feature_conv_1(degfeat) 
-            degfeat = self.model.feature_conv_2(degfeat)
-            feat    = self.model.feature_conv_3(degfeat)
-
-            featmaps['coarse']  = feat[:,:self.model.args.coarse_feat_dim]
-            featmaps['fine']    = feat[:,self.model.args.coarse_feat_dim:]
-            del degfeat
+        feature_dict = self.model.feature_net(process_rgbs)
+        featmaps.update(feature_dict)
 
         if self.model.args.num_latent > 1:
             src_rgbs = src_rgbs.reshape(-1, self.model.args.num_latent, 3, H ,W)
