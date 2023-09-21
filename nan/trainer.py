@@ -175,7 +175,7 @@ class Trainer:
             nearby_idxs = []
             poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4).cpu().numpy()
             for pose in poses:
-                ids = get_nearest_pose_ids(pose, poses, self.args.burst_length, angular_dist_method='dist')
+                ids = get_nearest_pose_ids(pose, poses, self.args.burst_length, angular_dist_method='dist', sort_by_dist=True)
                 nearby_idxs.append(ids)
         else:
             nearby_idxs = None
@@ -262,6 +262,10 @@ class Trainer:
         loss += coarse_loss + fine_loss
         self.scalars_to_log['train/coarse_loss'] = coarse_loss
         self.scalars_to_log['train/fine_loss'] = fine_loss
+
+        if 'ker_loss' in featmaps:
+            loss += featmaps['ker_loss']
+            self.scalars_to_log['train/ker_loss'] = featmaps['ker_loss']
 
         if self.args.lambda_blur_loss > 0:
             assert self.args.blur_render, 'Require blur ray batch for blur loss'

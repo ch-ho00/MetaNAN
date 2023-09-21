@@ -237,7 +237,7 @@ def batched_angular_dist_rot_matrix(R1, R2):
 
 
 def get_nearest_pose_ids(tar_pose, ref_poses, num_select, tar_id=None, angular_dist_method='vector',
-                         scene_center=(0, 0, 0)):
+                         scene_center=(0, 0, 0), sort_by_dist=False):
     """
     Args:
         tar_pose: target pose [3, 3]
@@ -246,7 +246,11 @@ def get_nearest_pose_ids(tar_pose, ref_poses, num_select, tar_id=None, angular_d
     Returns: the selected indices
     """
     num_cams = len(ref_poses)
-    num_select = min(num_select, num_cams - 1)
+    if sort_by_dist and num_select == num_cams:
+        pass       
+    else:
+        num_select = min(num_select, num_cams - 1)
+
     batched_tar_pose = tar_pose[None, ...].repeat(num_cams, 0)
 
     if angular_dist_method == 'matrix':

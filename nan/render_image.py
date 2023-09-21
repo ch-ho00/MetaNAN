@@ -68,7 +68,7 @@ def render_single_image(ray_sampler: RaySampler,
         nearby_idxs = []
         poses = src_cameras[:,:,-16:].reshape(-1, 4, 4).cpu().numpy()
         for pose in poses:
-            ids = get_nearest_pose_ids(pose, poses, args.burst_length, angular_dist_method='dist')
+            ids = get_nearest_pose_ids(pose, poses, args.burst_length, angular_dist_method='dist', sort_by_dist=True)
             nearby_idxs.append(ids)
     else:
         nearby_idxs = None

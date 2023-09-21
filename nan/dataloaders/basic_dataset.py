@@ -198,9 +198,11 @@ class BurstDataset(Dataset, ABC):
                 # self.scenes = ['blurfactory', 'blurcozy2room', 'blurpool', 'blurtanabata'] 
             
             print(f"############ Loading {s} Dataset #############")
+            self.scenes_dirs = []
             for cnt, scene in enumerate(self.scenes):
                 data_root = os.path.join(DATA_DIR, self.dir_name)
                 scene_root = os.path.join(data_root, scene)
+                self.scenes_dirs.append(scene_root)
                 self.add_single_scene(cnt, Path(scene_root), holdout=8)
 
         else:

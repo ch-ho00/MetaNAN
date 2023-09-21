@@ -1,11 +1,11 @@
 ### INPUT
-expname                     : nan_ObjxObj_v2_bpn_DetachKernelStack_latent1e-1_src5 #nan_ObjxObj_woBlurRender_Attn_bpn0.25x_dim90_latStack_5src_lat4_latLoss1e-1_alignLossV21e-1 # nan_ObjxObj_src5
+expname                     : test #nan_DeblurxDeblur_LatKernelDim16_burst5_wKerLoss_woDetach_latent1e-1_src5 #nan_ObjxObj_woBlurRender_Attn_bpn0.25x_dim90_latStack_5src_lat4_latLoss1e-1_alignLossV21e-1 # nan_ObjxObj_src5
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
 ## dataset
-train_dataset               : objaverse #deblur
-eval_dataset                : objaverse #
+train_dataset               : deblur #objaverse #deblur
+eval_dataset                : deblur #objaverse #
 eval_scenes                 : [blurcozy2room] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
 
 ### TRAINING
@@ -33,7 +33,7 @@ kernel_stack                : True
 lambda_latent_loss          : 0.1
 lambda_blur_loss            : 0.0
 lambda_align_loss           : 0.0
-burst_length                : 1
+burst_length                : 5
 num_source_views            : 5
 num_latent                  : 1
 center_ratio                : 0.6

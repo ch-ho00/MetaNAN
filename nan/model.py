@@ -178,7 +178,7 @@ class NANScheme(nn.Module):
                                     coarse_only=args.coarse_only,
                                     latent_img_stack= args.latent_img_stack,
                                     num_latent=args.num_latent,
-                                    kernel_stack=None if (not args.kernel_stack and args.bpn_prenet) else self.pre_net.kernel_size ** 2).to(device)
+                                    kernel_stack=None if (not args.kernel_stack or not args.bpn_prenet) else self.pre_net.lat_kernel_dim).to(device)
 
 
         # create coarse NAN mlps
