@@ -368,20 +368,16 @@ class RayRender:
                 del input_rgbs
                 torch.cuda.empty_cache()
             else:
+                kernels = None
                 src_rgbs = self.model.pre_net(src_rgbs)  # (N, 3, H, W)
 
 
         noise_vec = None
 
-        if self.model.args.kernel_stack:
-            assert self.model.args.bpn_prenet == True
-            process_rgbs = torch.cat([orig_rgbs[0].permute(0,3,1,2), kernels], dim=1)
-        else:
-            process_rgbs = orig_rgbs[0].permute(0,3,1,2)
-
+        process_rgbs = orig_rgbs[0].permute(0,3,1,2)
         process_rgbs = process_rgbs.reshape(self.model.args.num_source_views,-1, H, W)
 
-        feature_dict = self.model.feature_net(process_rgbs)
+        feature_dict = self.model.feature_net(process_rgbs, kernels=kernels)
         featmaps.update(feature_dict)
 
         if self.model.args.num_latent > 1:

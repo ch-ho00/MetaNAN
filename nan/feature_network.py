@@ -188,10 +188,19 @@ class ResUNet(nn.Module):
         self.inplanes = 64
         self.groups = 1
         self.base_width = 64
-        self.conv1 = nn.Conv2d(3 + (3 * num_latent if latent_img_stack else 0) + (kernel_stack if kernel_stack != None else 0), self.inplanes, kernel_size=7, stride=2, padding=3,
-                            bias=False, padding_mode='reflect')
-        self.bn1 = norm_layer(self.inplanes, track_running_stats=False, affine=True)
-        self.relu = nn.ReLU(inplace=True)
+        if kernel_stack != None:
+            self.conv0 = nn.Conv2d(3, kernel_stack, kernel_size=3, stride=1, padding=1,
+                                bias=False, padding_mode='reflect')
+            self.conv1 = nn.Conv2d(kernel_stack * 2, self.inplanes, kernel_size=3, stride=2, padding=1,
+                                bias=False, padding_mode='zeros')
+            self.bn0 = norm_layer(kernel_stack, track_running_stats=False, affine=True)
+            self.bn1 = norm_layer(self.inplanes, track_running_stats=False, affine=True)
+            self.relu = nn.ReLU(inplace=True)            
+        else:
+            self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
+                                bias=False, padding_mode='reflect')
+            self.bn1 = norm_layer(self.inplanes, track_running_stats=False, affine=True)
+            self.relu = nn.ReLU(inplace=True)
         self.layer1 = self._make_layer(block, 64, layers[0], stride=2)
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2,
                                        dilate=replace_stride_with_dilation[0])
@@ -245,21 +254,11 @@ class ResUNet(nn.Module):
         x = torch.cat([x2, x1], dim=1)
         return x
 
-    def forward(self, x, conv1_weights=None, reconstruct=False):
-        if conv1_weights == None:
-            x = self.conv1(x)
-        else:
-            conv1_weights = conv1_weights.reshape(x.shape[0], self.conv1_in_dim, 3, 7, 7)
-            meta_half = []
-            x_half = self.conv1_half(x) 
-            x = F.pad(x, pad=(3,3,3,3), mode='reflect')
-            for xi, conv1_weight in zip(x, conv1_weights):
-                hi = F.conv2d(xi[None], conv1_weight, stride=2, padding=0)
-                meta_half.append(hi)
-            meta_half = torch.cat(meta_half, dim=0)
-            x = torch.cat([x_half, meta_half], dim=1)
-
-
+    def forward(self, x, kernels=None):
+        if kernels != None:
+            x = self.relu(self.bn0(self.conv0(x)))
+            x = torch.cat([x, kernels], dim=1)
+        x = self.conv1(x)
         x = self.relu(self.bn1(x))
 
         x1 = self.layer1(x)

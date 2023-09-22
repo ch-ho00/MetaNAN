@@ -147,7 +147,7 @@ class BPN(nn.Module):
         self.kernel_size = kernel_size
         self.basis_size = basis_size
         self.upMode = upMode
-        self.color_channel = 1 # 3 if color else 1
+        self.color_channel = 3 if color else 1
         self.burst_length = burst_length   
         self.in_channel = 3 * self.burst_length
         self.n_latent_layers = n_latent_layers
@@ -199,12 +199,12 @@ class BPN(nn.Module):
         self.patch_size = patch_size
         self.lat_kernel_dim = lat_kernel_dim
         self.kernel_encoder = nn.Sequential(
-            nn.Conv2d(self.kernel_size ** 2, lat_kernel_dim, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.Conv2d(self.color_channel * self.kernel_size ** 2, lat_kernel_dim, kernel_size=1, stride=1, padding=0, bias=False),
             # nn.Conv2d(self.kernel_size ** 2, 64, kernel_size=1, stride=1, padding=0),
             # nn.Conv2d(64, lat_kernel_dim, kernel_size=1, stride=1, padding=0)
         )         
         self.kernel_decoder = nn.Sequential(
-            nn.Conv2d(lat_kernel_dim, self.kernel_size ** 2, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.Conv2d(lat_kernel_dim, self.color_channel * self.kernel_size ** 2, kernel_size=1, stride=1, padding=0, bias=False),
             # nn.Conv2d(lat_kernel_dim, 64, kernel_size=1, stride=1, padding=0),
             # nn.Conv2d(64, self.kernel_size ** 2, kernel_size=1, stride=1, padding=0)
         )                 
@@ -422,9 +422,10 @@ class BPN(nn.Module):
         # pixel_patch = pixel_patch.reshape(N, -1, H, W)
 
         kernels = kernels.squeeze()[..., 0, :, :] if self.color_channel == 1 else kernels.squeeze().reshape(N, -1, H, W)
-        latent_kernel = self.kernel_encoder(kernels)
+        latent_kernel = self.kernel_encoder(kernels.detach())
         reconst_kernels = self.kernel_decoder(latent_kernel)
-        ker_reconst_loss = F.l1_loss(reconst_kernels, kernels.detach())
+        ker_reconst_loss = 0
+        # ker_reconst_loss = F.l1_loss(reconst_kernels, kernels.detach())
 
         return pred_burst[:,0], latent_kernel, ker_reconst_loss #, pixel_patch
 

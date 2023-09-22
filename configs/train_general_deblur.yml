@@ -1,11 +1,11 @@
 ### INPUT
-expname                     : test #nan_DeblurxDeblur_LatKernelDim16_burst5_wKerLoss_woDetach_latent1e-1_src5 #nan_ObjxObj_woBlurRender_Attn_bpn0.25x_dim90_latStack_5src_lat4_latLoss1e-1_alignLossV21e-1 # nan_ObjxObj_src5
+expname                     : nan_ObjxObj_LatKernelDim32_color3_ver4_burst5_woKerLoss_wDetach_latent1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
 ## dataset
-train_dataset               : deblur #objaverse #deblur
-eval_dataset                : deblur #objaverse #
+train_dataset               : objaverse #deblur
+eval_dataset                : objaverse #
 eval_scenes                 : [blurcozy2room] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
 
 ### TRAINING
