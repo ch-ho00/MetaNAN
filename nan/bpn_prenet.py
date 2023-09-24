@@ -147,7 +147,7 @@ class BPN(nn.Module):
         self.kernel_size = kernel_size
         self.basis_size = basis_size
         self.upMode = upMode
-        self.color_channel = 3 if color else 1
+        self.color_channel = 1 #3 if color else 1
         self.burst_length = burst_length   
         self.in_channel = 3 * self.burst_length
         self.n_latent_layers = n_latent_layers
@@ -156,11 +156,11 @@ class BPN(nn.Module):
 
         self.skip_connect = True
         self.coeff_channel = self.basis_size * self.n_latent_layers
-        self.basis_channel = self.color_channel * self.basis_size * self.n_latent_layers # self.burst_length
+        self.basis_channel = self.color_channel * self.basis_size * self.n_latent_layers * self.burst_length
 
         # Layer definition in each block
         # Encoder
-        self.deconv_channels = [96, 128, 256] # if self.n_latent_layers > 1 else  [64, 64, 128]
+        self.deconv_channels = [96, 128, 256] # [64, 96, 128] # if self.n_latent_layers > 1 else  [64, 64, 128]
         self.initial_conv = SingleConv(self.in_channel, self.deconv_channels[0])
         self.down_conv1 = DownBlock(self.deconv_channels[0], self.deconv_channels[1])
         self.down_conv2 = DownBlock(self.deconv_channels[1], self.deconv_channels[1])
@@ -382,7 +382,7 @@ class BPN(nn.Module):
         del basis1
         basis3 = self.basis_conv3(basis2).view(basis2.size(0),
                                                self.basis_size * self.n_latent_layers,
-                                               1, #self.burst_length,
+                                               self.burst_length, #,
                                                self.color_channel,
                                                self.kernel_size,
                                                self.kernel_size)
@@ -394,7 +394,7 @@ class BPN(nn.Module):
             for img_idx in range(self.n_latent_layers):
                 img_basis = self.out_basis(basis3[:,nchannels * img_idx: nchannels * (img_idx + 1)])
                 kernels = self.kernel_predict(coeffs[img_idx], img_basis,
-                                            coeffs[img_idx].size(0), 1, self.kernel_size, # self.burst_length
+                                            coeffs[img_idx].size(0), self.burst_length, self.kernel_size,
                                             self.color_channel)
                 pred_burst = self.kernel_conv(data, kernels)        
                 pred_burst = torch.mean(pred_burst, dim=1, keepdim=False)
@@ -409,23 +409,23 @@ class BPN(nn.Module):
         del basis3
         # kernel prediction
         kernels = self.kernel_predict(coeff, basis, coeff.size(0),
-                                    1, self.kernel_size, # self.burst_length
+                                    self.burst_length, self.kernel_size, # 
                                     self.color_channel)
         del coeff, basis
         # clean burst prediction
         pred_burst, pixel_patch = self.kernel_conv(data, kernels)
-
+        pred_burst = torch.mean(pred_burst, dim=1)
         N, _, H, W = data_with_est.shape
         # pixel_patch = pixel_patch.reshape(N, self.kernel_size, self.kernel_size, 3, H, W).permute(0,4,5,3,1,2).reshape(-1, 3, self.kernel_size, self.kernel_size)
         # pixel_patch = F.interpolate(pixel_patch, (self.patch_size, self.patch_size))
         # pixel_patch = pixel_patch.reshape(N, H, W, 3, self.patch_size, self.patch_size).permute(0,4,5,3,1,2)
         # pixel_patch = pixel_patch.reshape(N, -1, H, W)
 
-        kernels = kernels.squeeze()[..., 0, :, :] if self.color_channel == 1 else kernels.squeeze().reshape(N, -1, H, W)
-        latent_kernel = self.kernel_encoder(kernels.detach())
+        kernels = kernels.squeeze()[:, 0, :, 0] if self.color_channel == 1 else kernels[:, 0].reshape(N, -1, H, W)
+        latent_kernel = self.kernel_encoder(kernels)
         reconst_kernels = self.kernel_decoder(latent_kernel)
-        ker_reconst_loss = 0
-        # ker_reconst_loss = F.l1_loss(reconst_kernels, kernels.detach())
+        # ker_reconst_loss = 0
+        ker_reconst_loss = F.l1_loss(reconst_kernels, kernels.detach())
 
-        return pred_burst[:,0], latent_kernel, ker_reconst_loss #, pixel_patch
+        return pred_burst, latent_kernel, ker_reconst_loss #, pixel_patch
 

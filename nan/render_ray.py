@@ -362,7 +362,7 @@ class RayRender:
                 if self.model.args.num_latent > 1:
                     src_rgbs, pred_offset = self.model.pre_net(input_rgbs.reshape(N, -1, H, W), input_rgbs)
                 else:
-                    src_rgbs, kernels, ker_loss = self.model.pre_net(input_rgbs.reshape(N, -1, H, W), src_rgbs)
+                    src_rgbs, kernels, ker_loss = self.model.pre_net(input_rgbs.reshape(N, -1, H, W), input_rgbs)
                 featmaps['ker_loss'] = ker_loss
 
                 del input_rgbs
