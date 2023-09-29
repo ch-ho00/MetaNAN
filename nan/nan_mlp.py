@@ -139,7 +139,7 @@ class NanMLP(nn.Module):
             self.s = nn.Parameter(torch.tensor(0.2), requires_grad=True)
 
         self.n_samples = n_samples
-        extra_dim = 3 * (self.args.num_latent if self.args.latent_img_stack else 1) if not self.args.exclude_proc_rgb else 0
+        extra_dim = 3 if not self.args.exclude_proc_rgb else 0
         base_input_channels = in_feat_ch + extra_dim
 
         self.ray_dir_fc = nn.Sequential(nn.Linear(4, 16),
@@ -220,10 +220,6 @@ class NanMLP(nn.Module):
                 rgb_pre_out_channels *= 3
             if rgb_pre_out_channels < 16:
                 rgb_pre_out_channels = 16
-
-            if self.args.latent_rgb_softmax:
-                rgb_out_channels += rgb_out_channels * self.args.num_latent 
-                rgb_pre_out_channels += rgb_pre_out_channels * self.args.num_latent
 
             rgb_fc = nn.Sequential(nn.Linear(32 + 1 + 4, rgb_pre_out_channels),
                                    self.activation_func,

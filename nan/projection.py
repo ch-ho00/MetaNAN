@@ -250,13 +250,8 @@ class Projector:
             rgbs_sampled = rgbs_sampled.permute(2, 3, 0, 1)  # [n_rays, n_samples, n_views, 3]
             rgb_feat_sampled = torch.cat([rgbs_sampled, feat_sampled], dim=-1)  # [n_rays, n_samples, n_views, d+3]
 
-        if self.args.latent_rgb_softmax:
-            rgbs_sampled = self.reshape_features(rgbs_sampled)
-            org_rgbs_sampled = torch.cat([org_rgbs_sampled, rgbs_sampled], dim=-1)
-
 
         rgb_feat_sampled = self.reshape_features(rgb_feat_sampled)
-        feat_sampled = self.reshape_features(feat_sampled)
         # ray_diff
         if query_camera.ndim == 2:
             ray_diff = []
@@ -276,7 +271,7 @@ class Projector:
 
         # mask
         mask = mask.permute(1, 2, 0)[..., None]  # [n_rays, n_samples, n_views, 1]
-        return rgb_feat_sampled, ray_diff, mask, org_rgbs_sampled, sigma_estimate, feat_sampled
+        return rgb_feat_sampled, ray_diff, mask, org_rgbs_sampled, sigma_estimate
 
     @staticmethod
     def pixel_location_expander_factory(kernel_size, device):

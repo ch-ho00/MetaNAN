@@ -30,8 +30,9 @@ from nan.nan_mlp import NanMLP
 from nan.utils.io_utils import get_latest_file, print_link
 from degae.model import DegAE
 from degae.decoder import BasicBlock
-from nan.bpn_prenet import BPN
-
+from nan.bpn_prenet import BPN, OffsetNet
+from nan.attention import MultiHeadAttention
+from nan.patchmatch.net import PatchmatchNet
 def de_parallel(model):
     return model.module if hasattr(model, 'module') else model
 
@@ -54,78 +55,6 @@ class Gaussian2D(nn.Conv2d):
         # nn.init.zeros_(self.bias.data)
 
 
-
-def conv_down(in_chn, out_chn, bias=False):
-    layer = nn.Conv2d(in_chn, out_chn, kernel_size=4, stride=2, padding=1, bias=bias)
-    return layer
-
-
-class UNetConvBlock(nn.Module):
-
-    def __init__(self, in_size, out_size, downsample, relu_slope):
-        super(UNetConvBlock, self).__init__()
-        self.block = nn.Sequential(
-            nn.Conv2d(in_size, out_size, kernel_size=3, padding=1, bias=True),
-            nn.LeakyReLU(relu_slope),
-            nn.Conv2d(out_size, out_size, kernel_size=3, padding=1, bias=True),
-            nn.LeakyReLU(relu_slope))
-
-        self.downsample = downsample
-        if downsample:
-            self.downsample = conv_down(out_size, out_size, bias=False)
-
-        self.shortcut = nn.Conv2d(in_size, out_size, kernel_size=1, bias=True)
-
-    def forward(self, x):
-        
-        out = self.block(x)
-        sc = self.shortcut(x)
-        out = out + sc
-        out_down = self.downsample(out)
-        
-        return out_down
-
-
-class NoiseLevelConv(nn.Module):
-    def __init__(self):
-        super(NoiseLevelConv, self).__init__()
-
-        self.out_dim = 256
-        self.out_size = 8
-        self.conv0 = UNetConvBlock(3, 64, True, 0.2)
-        self.conv1 = UNetConvBlock(64, 128, True, 0.2)
-        self.conv2 = UNetConvBlock(128, 256, True, 0.2)
-        self.conv3 = UNetConvBlock(256, self.out_dim, True, 0.2)
-
-    def forward(self, x):
-        x = self.conv0(x) # (B, 32, H//2, W//2)
-        x = self.conv1(x) # (B, 64, H//4, W//4)
-        x = self.conv2(x) # (B, 128, H//8, W//8)
-        x = self.conv3(x) # (B, 256, H//16, W//16)
-        x = F.adaptive_avg_pool2d(x, (self.out_size, self.out_size))
-        return x
-
-
-class ConvWeightGenerator(nn.Module):
-    def __init__(self, in_dim, out_dim, patch_kernel=False):
-      super(ConvWeightGenerator,self).__init__()
-      self.in_dim = in_dim
-      self.out_dim = out_dim
-      self.patch_kernel = patch_kernel
-
-      self.transform = nn.Sequential(
-        nn.Linear(self.in_dim, 4096),
-        nn.LeakyReLU(0.2),
-        nn.Linear(4096,4096),
-        nn.LeakyReLU(0.2),
-        nn.Linear(4096,self.out_dim)
-      )
-
-    def forward(self,noise_vec):
-      if self.patch_kernel:
-        noise_vec = noise_vec.reshape(noise_vec.shape[0], self.in_dim, -1).permute(0,2,1)
-      weights = self.transform(noise_vec)
-      return weights 
 
 
 class NANScheme(nn.Module):
@@ -163,7 +92,16 @@ class NANScheme(nn.Module):
 
         if args.pre_net:
             if args.bpn_prenet:
-                    self.pre_net = BPN(burst_length=args.burst_length, n_latent_layers=args.num_latent, basis_size=args.basis_dim, channel_upfactor=args.channel_upfactor).to(device)
+                    self.pre_net = PatchmatchNet(
+                        patchmatch_interval_scale=[0.005, 0.0125, 0.025],
+                        propagation_range=[6, 4, 2],
+                        patchmatch_iteration=[1, 2, 2],
+                        patchmatch_num_sample=[8, 8, 16],
+                        propagate_neighbors=[0, 8, 16],
+                        evaluate_neighbors=[9, 9, 9]
+                    ).to(device)
+                    # self.pre_net = OffsetNet().to(device)
+                    # self.pre_net = BPN(burst_length=args.burst_length, n_latent_layers=args.num_latent, basis_size=args.basis_dim, channel_upfactor=args.channel_upfactor).to(device)
             else:
                 if args.weightsum_filtered:
                     self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(13, 13), sigma=(1.5, 1.5)).to(device)                
@@ -176,10 +114,12 @@ class NANScheme(nn.Module):
             self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
                                     fine_out_ch=args.fine_feat_dim,
                                     coarse_only=args.coarse_only,
-                                    latent_img_stack= args.latent_img_stack,
                                     num_latent=args.num_latent,
                                     kernel_stack=None if (not args.kernel_stack or not args.bpn_prenet) else self.pre_net.lat_kernel_dim).to(device)
 
+        if args.kernel_attn:
+            ker_att_nhead = 5
+            self.ker_attention = MultiHeadAttention(ker_att_nhead, args.fine_feat_dim, 7, 8).to(device)  
 
         # create coarse NAN mlps
         self.net_coarse = self.nan_factory('coarse', device)
@@ -221,20 +161,33 @@ class NANScheme(nn.Module):
             params_list.append({'params': self.net_fine.parameters(), 'lr': self.args.lrate_mlp})
 
         if self.args.pre_net:
-            if self.args.num_latent > 1:
-                bpn_params = []
-                offset_params = []
-                for k, v in self.pre_net.named_parameters():
-                    if 'offset' in k:
-                        print(k)
-                        offset_params.append(v)
-                    else:
-                        bpn_params.append(v)
-                params_list.append({'params': bpn_params, 'lr': self.args.lrate_feature})
-                params_list.append({'params': offset_params, 'lr': self.args.lrate_feature * 1e-2})
-            else:
-                params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
+            # if self.args.num_latent > 1:
+            #     bpn_params = []
+            #     offset_params = []
+            #     for k, v in self.pre_net.named_parameters():
+            #         if 'offset' in k:
+            #             print(k)
+            #             offset_params.append(v)
+            #         else:
+            #             bpn_params.append(v)
+            #     params_list.append({'params': bpn_params, 'lr': self.args.lrate_feature})
+            #     params_list.append({'params': offset_params, 'lr': self.args.lrate_feature * 1e-2})
+            # else:
+            #     params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
+            bpn_params = []
+            offset_params = []
+            for k, v in self.pre_net.named_parameters():
+                if 'offset' in k:
+                    print(k)
+                    offset_params.append(v)
+                else:
+                    bpn_params.append(v)
+            params_list.append({'params': bpn_params, 'lr': self.args.lrate_feature})
+            params_list.append({'params': offset_params, 'lr': self.args.lrate_feature * 1e-1})
                 
+        if self.args.kernel_attn:
+            params_list += [{'params' : self.ker_attention.parameters(), 'lr':self.args.lrate_feature}]
+            
 
 
         optimizer = torch.optim.Adam(params_list)
@@ -263,12 +216,14 @@ class NANScheme(nn.Module):
             self.pre_net.eval()
             if self.args.blur_render and self.args.bpn_prenet:
                 self.pre_net.offset_conv.eval()
-                # self.pre_net.offset_fc.eval()
+                self.pre_net.offset_fc.eval()
 
         if self.args.ft_embed_fc:
             self.degae.degrep_extractor.degrep_conv.eval()
             self.degae.degrep_extractor.degrep_fc.eval()
 
+        if self.args.kernel_attn:
+            self.ker_attention.eval()
 
     def switch_to_train(self):
         self.net_coarse.train()
@@ -288,12 +243,14 @@ class NANScheme(nn.Module):
             self.pre_net.train()
             if self.args.blur_render and self.args.bpn_prenet:
                 self.pre_net.offset_conv.train()
-                # self.pre_net.offset_fc.train()
+                self.pre_net.offset_fc.train()
 
         if self.args.ft_embed_fc:
             self.degae.degrep_extractor.degrep_conv.train()
             self.degae.degrep_extractor.degrep_fc.train()
 
+        if self.args.kernel_attn:
+            self.ker_attention.train()
 
 
     def save_model(self, filename):

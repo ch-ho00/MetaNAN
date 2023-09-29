@@ -364,24 +364,19 @@ class RayRender:
                 #     src_rgbs, kernels, ker_loss = self.model.pre_net(input_rgbs.reshape(N, -1, H, W), input_rgbs)
                 # featmaps['ker_loss'] = ker_loss
                 lat_feat, pred_offset, pred_kernel = self.model.pre_net(input_rgbs.reshape(N, -1, H, W))
-                if pred_offset != None:
-                    featmaps['pred_offset'] = pred_offset
-                kernel_size = pred_kernel.shape[1]
-                src_imgs_padded = F.pad(input_rgbs.reshape(N, -1, H, W), [kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2])
-                unfolded = F.unfold(src_imgs_padded, kernel_size)
-                img_stack = unfolded.reshape(self.model.args.num_source_views, src_imgs_padded.shape[1], kernel_size, kernel_size, H, W)
-                reconst_img = (img_stack * pred_kernel[:,None]).sum(2).sum(2)  
+                featmaps['pred_offset'] = pred_offset
+                featmaps['pred_kernel'] = pred_kernel
 
-                process_rgbs = reconst_img
-                featmaps['reconst_img'] = reconst_img          
                 del input_rgbs
                 torch.cuda.empty_cache()
             else:
                 src_rgbs = self.model.pre_net(src_rgbs)  # (N, 3, H, W)
-                process_rgbs = orig_rgbs[0].permute(0,3,1,2)
+        kernels = None
 
+        process_rgbs = orig_rgbs[0].permute(0,3,1,2)
         process_rgbs = process_rgbs.reshape(self.model.args.num_source_views,-1, H, W)
-        feature_dict = self.model.feature_net(process_rgbs)
+
+        feature_dict = self.model.feature_net(process_rgbs, kernels=kernels)
         featmaps.update(feature_dict)
 
         if self.model.args.kernel_attn:
@@ -391,7 +386,7 @@ class RayRender:
             lat_feat = lat_feat.permute(0,2,3,1)
             for idx, level in enumerate(['coarse', 'fine']):
                 featmaps[level]    = featmaps[level].permute(0,2,3,1)
-                featmaps[level], _ =  self.model.ker_attention(lat_feat, featmaps[level], featmaps[level])
+                featmaps[level], _ =  self.model.ker_attention(lat_feat[..., idx * 32: (idx +1) * 32], featmaps[level], featmaps[level])
                 featmaps[level]    = featmaps[level].permute(0,3,1,2)
 
         # if self.model.args.num_latent > 1:

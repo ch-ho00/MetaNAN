@@ -255,9 +255,9 @@ class ResUNet(nn.Module):
         return x
 
     def forward(self, x, kernels=None):
-        if kernels != None:
-            x = self.relu(self.bn0(self.conv0(x)))
-            x = torch.cat([x, kernels], dim=1)
+        # if kernels != None:
+        #     x = self.relu(self.bn0(self.conv0(x)))
+        #     x = torch.cat([x, kernels], dim=1)
         x = self.conv1(x)
         x = self.relu(self.bn1(x))
 

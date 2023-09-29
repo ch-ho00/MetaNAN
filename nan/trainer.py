@@ -166,6 +166,7 @@ class Trainer:
                                                  alpha_sample='objaverse' in self.args.train_dataset)
         # Calculate the feature maps of all views.
         # This step is seperated because in evaluation time we want to do it once for each image.
+        H, W = ray_sampler.src_rgbs.shape[2:4]
         if self.args.clean_src_imgs:
             org_src_rgbs = ray_sampler.src_rgbs_clean.to(self.device)
         else:
@@ -177,29 +178,54 @@ class Trainer:
             for pose in poses:
                 ids = get_nearest_pose_ids(pose, poses, self.args.burst_length, angular_dist_method='dist', sort_by_dist=True)
                 nearby_idxs.append(ids)
+
+            intrinsics = ray_batch['src_cameras'][0, :,2:18].reshape(-1, 4, 4)
+            nearby_imgs = torch.stack([org_src_rgbs[0].permute(0,3,1,2)[ids] for ids in nearby_idxs])
+            nearby_poses = torch.stack([torch.from_numpy(poses[ids]) for ids in nearby_idxs]).to(self.device)
+
+            input_imgs = [img for img in nearby_imgs.permute(1,0,2,3,4)]
+            intrinsics = ray_batch['src_cameras'][0, :,2:18].reshape(-1, 4, 4)[:, :3,:3]
+            intrinsics = torch.stack([intrinsics[ids] for ids in nearby_idxs])
+            extrinsics = torch.inverse(nearby_poses)
+            depth, _, match = self.model.pre_net(input_imgs, intrinsics, extrinsics, ray_batch['depth_range'][0,0].repeat(self.args.num_source_views), ray_batch['depth_range'][0,1].repeat(self.args.num_source_views))
+            
+            # warped_imgs, warp_masks = warp_latent_imgs(nearby_imgs, intrinsics, nearby_poses)
+            import pdb; pdb.set_trace()
+
         else:
             nearby_idxs = None
         proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs, white_level=ray_batch['white_level'], weight=w, nearby_idxs=nearby_idxs, src_cameras=train_data['src_cameras'].to(self.device))
 
         self.scalars_to_log['weight'] = w 
 
-        blur_render =  False
-        if self.model.args.blur_render and random.random() (0.5, w):
-            assert self.model.args.num_latent > 1, 'Require Offset Prediction Module for Blur Render'
+        # if 'pred_kernel' in featmaps.keys():
+        #     kernel_size = featmaps['pred_kernel'].shape[1]
+        #     clean_src_imgs = ray_sampler.src_rgbs_clean.to(self.device)[0].permute(0,3,1,2)
+        #     clean_src_imgs = F.pad(clean_src_imgs, [kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2])
+        #     unfolded = F.unfold(clean_src_imgs, kernel_size)
+        #     img_stack = unfolded.reshape(self.args.num_source_views, clean_src_imgs.shape[1], kernel_size, kernel_size, H, W)
+        #     pred_noisy = (img_stack * featmaps['pred_kernel'][:,None]).sum(2).sum(2)            
+        #     reconst_loss         = F.l1_loss(pred_noisy, noisy_src_imgs) * 0.1
+        #     loss += reconst_loss 
+        #     self.scalars_to_log['train/reconst_loss'] = reconst_loss
+
+        blur_render = False
+        if self.args.blur_render and random.random() > 0.5:
+            # assert self.args.num_latent > 1, 'Require Offset Prediction Module for Blur Render'
             blur_render = True
-            num_latent = 8
+            num_latent = 4
             noisy_rgb = train_data['rgb_noisy'].permute(0,3,1,2).to(self.device)
-            _, tar_offset = self.model.pre_net(noisy_rgb, noisy_rgb[:, None])
+            _, tar_offset = self.model.pre_net(noisy_rgb) #, noisy_rgb[:, None])
             tar_pose = train_data['camera'][:,-16:].reshape(-1, 4, 4)[:,:3,:4].to(self.device)
             tar_se3_start = SE3_to_se3_N(tar_pose)
             tar_se3_end = tar_se3_start + tar_offset
             tar_spline_poses = get_spline_poses(tar_se3_start, tar_se3_end, spline_num=num_latent)
 
-            tar_spline_poses_4x4 =  torch.eye(4)[None].repeat(num_latent, 1, 1)
+            tar_spline_poses_4x4 =  torch.eye(4)[None].expand(num_latent, 4, 4)
             tar_spline_poses_4x4 = tar_spline_poses_4x4.to(tar_spline_poses.device)
             tar_spline_poses_4x4[:, :3, :4] = tar_spline_poses
             intrinsics = ray_batch['camera'][:,2:18].reshape(-1, 4, 4)
-            tar_latent_cameras = ray_batch['camera'][:, :-16].repeat(num_latent,1)
+            tar_latent_cameras = ray_batch['camera'][:, :-16].expand(num_latent,18)
             tar_latent_cameras = torch.cat([tar_latent_cameras, tar_spline_poses_4x4.reshape(num_latent, -1)], dim=-1)
             tar_latent_cameras[:1] = ray_batch['camera']
             blur_ray_batch = ray_sampler.random_blur_ray_batch(N_rand,
@@ -208,43 +234,48 @@ class Trainer:
                                                     center_ratio=self.args.center_ratio)
             ray_batch = blur_ray_batch
 
-        # if self.model.args.num_latent > 1 and not self.model.args.latent_img_stack:
-        #     src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
-        #     src_se3_start = SE3_to_se3_N(src_poses)
-        #     src_se3_end = src_se3_start + featmaps['pred_offset']
-        #     src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=self.model.args.num_latent)
-        #     src_spline_poses_4x4 =  torch.eye(4)[None,None].repeat(self.model.args.num_source_views, self.model.args.num_latent, 1, 1)
-        #     src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
-        #     src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
-        #     H, W = ray_batch['src_cameras'][0,0,:2]
-        #     intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)
-        #     warped_imgs, warp_masks = warp_latent_imgs(featmaps['latent_imgs'], intrinsics, src_spline_poses_4x4)
-        #     # Attach intrinsics and HW vector
-        #     src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].repeat(1,1,self.model.args.num_latent,1)
-        #     src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.model.args.num_source_views, self.model.args.num_latent, -1)], dim=-1)
-        #     src_latent_camera[:,:,0] = ray_batch['src_cameras']
-        #     ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
-        # else:
-        if self.model.args.num_latent  == 1:
+        if self.args.num_latent  == 1:
             featmaps['latent_imgs'] = proc_src_rgbs[0].permute(0,3,1,2)[:,None]
-        else:
-            ray_batch['pred_offset'] = featmaps['pred_offset']
 
+        if 'pred_offset' in featmaps.keys():
+            num_latent = 4
+            src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
+            src_se3_start = SE3_to_se3_N(src_poses)                                                                                                     # (n_src, 6)             
+            src_se3_end = src_se3_start + featmaps['pred_offset']                                                                                       # (n_src, 6)             
+            src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=num_latent)                                                      # (n_src, n_latent, 3, 4) 
+
+            src_spline_poses_4x4 =  torch.eye(4)[None,None].expand(self.args.num_source_views, num_latent, 4,4)
+            src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
+            src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
+            # Attach intrinsics and HW vector
+            intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)                                                                           # (n_src, 4, 4)            
+            src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].expand(1,self.args.num_source_views, num_latent, 18)
+            src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.args.num_source_views, num_latent, -1)], dim=-1)     # (1, n_src, n_latent, 34)
+            src_latent_camera[:,:,0] = ray_batch['src_cameras']
+            ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
+
+            # repeat source images
+            noisy_src_imgs = ray_sampler.src_rgbs.to(self.device)[0].permute(0,3,1,2) if 'reconst_img' not in featmaps.keys() else featmaps['reconst_img'].permute(0,2,3,1)[None]
+            noisy_src_imgs = noisy_src_imgs.unsqueeze(2)
+            org_src_rgbs_  = noisy_src_imgs.expand(1, self.args.num_source_views, num_latent, H, W, 3)                           # (1, n_src, n_latent, H, W, 3)
+            org_src_rgbs_  = org_src_rgbs_.reshape(1, -1, H, W ,3)
+
+            proc_src_rgbs  = proc_src_rgbs[:,:, None].expand(1, self.args.num_source_views, num_latent, H, W, 3)
+            proc_src_rgbs  = proc_src_rgbs.reshape(1, -1, H, W ,3)
+            for level in ['coarse', 'fine']:
+                featmaps[level] = featmaps[level][:, None].expand(self.args.num_source_views, num_latent, self.args.fine_feat_dim, H // 4, W // 4)
+                featmaps[level] = featmaps[level].reshape(-1, self.args.fine_feat_dim, H // 4, W // 4)
+
+            ray_batch['pred_offset'] = featmaps['pred_offset']
+        else:
+            org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device) if 'reconst_img' not in featmaps.keys() else featmaps['reconst_img'].permute(0,2,3,1)[None]
 
         sigma_est = ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None
-        # if self.args.proc_rgb_feat and self.args.weightsum_filtered:
-        #     org_src_rgbs_ = proc_src_rgbs * (1 - w) + ray_sampler.src_rgbs.to(self.device) * w
-        # elif self.args.latent_img_stack:
-        #     org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
-        if self.args.sum_filtered:
-            org_src_rgbs_ = proc_src_rgbs
-        else:
-            org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
 
         H, W=  ray_sampler.src_rgbs.shape[-3:-1]
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, 
-                                                proc_src_rgbs=proc_src_rgbs if self.args.num_latent  == 1 else featmaps['warped_latent'].reshape(1, self.args.num_source_views, -1, H, W).permute(0,1,3,4,2), 
+                                                proc_src_rgbs=proc_src_rgbs, 
                                                 featmaps=featmaps,
                                                 org_src_rgbs=org_src_rgbs_,
                                                 sigma_estimate=sigma_est)
@@ -263,17 +294,15 @@ class Trainer:
         self.scalars_to_log['train/coarse_loss'] = coarse_loss
         self.scalars_to_log['train/fine_loss'] = fine_loss
 
+        if 'reconst_img' in featmaps.keys():
+            clean_src_imgs      = ray_sampler.src_rgbs_clean.to(self.device)[0].permute(0,3,1,2)
+            reconst_loss        = F.l1_loss(featmaps['reconst_img'], clean_src_imgs) * 0.1
+            loss += reconst_loss 
+            self.scalars_to_log['train/reconst_loss'] = reconst_loss
+            
         if 'ker_loss' in featmaps:
             loss += featmaps['ker_loss']
             self.scalars_to_log['train/ker_loss'] = featmaps['ker_loss']
-
-        if self.args.lambda_blur_loss > 0:
-            assert self.args.blur_render, 'Require blur ray batch for blur loss'
-            coarse_noise_loss   = F.l1_loss(batch_out['coarse'].rgb.mean(0), ray_batch['rgb_noisy'])
-            fine_noise_loss     = F.l1_loss(batch_out['fine'].rgb.mean(0), ray_batch['rgb_noisy'])
-            loss += (coarse_noise_loss + fine_noise_loss) * self.args.lambda_blur_loss
-            self.scalars_to_log['train/coarse_noise_loss'] = coarse_noise_loss * self.args.lambda_blur_loss
-            self.scalars_to_log['train/fine_noise_loss'] = fine_noise_loss * self.args.lambda_blur_loss
 
         if self.args.lambda_align_loss > 0:
             warp_masks = featmaps['warped_masks']
@@ -331,7 +360,7 @@ class Trainer:
             mse_error = l2_loss(de_linearize(ray_batch_out['coarse'].rgb, ray_batch_in['white_level']).clamp(0,1),
                                 de_linearize(ray_batch_in['rgb'], ray_batch_in['white_level']).clamp(0,1)).item()
         else:
-            if self.model.args.blur_render:
+            if self.args.blur_render:
                 mse_error = l2_loss(ray_batch_out['coarse'].rgb[0].clamp(0,1),
                                     ray_batch_in['rgb'].clamp(0,1)).item()
             else:
@@ -345,7 +374,7 @@ class Trainer:
                 mse_error = l2_loss(de_linearize(ray_batch_out['fine'].rgb, ray_batch_in['white_level']).clamp(0,1),
                                     de_linearize(ray_batch_in['rgb'], ray_batch_in['white_level']).clamp(0,1)).item()
             else:
-                if self.model.args.blur_render:
+                if self.args.blur_render:
                     mse_error = l2_loss(ray_batch_out['fine'].rgb[0].clamp(0,1),
                                         ray_batch_in['rgb'].clamp(0,1)).item()                
                 else:
@@ -362,7 +391,7 @@ class Trainer:
         if global_step % self.args.i_print == 0:
             print(logstr)
             print(f"each iter time {dt:.05f} seconds")
-            if self.args.num_latent > 1:
+            if 'pred_offset' in ray_batch_in.keys():
                 print(ray_batch_in['pred_offset'])
 
     def log_view_to_tb(self, global_step, ray_sampler, gt_img, render_stride=1, prefix='', postfix='', visualize=False):
@@ -418,8 +447,8 @@ class Trainer:
             self.writer.add_image(prefix + 'rgb_gt-coarse-fine' + postfix, rgb_im, global_step)
             self.writer.add_image(prefix + 'depth_gt-coarse-fine'+ postfix, depth_im, global_step)
             self.writer.add_image(prefix + 'acc-coarse-fine'+ postfix, acc_map, global_step)
-            if self.args.bpn_prenet:
-                h, w, _ = ret['bpn_reconst'].shape[-3:]
+            h,w = list(ray_sampler.src_rgbs.shape[-3:-1])
+            if 'bpn_reconst' in ret.keys():
                 reconst_img = ret['bpn_reconst'][0].permute(3,1,0,2).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
                 if ray_sampler.white_level != None:
                     reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
@@ -427,8 +456,7 @@ class Trainer:
                     reconst_img = reconst_img.cpu().clamp(0,1)
                 self.writer.add_image(prefix + 'bpn_reconst'+ postfix, reconst_img, global_step)
 
-            if self.args.num_latent > 1:
-                h, w = ret['latent_imgs'].shape[-2:]
+            if 'latent_imgs' in ret.keys():
                 vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['latent_imgs'][0].cpu()], dim=0)
                 reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
                 if ray_sampler.white_level != None:
@@ -437,7 +465,7 @@ class Trainer:
                     reconst_img = reconst_img.cpu().clamp(0,1)
                 self.writer.add_image(prefix + 'latent_imgs'+ postfix, reconst_img, global_step)
 
-                h, w = ret['warped_latent_imgs'].shape[-2:]
+            if 'warped_latent_imgs' in ret.keys():
                 vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['warped_latent_imgs'][0].cpu()], dim=0)
                 reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
                 if ray_sampler.white_level != None:
@@ -445,6 +473,13 @@ class Trainer:
                 else:
                     reconst_img = reconst_img.cpu().clamp(0,1)
                 self.writer.add_image(prefix + 'warped_latent_imgs'+ postfix, reconst_img, global_step)
+
+            if 'kernel_reconst' in ret.keys():
+                vis_img = torch.cat([ray_sampler.src_rgbs, ret['kernel_reconst'].permute(0,2,3,1)[None].cpu(), ray_sampler.src_rgbs_clean], dim=0)
+                vis_img = vis_img[:,:2]
+                vis_img = vis_img.permute(4,1,2,0,3).reshape(3, h * 2, -1)[:, ::render_stride, ::render_stride]
+                vis_img = vis_img.cpu().clamp(0,1)
+                self.writer.add_image(prefix + 'kernel_reconst'+ postfix, vis_img, global_step)
 
             del depth_im, rgb_im
         # write scalar
