@@ -178,7 +178,7 @@ def differentiable_warping(
         mode="bilinear",
         padding_mode="zeros",
         align_corners=True,
-    ).view(batch, channels, num_depth, height, width), grid
+    ).view(batch, channels, num_depth, height, width)
 
 
 def depth_regression(p: torch.Tensor, depth_values: torch.Tensor) -> torch.Tensor:

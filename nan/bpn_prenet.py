@@ -190,68 +190,30 @@ class OffsetNet(nn.Module):
         self.relu_slope = 0.2
         self.patch_size = patch_size
         self.return_offset = return_offset
-        modules = [nn.Conv2d(3, embed_dim, kernel_size=3, stride=1, padding=1, bias=False)]
-        modules += [TransformerBlock(dim=embed_dim, ffn_expansion_factor=expansion_factor, bias=False) for _ in range(2)]
         self.offset_conv = nn.Sequential(
-            *modules
+            UNetConvBlock(4, 64, True, self.relu_slope),
+            UNetConvBlock(64, 128, True, self.relu_slope),
+            UNetConvBlock(128, 256, True, self.relu_slope),
+            UNetConvBlock(256, 256, True, self.relu_slope),
         )
-        # self.offset_conv = nn.Sequential(
-        #     UNetConvBlock(3, 64,    False, self.relu_slope),
-        #     nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
-        #     nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
-        #     # UNetConvBlock(64, 128,  False, self.relu_slope),
-        #     # UNetConvBlock(128, 256, False, self.relu_slope),
-        #     # UNetConvBlock(256, 256, True, self.relu_slope),
-        #     # UNetConvBlock(256, 256, True, self.relu_slope)       
-        # )
-        # self.offset_conv = nn.Sequential(
-        #     nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),
-        #     nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
-        #     nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
-        #     # nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),
-        #     # nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),
-        # ) 
-
-        # self.offset_fc1 =  nn.Linear(256, 64)
-        self.offset_fc2 =  nn.Sequential(
-            nn.Linear(embed_dim, 6, bias=False),
-            # nn.Linear(16, 6, bias=False)
+        self.offset_fc =  nn.Sequential(
+            nn.Linear(256, 6, bias=False),
         )
 
-        self.kernel_fc =   nn.Sequential(
-            nn.Linear(6, self.patch_size **2, bias=False),
-            # nn.Linear(self.patch_size * 2, self.patch_size **2 , bias=False)
-        )
-        for layer in self.offset_fc2:
+        for layer in self.offset_fc:
             if isinstance(layer, nn.Linear):
                 init.uniform_( layer.weight, -1e-2, 1e-2)
                 if layer.bias != None:
                     init.constant_(layer.bias, 0)
 
-                # init.kaiming_normal_(layer.weight, mode='fan_out', nonlinearity='relu')
-                # init.constant_(layer.bias, 0)
-
-        # Initialize weights and biases for the final fully connected layer
-        # init.uniform_( self.offset_fc1.weight, -1e-3, 1e-3)
-        # init.uniform_( self.offset_fc2.weight, -1e-2, 1e-2)
-
-        # init.constant_(self.offset_fc1.bias, 0)
-        # init.constant_(self.offset_fc2.bias, 0)
-
-    def forward(self, x, dummy=None):
+    def forward(self, x):
         N, _, H, W = x.shape
         x = self.offset_conv(x) # (B, 256, H//32, W//32)
         x = x.permute(0,2,3,1)
-        # x  = self.offset_fc1(x)
-        pred_offset = self.offset_fc2(x)
-        pred_kernel = self.kernel_fc(pred_offset)
-        
-        if self.return_offset:
-            pred_offset = pred_offset.permute(0,3,1,2).mean(-1).mean(-1)
-        else:
-            pred_offset = None
+        pred_offset = self.offset_fc(x)
+        pred_offset = pred_offset.permute(0,3,1,2).mean(-1).mean(-1)
+        return pred_offset
 
-        return x, pred_offset, pred_kernel.permute(0,3,1,2).reshape(N, self.patch_size, self.patch_size, H, W)
 
 
 class BPN(nn.Module):

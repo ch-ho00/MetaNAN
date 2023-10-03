@@ -197,7 +197,6 @@ class PatchmatchNet(nn.Module):
         assert len(images) == extrinsics.size()[1], 'Different number of images and extrinsic matrices'
         images, intrinsics, orig_height, orig_width = adjust_image_dims(images, intrinsics)
         ref_image = images[0]
-        src_images = images[1:]
         _, _, ref_height, ref_width = ref_image.size()
 
         # step 1. Multi-scale feature extraction
@@ -208,7 +207,6 @@ class PatchmatchNet(nn.Module):
         del images
         ref_feature, src_features = features[0], features[1:]
 
-        import pdb; pdb.set_trace()
         depth_min = depth_min.float()
         depth_max = depth_max.float()
 
@@ -285,8 +283,6 @@ class PatchmatchNet(nn.Module):
             depth = F.interpolate(depth, size=[orig_height, orig_width], mode='bilinear', align_corners=False)
         depth_patchmatch[0] = [depth]
 
-        return depth, torch.empty(0, device=device), depth_patchmatch
-        '''
         if self.training:
             return depth, torch.empty(0, device=device), depth_patchmatch
         else:
@@ -303,7 +299,7 @@ class PatchmatchNet(nn.Module):
                 photometric_confidence, size=[orig_height, orig_width], mode="nearest").squeeze(1)
 
             return depth, photometric_confidence, depth_patchmatch
-        '''
+
 
 def adjust_image_dims(
         images: List[torch.Tensor], intrinsics: torch.Tensor) -> Tuple[List[torch.Tensor], torch.Tensor, int, int]:

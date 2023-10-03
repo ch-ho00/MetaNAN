@@ -71,51 +71,29 @@ class NANScheme(nn.Module):
         device = torch.device(f'cuda:{args.local_rank}')
 
         # create feature extraction network
-        self.degae_feat = args.degae_feat
-        if args.degae_feat or args.lambda_embed_loss > 0 or args.cond_renderer:
-            self.degae = DegAE(args, train_scratch=False)
-            if args.degae_feat_ckpt != None:
-                checkpoint = torch.load(args.degae_feat_ckpt, map_location=lambda storage, loc: storage)
-                self.degae.load_state_dict(checkpoint["model"])
-            
-            for param in self.degae.parameters():
-                param.requires_grad = False
-            self.degae.eval()
-
-            if args.degae_feat:
-                dim_ = self.args.fine_feat_dim + self.args.coarse_feat_dim
-                self.feature_conv_0 = BasicBlock(dim_, dim_, stride=2, downsample=True,  rand_noise=True).to(device)
-                self.feature_conv_1 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=True).to(device)
-                self.feature_conv_2 = BasicBlock(dim_, dim_, stride=2, downsample=True,  rand_noise=True).to(device)
-                self.feature_conv_3 = BasicBlock(dim_, dim_, stride=1, downsample=None, rand_noise=True).to(device)
-
-
         if args.pre_net:
-            if args.bpn_prenet:
-                    self.pre_net = PatchmatchNet(
-                        patchmatch_interval_scale=[0.005, 0.0125, 0.025],
-                        propagation_range=[6, 4, 2],
-                        patchmatch_iteration=[1, 2, 2],
-                        patchmatch_num_sample=[8, 8, 16],
-                        propagate_neighbors=[0, 8, 16],
-                        evaluate_neighbors=[9, 9, 9]
-                    ).to(device)
-                    # self.pre_net = OffsetNet().to(device)
-                    # self.pre_net = BPN(burst_length=args.burst_length, n_latent_layers=args.num_latent, basis_size=args.basis_dim, channel_upfactor=args.channel_upfactor).to(device)
-            else:
-                if args.weightsum_filtered:
-                    self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(13, 13), sigma=(1.5, 1.5)).to(device)                
-                else:
-                    self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(3, 3), sigma=(1.5, 1.5)).to(device)
+            self.pre_net = Gaussian2D(in_channels=3, out_channels=3, kernel_size=(3, 3), sigma=(1.5, 1.5)).to(device)
         else:
             self.pre_net = None
 
-        if not args.degae_feat:
-            self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
-                                    fine_out_ch=args.fine_feat_dim,
-                                    coarse_only=args.coarse_only,
-                                    num_latent=args.num_latent,
-                                    kernel_stack=None if (not args.kernel_stack or not args.bpn_prenet) else self.pre_net.lat_kernel_dim).to(device)
+        if args.bpn_prenet:
+            self.patchmatch = PatchmatchNet(
+                patchmatch_interval_scale=[0.005, 0.0125, 0.025],
+                propagation_range=[6, 4, 2],
+                patchmatch_iteration=[1, 2, 2],
+                patchmatch_num_sample=[8, 8, 16],
+                propagate_neighbors=[0, 8, 16],
+                evaluate_neighbors=[9, 9, 9],
+            ).to(device)
+
+            self.offsetnet = OffsetNet().to(device)
+            # self.decoder = InpaintDecoder().to(device)
+
+        self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
+                                fine_out_ch=args.fine_feat_dim,
+                                coarse_only=args.coarse_only,
+                                num_latent=args.num_latent,
+                                kernel_stack=None if (not args.kernel_stack or not args.bpn_prenet) else self.pre_net.lat_kernel_dim).to(device)
 
         if args.kernel_attn:
             ker_att_nhead = 5
@@ -142,38 +120,12 @@ class NANScheme(nn.Module):
 
     def create_optimizer(self):
         params_list = []
-        if self.args.degae_feat or self.args.cond_renderer:
-            if self.args.degae_feat:
-                params_list += [ {'params': self.feature_conv_0.parameters(), 'lr': self.args.lrate_feature},
-                                {'params': self.feature_conv_1.parameters(), 'lr': self.args.lrate_feature},
-                                {'params': self.feature_conv_2.parameters(), 'lr': self.args.lrate_feature},
-                                {'params': self.feature_conv_3.parameters(), 'lr': self.args.lrate_feature}]     
-            if self.args.ft_embed_fc:
-                params_list += [{'params' : self.degae.degrep_extractor.degrep_conv.parameters(), 'lr':self.args.lrate_feature * 1e-2},
-                                {'params' : self.degae.degrep_extractor.degrep_fc.parameters(),   'lr':self.args.lrate_feature * 1e-2}]
-                    
-        else:
-            params_list = [{'params': self.feature_net.parameters(), 'lr': self.args.lrate_feature}]
-
+        params_list = [{'params': self.feature_net.parameters(), 'lr': self.args.lrate_feature}]
         params_list.append( {'params': self.net_coarse.parameters(),  'lr': self.args.lrate_mlp})
-
         if self.net_fine is not None:
             params_list.append({'params': self.net_fine.parameters(), 'lr': self.args.lrate_mlp})
 
         if self.args.pre_net:
-            # if self.args.num_latent > 1:
-            #     bpn_params = []
-            #     offset_params = []
-            #     for k, v in self.pre_net.named_parameters():
-            #         if 'offset' in k:
-            #             print(k)
-            #             offset_params.append(v)
-            #         else:
-            #             bpn_params.append(v)
-            #     params_list.append({'params': bpn_params, 'lr': self.args.lrate_feature})
-            #     params_list.append({'params': offset_params, 'lr': self.args.lrate_feature * 1e-2})
-            # else:
-            #     params_list.append({'params': self.pre_net.parameters(), 'lr': self.args.lrate_feature})
             bpn_params = []
             offset_params = []
             for k, v in self.pre_net.named_parameters():
@@ -184,6 +136,9 @@ class NANScheme(nn.Module):
                     bpn_params.append(v)
             params_list.append({'params': bpn_params, 'lr': self.args.lrate_feature})
             params_list.append({'params': offset_params, 'lr': self.args.lrate_feature * 1e-1})
+
+        if self.args.bpn_prenet:
+            params_list += [{'params' : self.patchmatch.parameters(), 'lr':self.args.lrate_feature}]
                 
         if self.args.kernel_attn:
             params_list += [{'params' : self.ker_attention.parameters(), 'lr':self.args.lrate_feature}]
@@ -199,55 +154,32 @@ class NANScheme(nn.Module):
 
     def switch_to_eval(self):
         self.net_coarse.eval()
-        if self.args.degae_feat:
-            self.feature_conv_0.eval()        
-            self.feature_conv_1.eval()        
-            self.feature_conv_2.eval()        
-            self.feature_conv_3.eval()        
-
-
-        else:
-            self.feature_net.eval()
+        self.feature_net.eval()
 
         if self.net_fine is not None:
             self.net_fine.eval()
 
         if self.pre_net is not None:
             self.pre_net.eval()
-            if self.args.blur_render and self.args.bpn_prenet:
-                self.pre_net.offset_conv.eval()
-                self.pre_net.offset_fc.eval()
-
-        if self.args.ft_embed_fc:
-            self.degae.degrep_extractor.degrep_conv.eval()
-            self.degae.degrep_extractor.degrep_fc.eval()
 
         if self.args.kernel_attn:
             self.ker_attention.eval()
 
+        if self.args.bpn_prenet:
+            self.patchmatch.eval()
+
     def switch_to_train(self):
         self.net_coarse.train()
-        if self.args.degae_feat:
-            self.feature_conv_0.train()        
-            self.feature_conv_1.train()        
-            self.feature_conv_2.train()        
-            self.feature_conv_3.train()        
-
-        else:
-            self.feature_net.train()
+        self.feature_net.train()
 
         if self.net_fine is not None:
             self.net_fine.train()
 
         if self.pre_net is not None:
             self.pre_net.train()
-            if self.args.blur_render and self.args.bpn_prenet:
-                self.pre_net.offset_conv.train()
-                self.pre_net.offset_fc.train()
 
-        if self.args.ft_embed_fc:
-            self.degae.degrep_extractor.degrep_conv.train()
-            self.degae.degrep_extractor.degrep_fc.train()
+        if self.args.bpn_prenet:
+            self.patchmatch.train()
 
         if self.args.kernel_attn:
             self.ker_attention.train()

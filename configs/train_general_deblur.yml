@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : test #nan_ObjxObj_ibrReconst_fftFormer2X1e-1_expand3_48dim_srcLatent1_11x11reconst1e0 #FullBPN_LatKernelDim16_color1_burst5_wKerLoss_woDetach_latent1e-1
+expname                     : test_selfsupervision #nan_ObjxObj_ibrReconst_patchMatch1e0_inputDepthWoBN_base32dim_DetachSrcLatent1_13x13_reconst1e-1 #FullBPN_LatKernelDim16_color1_burst5_wKerLoss_woDetach_latent1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 

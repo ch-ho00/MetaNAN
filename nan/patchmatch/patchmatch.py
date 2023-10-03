@@ -152,8 +152,7 @@ class Evaluation(nn.Module):
         grid: torch.Tensor,
         weight: torch.Tensor,
         view_weights: torch.Tensor,
-        is_inverse: bool,
-        src_rgbs : torch.Tensor
+        is_inverse: bool
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Forward method for adaptive evaluation
 
@@ -197,10 +196,9 @@ class Evaluation(nn.Module):
         i = 0
         view_weights_list = []
         for src_feature, src_proj in zip(src_features, src_projs):
-            warped_feature, grid = differentiable_warping(
+            warped_feature = differentiable_warping(
                 src_feature, src_proj, ref_proj, depth_sample
             ).view(batch, self.G, feature_channel // self.G, num_depth, height, width)
-            import pdb; pdb.set_trace()
             # group-wise correlation
             similarity = (warped_feature * ref_feature).mean(2)
             # pixel-wise view weight
@@ -527,6 +525,7 @@ class PatchMatch(nn.Module):
 
             depth_sample = depth_sample.unsqueeze(1)
             depth_samples.append(depth_sample)
+
         return depth_samples, score, view_weights
 
 

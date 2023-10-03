@@ -339,7 +339,7 @@ class RayRender:
 
         return ray_outputs
 
-    def calc_featmaps(self, src_rgbs, white_level=None, weight=None, nearby_idxs=None, src_cameras=None):
+    def calc_featmaps(self, src_rgbs, lat_feat=None):
         """
         Calculating the features maps of the source views
         :param src_rgbs: (1, N, H, W, 3)
@@ -352,33 +352,8 @@ class RayRender:
         featmaps = {}
         src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
         if self.model.pre_net is not None:
-            if self.model.args.bpn_prenet:
-                if nearby_idxs != None:
-                    input_rgbs = torch.stack([src_rgbs[ids] for ids in nearby_idxs])
-                else:
-                    input_rgbs = src_rgbs[:, None, :3]
-
-                # if self.model.args.num_latent > 1:
-                #     src_rgbs, pred_offset = self.model.pre_net(input_rgbs.reshape(N, -1, H, W), input_rgbs)
-                # else:
-                #     src_rgbs, kernels, ker_loss = self.model.pre_net(input_rgbs.reshape(N, -1, H, W), input_rgbs)
-                # featmaps['ker_loss'] = ker_loss
-                lat_feat, pred_offset, pred_kernel = self.model.pre_net(input_rgbs.reshape(N, -1, H, W))
-                if pred_offset != None:
-                    featmaps['pred_offset'] = pred_offset
-                kernel_size = pred_kernel.shape[1]
-                src_imgs_padded = F.pad(input_rgbs.reshape(N, -1, H, W), [kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2])
-                unfolded = F.unfold(src_imgs_padded, kernel_size)
-                img_stack = unfolded.reshape(self.model.args.num_source_views, src_imgs_padded.shape[1], kernel_size, kernel_size, H, W)
-                reconst_img = (img_stack * pred_kernel[:,None]).sum(2).sum(2)  
-
-                process_rgbs = reconst_img
-                featmaps['reconst_img'] = reconst_img          
-                del input_rgbs
-                torch.cuda.empty_cache()
-            else:
-                src_rgbs = self.model.pre_net(src_rgbs)  # (N, 3, H, W)
-                process_rgbs = orig_rgbs[0].permute(0,3,1,2)
+            src_rgbs = self.model.pre_net(src_rgbs)  # (N, 3, H, W)
+            process_rgbs = orig_rgbs[0].permute(0,3,1,2)
 
         process_rgbs = process_rgbs.reshape(self.model.args.num_source_views,-1, H, W)
         feature_dict = self.model.feature_net(process_rgbs)
@@ -393,14 +368,6 @@ class RayRender:
                 featmaps[level]    = featmaps[level].permute(0,2,3,1)
                 featmaps[level], _ =  self.model.ker_attention(lat_feat, featmaps[level], featmaps[level])
                 featmaps[level]    = featmaps[level].permute(0,3,1,2)
-
-        # if self.model.args.num_latent > 1:
-        #     src_rgbs = src_rgbs.reshape(-1, self.model.args.num_latent, 3, H ,W)
-        #     featmaps['latent_imgs'] = src_rgbs
-        #     featmaps['pred_offset'] = pred_offset
-        #     src_rgbs = src_rgbs[:,0]
-        # else:
-        #     featmaps['pred_offset'] = None
         
         src_rgbs = src_rgbs.permute(0, 2, 3, 1).unsqueeze(0)
 

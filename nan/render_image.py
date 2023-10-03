@@ -62,43 +62,54 @@ def render_single_image(ray_sampler: RaySampler,
         org_src_rgbs = ray_sampler.src_rgbs_clean.to(device)
     else:
         org_src_rgbs = ray_sampler.src_rgbs.to(device)
+
+    H, W = org_src_rgbs.shape[-3:-1]
     sigma_est = ray_sampler.sigma_estimate.to(device) if ray_sampler.sigma_estimate != None else None
     src_cameras = ray_sampler.src_cameras.to(device)
 
     if args.burst_length > 1:
+        ray_batch = ray_sampler.specific_ray_batch(slice(0, args.chunk_size, 1), clean=args.sup_clean)
         nearby_idxs = []
-        poses = src_cameras[:,:,-16:].reshape(-1, 4, 4).cpu().numpy()
-        for pose in poses:
-            ids = get_nearest_pose_ids(pose, poses, args.burst_length, angular_dist_method='dist', sort_by_dist=True)
+        src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4).cpu().numpy()
+        src_intrinsics = ray_batch['src_cameras'][0, :,2:18].reshape(-1, 4, 4)[:, :3,:3]
+        for pose in src_poses:
+            ids = get_nearest_pose_ids(pose, src_poses, args.burst_length, angular_dist_method='dist', sort_by_dist=True)
             nearby_idxs.append(ids)
+
+        nearby_imgs = torch.stack([org_src_rgbs[0].permute(0,3,1,2)[ids] for ids in nearby_idxs])
+        nearby_poses = torch.stack([torch.from_numpy(src_poses[ids]) for ids in nearby_idxs]).to(device)
+        nearby_intrinsics = torch.stack([src_intrinsics[ids] for ids in nearby_idxs])
+
+        extrinsics = torch.inverse(nearby_poses)
+        input_imgs = [img for img in nearby_imgs.permute(1,0,2,3,4)]
+        depth, _, _ = model.patchmatch(input_imgs, nearby_intrinsics, extrinsics, ray_batch['depth_range'][0,0].repeat(args.num_source_views), ray_batch['depth_range'][0,1].repeat(args.num_source_views))            
+
+        src_rgbd = torch.cat([org_src_rgbs[0].permute(0,3,1,2), depth], dim=1)
+        pred_offset = model.offsetnet(src_rgbd)
+        reconst_img = None
     else:
+        pred_offset = None
+        pred_kernel = None
         nearby_idxs = None
+        reconst_img = None
+        depth = None
 
 
-    src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs, white_level=ray_sampler.white_level, weight=w, nearby_idxs=nearby_idxs, src_cameras=src_cameras)
+    src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs)
     all_ret = OrderedDict([('coarse', RaysOutput.empty_ret()),
                            ('fine', None)])
+    if reconst_img != None:
+        all_ret['kernel_reconst'] = reconst_img
 
-    H, W = org_src_rgbs.shape[-3:-1]
-
-    # if 'pred_kernel' in featmaps.keys():
-    #     kernel_size = featmaps['pred_kernel'].shape[1]
-    #     clean_src_imgs = ray_sampler.src_rgbs_clean.to(device)[0].permute(0,3,1,2)
-    #     clean_src_imgs = F.pad(clean_src_imgs, [kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2])
-    #     unfolded = F.unfold(clean_src_imgs, kernel_size)
-    #     img_stack = unfolded.reshape(args.num_source_views, clean_src_imgs.shape[1], kernel_size, kernel_size, H, W)
-    #     pred_noisy = (img_stack * featmaps['pred_kernel'][:,None]).sum(2).sum(2)            
-    #     all_ret['kernel_reconst'] = pred_noisy
-
-    if 'reconst_img' in featmaps.keys():
-        all_ret['kernel_reconst'] = featmaps['reconst_img']
+    if depth != None:
+        all_ret['patchmatch_depth'] = depth
         
-    if 'pred_offset' in featmaps.keys():
+    if False: #pred_offset != None:
         all_ret['bpn_reconst'] = src_rgbs
         num_latent = 4
-        src_poses = src_cameras[:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
+        src_poses = src_cameras[:,:,-16:].reshape(-1, 4, 4)[:,:3,:4].to(device)
         src_se3_start = SE3_to_se3_N(src_poses)                                                                                                     # (n_src, 6)             
-        src_se3_end = src_se3_start + featmaps['pred_offset']                                                                                       # (n_src, 6)             
+        src_se3_end = src_se3_start + pred_offset.mean(-1).mean(-1)                                                                                       # (n_src, 6)             
         src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=num_latent)                                                      # (n_src, n_latent, 3, 4) 
 
         src_spline_poses_4x4 =  torch.eye(4)[None,None].expand(args.num_source_views, num_latent, 4,4)
@@ -122,7 +133,7 @@ def render_single_image(ray_sampler: RaySampler,
         print("OFFSET = ", featmaps['pred_offset'])
 
     else:
-        org_src_rgbs_ = org_src_rgbs if 'reconst_img' not in featmaps.keys() else featmaps['reconst_img'].permute(0,2,3,1)[None]
+        org_src_rgbs_ = org_src_rgbs if reconst_img == None else reconst_img.permute(0,2,3,1)[None]
 
     if args.N_importance > 0:
         all_ret['fine'] = RaysOutput.empty_ret()
@@ -132,7 +143,7 @@ def render_single_image(ray_sampler: RaySampler,
     for i in tqdm(range(0, N_rays, args.chunk_size)):
         # print('batch', i)
         ray_batch = ray_sampler.specific_ray_batch(slice(i, i + args.chunk_size, 1), clean=args.sup_clean)
-        if 'pred_offset' in featmaps.keys():
+        if False: #'pred_offset' in featmaps.keys():
             # Attach intrinsics and HW vector
             intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)                                                                           # (n_src, 4, 4)            
             src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].expand(1,args.num_source_views, num_latent, 18)
