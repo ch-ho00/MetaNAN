@@ -29,7 +29,7 @@ import torch.nn.functional as F
 from nan.se3 import SE3_to_se3_N, get_spline_poses
 from nan.projection import warp_latent_imgs
 from nan.content_loss import reconstruction_loss
-from nan.dataloaders.data_utils import get_nearest_pose_ids
+from nan.dataloaders.data_utils import get_nearest_pose_ids, get_padded_img_dim
 
 import random
 alpha=0.9998
@@ -200,12 +200,12 @@ class Trainer:
 
             extrinsics = torch.inverse(nearby_poses)
             input_imgs = [img for img in nearby_imgs.permute(1,0,2,3,4)]
-            depth, _, _ = self.model.patchmatch(input_imgs, nearby_intrinsics, extrinsics, ray_batch['depth_range'][0,0].repeat(self.args.num_source_views+1), ray_batch['depth_range'][0,1].repeat(self.args.num_source_views+1))            
+            depth, _, stage_depths = self.model.patchmatch(input_imgs, nearby_intrinsics, extrinsics, ray_batch['depth_range'][0,0].repeat(self.args.num_source_views+1), ray_batch['depth_range'][0,1].repeat(self.args.num_source_views+1))            
             tar_depth, src_depths = depth[:1], depth[1:]
-
             src_rgbd = torch.cat([org_src_rgbs[0].permute(0,3,1,2), src_depths], dim=1)
-            pred_offset = self.model.offsetnet(src_rgbd)
+            pred_offset, offset_feat = self.model.offsetnet(src_rgbd)
             reconst_img = None
+
         else:
             pred_offset = None
             pred_kernel = None
@@ -214,16 +214,14 @@ class Trainer:
             norm_depth = None
             tar_depth = None
 
-        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs)
         self.scalars_to_log['weight'] = w 
-
         blur_render = False
 
-        if False: #pred_offset != None:            
+        if pred_offset != None:            
             num_latent = 4
             src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
             src_se3_start = SE3_to_se3_N(src_poses)                                                                                                     # (n_src, 6)             
-            src_se3_end = src_se3_start + pred_offset.mean(-1).mean(-1)                                                                                    # (n_src, 6)             
+            src_se3_end = src_se3_start + pred_offset                                                                                    # (n_src, 6)             
             src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=num_latent)                                                      # (n_src, n_latent, 3, 4) 
 
             src_spline_poses_4x4 =  torch.eye(4)[None,None].expand(self.args.num_source_views, num_latent, 4,4)
@@ -233,26 +231,17 @@ class Trainer:
             intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)                                                                           # (n_src, 4, 4)            
             src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].expand(1,self.args.num_source_views, num_latent, 18)
             src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.args.num_source_views, num_latent, -1)], dim=-1)     # (1, n_src, n_latent, 34)
-            src_latent_camera[:,:,0] = ray_batch['src_cameras']
-            ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
+            # src_latent_camera[:,:,0] = ray_batch['src_cameras']
+            # ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
 
-            # repeat source images
-            noisy_src_imgs = ray_sampler.src_rgbs.to(self.device)[0].permute(0,3,1,2) if 'reconst_img' not in featmaps.keys() else featmaps['reconst_img'].permute(0,2,3,1)[None]
-            noisy_src_imgs = noisy_src_imgs.unsqueeze(2)
-            org_src_rgbs_  = noisy_src_imgs.expand(1, self.args.num_source_views, num_latent, H, W, 3)                           # (1, n_src, n_latent, H, W, 3)
-            org_src_rgbs_  = org_src_rgbs_.reshape(1, -1, H, W ,3)
-
-            proc_src_rgbs  = proc_src_rgbs[:,:, None].expand(1, self.args.num_source_views, num_latent, H, W, 3)
-            proc_src_rgbs  = proc_src_rgbs.reshape(1, -1, H, W ,3)
-            for level in ['coarse', 'fine']:
-                featmaps[level] = featmaps[level][:, None].expand(self.args.num_source_views, num_latent, self.args.fine_feat_dim, H // 4, W // 4)
-                featmaps[level] = featmaps[level].reshape(-1, self.args.fine_feat_dim, H // 4, W // 4)
-
-            ray_batch['pred_offset'] = featmaps['pred_offset']
+            # padded_image = get_padded_img_dim(src_spline_poses_4x4, intrinsics, [H, W])
+            org_src_rgbs =  src_rgbd.permute(0,2,3,1)[None]
+            org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
         else:
             org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
 
         sigma_est = ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None
+        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs)
 
         H, W=  ray_sampler.src_rgbs.shape[-3:-1]
         # Render the rgb values of the pixels that were sampled
@@ -282,11 +271,17 @@ class Trainer:
             loss += reconst_loss 
             self.scalars_to_log['train/reconst_loss'] = reconst_loss
         
-        if tar_depth != None:
+        if tar_depth != None: # and global_step > 10500:
             xy = ray_batch['xyz'][:,:2]
-            sel_tar_depth = tar_depth[0,0, xy[:,1], xy[:,0]]
-            depth_loss =F.l1_loss(sel_tar_depth, batch_out['fine'].depth.detach())
-            self.scalars_to_log['train/depth_loss'] = depth_loss
+            pseudo_depth = (batch_out['fine'].depth + batch_out['coarse'].depth) / 2
+            depth_loss = 0
+            for k in stage_depths.keys():
+                coords = torch.div(xy, 2 ** k, rounding_mode='floor')
+                for depth in stage_depths[k]:
+                    sel_ref_depth = depth[0, 0, coords[:, 1], coords[:, 0]]
+                    depth_loss += F.smooth_l1_loss(sel_ref_depth, pseudo_depth.detach())
+            loss += depth_loss * 0.1
+            self.scalars_to_log['train/depth_loss'] = depth_loss * 0.1
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()

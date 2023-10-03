@@ -202,17 +202,16 @@ class OffsetNet(nn.Module):
 
         for layer in self.offset_fc:
             if isinstance(layer, nn.Linear):
-                init.uniform_( layer.weight, -1e-2, 1e-2)
+                init.uniform_( layer.weight, -1e-4, 1e-4)
                 if layer.bias != None:
                     init.constant_(layer.bias, 0)
 
     def forward(self, x):
         N, _, H, W = x.shape
         x = self.offset_conv(x) # (B, 256, H//32, W//32)
-        x = x.permute(0,2,3,1)
-        pred_offset = self.offset_fc(x)
+        pred_offset = self.offset_fc(x.permute(0,2,3,1))
         pred_offset = pred_offset.permute(0,3,1,2).mean(-1).mean(-1)
-        return pred_offset
+        return pred_offset, x
 
 
 

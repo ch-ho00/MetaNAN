@@ -85,7 +85,7 @@ def render_single_image(ray_sampler: RaySampler,
         depth, _, _ = model.patchmatch(input_imgs, nearby_intrinsics, extrinsics, ray_batch['depth_range'][0,0].repeat(args.num_source_views), ray_batch['depth_range'][0,1].repeat(args.num_source_views))            
 
         src_rgbd = torch.cat([org_src_rgbs[0].permute(0,3,1,2), depth], dim=1)
-        pred_offset = model.offsetnet(src_rgbd)
+        pred_offset, offset_feat = model.offsetnet(src_rgbd)
         reconst_img = None
     else:
         pred_offset = None
@@ -95,7 +95,6 @@ def render_single_image(ray_sampler: RaySampler,
         depth = None
 
 
-    src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs)
     all_ret = OrderedDict([('coarse', RaysOutput.empty_ret()),
                            ('fine', None)])
     if reconst_img != None:
@@ -104,8 +103,7 @@ def render_single_image(ray_sampler: RaySampler,
     if depth != None:
         all_ret['patchmatch_depth'] = depth
         
-    if False: #pred_offset != None:
-        all_ret['bpn_reconst'] = src_rgbs
+    if pred_offset != None:
         num_latent = 4
         src_poses = src_cameras[:,:,-16:].reshape(-1, 4, 4)[:,:3,:4].to(device)
         src_se3_start = SE3_to_se3_N(src_poses)                                                                                                     # (n_src, 6)             
@@ -116,28 +114,15 @@ def render_single_image(ray_sampler: RaySampler,
         src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
         src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
 
-        # repeat source images
-        org_src_rgbs_ = org_src_rgbs if 'reconst_img' not in featmaps.keys() else featmaps['reconst_img'].permute(0,2,3,1)[None]
-        org_src_rgbs_ = org_src_rgbs_.unsqueeze(2)
-        org_src_rgbs_ = org_src_rgbs_.expand(1, args.num_source_views, num_latent, H, W, 3)                           # (1, n_src, n_latent, H, W, 3)
-        org_src_rgbs_ = org_src_rgbs_.reshape(1, -1, H, W ,3)
-
-        src_rgbs        = src_rgbs[:,:, None].expand(1, args.num_source_views, num_latent, H, W, 3)
-        src_rgbs        = src_rgbs.reshape(1, -1, H, W ,3)
-
-        for level in ['coarse', 'fine']:
-            sh =  featmaps[level].shape[-2:]
-            featmaps[level] = featmaps[level][:, None].expand(args.num_source_views, num_latent, args.fine_feat_dim, sh[0], sh[1])
-            featmaps[level] = featmaps[level].reshape(-1, args.fine_feat_dim, sh[0], sh[1])
-
-        print("OFFSET = ", featmaps['pred_offset'])
-
+        org_src_rgbs_ = org_src_rgbs
+        org_src_rgbs  = src_rgbd.permute(0,2,3,1)[None]
     else:
         org_src_rgbs_ = org_src_rgbs if reconst_img == None else reconst_img.permute(0,2,3,1)[None]
 
     if args.N_importance > 0:
         all_ret['fine'] = RaysOutput.empty_ret()
     N_rays = ray_sampler.rays_o.shape[0]
+    src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs)
 
     H, W = org_src_rgbs.shape[-3:-1]
     for i in tqdm(range(0, N_rays, args.chunk_size)):

@@ -352,7 +352,7 @@ class RayRender:
         featmaps = {}
         src_rgbs = src_rgbs.squeeze(0).permute(0, 3, 1, 2)
         if self.model.pre_net is not None:
-            src_rgbs = self.model.pre_net(src_rgbs)  # (N, 3, H, W)
+            src_rgbs = self.model.pre_net(src_rgbs[:,:3])  # (N, 3, H, W)
             process_rgbs = orig_rgbs[0].permute(0,3,1,2)
 
         process_rgbs = process_rgbs.reshape(self.model.args.num_source_views,-1, H, W)

@@ -279,6 +279,43 @@ def get_nearest_pose_ids(tar_pose, ref_poses, num_select, tar_id=None, angular_d
     return selected_ids.tolist()
 
 
+def get_padded_img_dim(src_spline_poses, intrinsics, HW):
+    '''
+    N, num_latent, 4, 4
+    N, 4, 4
+    '''
+
+    batch_size, n_latent = src_spline_poses.shape[:2]
+    anchor_pose = src_spline_poses[:, 0]
+    anchor_intrinsics = intrinsics.clone()
+
+    intrinsics = intrinsics[:, None].expand(batch_size, n_latent - 1, 4, 4).reshape(-1, 4, 4)
+    src_spline_poses = src_spline_poses[:, 1:].reshape(-1, 4, 4)
+    H, W = HW
+    x, y = np.meshgrid(np.arange(W), np.arange(H))
+    x = x.reshape(-1).astype(dtype=np.float32)  # + 0.5    # add half pixel
+    y = y.reshape(-1).astype(dtype=np.float32)  # + 0.5
+    pixels = np.stack((x, y, np.ones_like(x)), axis=0)  # (3, H*W)
+    pixels = torch.from_numpy(pixels).to(intrinsics.device)
+    batched_pixels = pixels.unsqueeze(0).expand(batch_size * (n_latent - 1), 3, pixels.shape[-1])
+
+    rays_d = (src_spline_poses[:, :3, :3].bmm(torch.inverse(intrinsics[:, :3, :3])).bmm(batched_pixels)).transpose(1, 2)
+    rays_d = rays_d.reshape(batch_size * (n_latent - 1), -1, 3)
+    rays_o = src_spline_poses[:, :3, 3].unsqueeze(1).expand(batch_size * (n_latent - 1), rays_d.shape[1], 3)  # B x HW x 3
+
+    focal_plane = rays_o + rays_d
+    focal_plane = focal_plane.reshape(batch_size, (n_latent - 1) * H * W, 3)
+    focal_plane_h = torch.cat([focal_plane, torch.ones_like(focal_plane[..., :1])], dim=-1)  # [n_points, 4]
+    projections = anchor_intrinsics.bmm(torch.inverse(anchor_pose)).bmm(focal_plane_h.permute(0,2,1))
+    projections = projections.permute(0,2,1)
+    uv = projections[...,:2] / torch.clamp(projections[..., 2:3], min=1e-8)
+    min_coords = uv.min(dim=1).values.clamp(max=0)
+    max_coords = uv.max(dim=1).values
+    max_coords[:,0] = max_coords[:,0].clamp(min=W)
+    max_coords[:,1] = max_coords[:,1].clamp(min=H)
+
+    return min_coords, max_coords
+
 def to_uint(im, bits=16, clip=True, norm_max=False):
     if norm_max:
         im = im / im.max()

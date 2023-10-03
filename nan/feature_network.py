@@ -159,9 +159,7 @@ class ResUNet(nn.Module):
                  fine_out_ch=32,
                  norm_layer=None,
                  coarse_only=False,
-                 latent_img_stack=False,
-                 num_latent=1,
-                 kernel_stack=None):
+                 extra_input_dim=0):
 
         super().__init__()
         assert encoder in ['resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152'], "Incorrect encoder type"
@@ -188,19 +186,10 @@ class ResUNet(nn.Module):
         self.inplanes = 64
         self.groups = 1
         self.base_width = 64
-        if kernel_stack != None:
-            self.conv0 = nn.Conv2d(3, kernel_stack, kernel_size=3, stride=1, padding=1,
-                                bias=False, padding_mode='reflect')
-            self.conv1 = nn.Conv2d(kernel_stack * 2, self.inplanes, kernel_size=3, stride=2, padding=1,
-                                bias=False, padding_mode='zeros')
-            self.bn0 = norm_layer(kernel_stack, track_running_stats=False, affine=True)
-            self.bn1 = norm_layer(self.inplanes, track_running_stats=False, affine=True)
-            self.relu = nn.ReLU(inplace=True)            
-        else:
-            self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
-                                bias=False, padding_mode='reflect')
-            self.bn1 = norm_layer(self.inplanes, track_running_stats=False, affine=True)
-            self.relu = nn.ReLU(inplace=True)
+        self.conv1 = nn.Conv2d(3 + extra_input_dim, self.inplanes, kernel_size=7, stride=2, padding=3,
+                            bias=False, padding_mode='reflect')
+        self.bn1 = norm_layer(self.inplanes, track_running_stats=False, affine=True)
+        self.relu = nn.ReLU(inplace=True)
         self.layer1 = self._make_layer(block, 64, layers[0], stride=2)
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2,
                                        dilate=replace_stride_with_dilation[0])
@@ -254,10 +243,7 @@ class ResUNet(nn.Module):
         x = torch.cat([x2, x1], dim=1)
         return x
 
-    def forward(self, x, kernels=None):
-        # if kernels != None:
-        #     x = self.relu(self.bn0(self.conv0(x)))
-        #     x = torch.cat([x, kernels], dim=1)
+    def forward(self, x):
         x = self.conv1(x)
         x = self.relu(self.bn1(x))
 

@@ -85,15 +85,19 @@ class NANScheme(nn.Module):
                 propagate_neighbors=[0, 8, 16],
                 evaluate_neighbors=[9, 9, 9],
             ).to(device)
-
+            '''
+            ckpts = torch.load('/home/chan/PatchmatchNet/checkpoints/params_000007.ckpt')['model']
+            ckpts = {k.replace('module.', '') : ckpts[k] for k in ckpts.keys()}
+            self.patchmatch.load_state_dict(ckpts)
+            '''        
             self.offsetnet = OffsetNet().to(device)
             # self.decoder = InpaintDecoder().to(device)
 
         self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
                                 fine_out_ch=args.fine_feat_dim,
                                 coarse_only=args.coarse_only,
-                                num_latent=args.num_latent,
-                                kernel_stack=None if (not args.kernel_stack or not args.bpn_prenet) else self.pre_net.lat_kernel_dim).to(device)
+                                extra_input_dim=int(self.args.burst_length > 1)
+                            ).to(device)
 
         if args.kernel_attn:
             ker_att_nhead = 5
