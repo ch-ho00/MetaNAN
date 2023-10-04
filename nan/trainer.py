@@ -29,7 +29,7 @@ import torch.nn.functional as F
 from nan.se3 import SE3_to_se3_N, get_spline_poses
 from nan.projection import warp_latent_imgs
 from nan.content_loss import reconstruction_loss
-from nan.dataloaders.data_utils import get_nearest_pose_ids, get_padded_img_dim
+from nan.dataloaders.data_utils import get_nearest_pose_ids, get_padded_img_dim, get_depth_warp_img
 
 import random
 alpha=0.9998
@@ -175,21 +175,21 @@ class Trainer:
         if self.args.burst_length > 1:
             nearby_idxs = []
             src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4).cpu().numpy()
-            src_intrinsics = ray_batch['src_cameras'][0, :,2:18].reshape(-1, 4, 4)[:, :3,:3]
+            src_intrinsics = ray_batch['src_cameras'][0, :,2:18].reshape(-1, 4, 4)
             for pose in src_poses:
                 ids = get_nearest_pose_ids(pose, src_poses, self.args.burst_length, angular_dist_method='dist', sort_by_dist=True)
                 nearby_idxs.append(ids)
 
             nearby_imgs = torch.stack([org_src_rgbs[0].permute(0,3,1,2)[ids] for ids in nearby_idxs])
             nearby_poses = torch.stack([torch.from_numpy(src_poses[ids]) for ids in nearby_idxs]).to(self.device)
-            nearby_intrinsics = torch.stack([src_intrinsics[ids] for ids in nearby_idxs])
+            nearby_intrinsics = torch.stack([src_intrinsics[ids] for ids in nearby_idxs])[..., :3,:3]
 
             tar_pose = ray_batch['camera'][:,-16:].reshape(4, 4).to(self.device)
-            tar_intrinsics = ray_batch['camera'][:,2:18].reshape(4, 4)[:3,:3].to(self.device)
+            tar_intrinsics = ray_batch['camera'][:,2:18].reshape(4, 4).to(self.device)
             tar_near_ids = get_nearest_pose_ids(tar_pose.cpu().numpy(), src_poses, self.args.burst_length - 1, angular_dist_method='dist', sort_by_dist=True)
 
             tar_nearby_poses = torch.cat([tar_pose[None], torch.from_numpy(src_poses[tar_near_ids]).to(self.device)], dim=0)[None]
-            tar_nearby_intrinsics = torch.cat([tar_intrinsics[None], src_intrinsics[tar_near_ids]], dim=0)[None]
+            tar_nearby_intrinsics = torch.cat([tar_intrinsics[None], src_intrinsics[tar_near_ids]], dim=0)[..., :3,:3][None]
 
             tar_noisy_rgb = ray_sampler.rgb_noisy.reshape(1,H,W,3).permute(0,3,1,2).to(self.device)
             tar_nearby_imgs = torch.cat([tar_noisy_rgb, org_src_rgbs[0].permute(0,3,1,2)[tar_near_ids]], dim=0)[None]
@@ -202,8 +202,10 @@ class Trainer:
             input_imgs = [img for img in nearby_imgs.permute(1,0,2,3,4)]
             depth, _, stage_depths = self.model.patchmatch(input_imgs, nearby_intrinsics, extrinsics, ray_batch['depth_range'][0,0].repeat(self.args.num_source_views+1), ray_batch['depth_range'][0,1].repeat(self.args.num_source_views+1))            
             tar_depth, src_depths = depth[:1], depth[1:]
-            src_rgbd = torch.cat([org_src_rgbs[0].permute(0,3,1,2), src_depths], dim=1)
-            pred_offset, offset_feat = self.model.offsetnet(src_rgbd)
+            src_rgbd = torch.cat([org_src_rgbs[0].permute(0,3,1,2), src_depths.detach()], dim=1)
+            
+            warped_imgs, coords = get_depth_warp_img(nearby_imgs[1:], nearby_poses[1:], src_intrinsics, depth[1:])
+            pred_offset = None
             reconst_img = None
 
         else:
@@ -238,6 +240,7 @@ class Trainer:
             org_src_rgbs =  src_rgbd.permute(0,2,3,1)[None]
             org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
         else:
+            org_src_rgbs =  src_rgbd.permute(0,2,3,1)[None]
             org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
 
         sigma_est = ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None
@@ -446,6 +449,10 @@ class Trainer:
                 pred_depth = ret['patchmatch_depth'].squeeze().permute(1,0,2).reshape(h//render_stride,-1)
                 pred_depth = img_HWC2CHW(colorize(pred_depth, cmap_name='jet', append_cbar=True))
                 self.writer.add_image(prefix + 'patchmatch_depth'+ postfix, pred_depth, global_step)
+
+            if 'depth_warped_imgs' in ret.keys():
+                vis_imgs = ret['depth_warped_imgs'].permute(2,0,3,1,4).reshape(3, h * 2, -1)[:, ::render_stride, ::render_stride]
+                self.writer.add_image(prefix + 'depth_warped_imgs'+ postfix, vis_imgs, global_step)
 
             del depth_im, rgb_im
         # write scalar

@@ -23,7 +23,7 @@ from nan.raw2output import RaysOutput
 from nan.sample_ray import RaySampler
 from nan.se3 import SE3_to_se3_N, get_spline_poses
 from nan.projection import warp_latent_imgs
-from nan.dataloaders.data_utils import get_nearest_pose_ids
+from nan.dataloaders.data_utils import get_nearest_pose_ids, get_depth_warp_img
 import torch.nn.functional as F
 
 alpha=0.9998
@@ -56,6 +56,8 @@ def render_single_image(ray_sampler: RaySampler,
     else:
         w = alpha ** global_step
 
+    all_ret = OrderedDict([('coarse', RaysOutput.empty_ret()),
+                           ('fine', None)])
     device = torch.device(f'cuda:{args.local_rank}')
     ray_render = RayRender(model=model, args=args, device=device, save_pixel=save_pixel)
     if args.clean_src_imgs:
@@ -71,21 +73,24 @@ def render_single_image(ray_sampler: RaySampler,
         ray_batch = ray_sampler.specific_ray_batch(slice(0, args.chunk_size, 1), clean=args.sup_clean)
         nearby_idxs = []
         src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4).cpu().numpy()
-        src_intrinsics = ray_batch['src_cameras'][0, :,2:18].reshape(-1, 4, 4)[:, :3,:3]
+        src_intrinsics = ray_batch['src_cameras'][0, :,2:18].reshape(-1, 4, 4)
         for pose in src_poses:
             ids = get_nearest_pose_ids(pose, src_poses, args.burst_length, angular_dist_method='dist', sort_by_dist=True)
             nearby_idxs.append(ids)
 
         nearby_imgs = torch.stack([org_src_rgbs[0].permute(0,3,1,2)[ids] for ids in nearby_idxs])
         nearby_poses = torch.stack([torch.from_numpy(src_poses[ids]) for ids in nearby_idxs]).to(device)
-        nearby_intrinsics = torch.stack([src_intrinsics[ids] for ids in nearby_idxs])
+        nearby_intrinsics = torch.stack([src_intrinsics[ids] for ids in nearby_idxs])[..., :3,:3]
 
         extrinsics = torch.inverse(nearby_poses)
         input_imgs = [img for img in nearby_imgs.permute(1,0,2,3,4)]
         depth, _, _ = model.patchmatch(input_imgs, nearby_intrinsics, extrinsics, ray_batch['depth_range'][0,0].repeat(args.num_source_views), ray_batch['depth_range'][0,1].repeat(args.num_source_views))            
 
         src_rgbd = torch.cat([org_src_rgbs[0].permute(0,3,1,2), depth], dim=1)
-        pred_offset, offset_feat = model.offsetnet(src_rgbd)
+        warped_imgs, coords = get_depth_warp_img(nearby_imgs, nearby_poses, src_intrinsics, depth)
+        print(round((((coords[..., 0] > 0) & (coords[..., 0] < W)) / coords[..., 0].numel()).sum().item(), 3), round((((coords[..., 1] > 0) & (coords[..., 1] < H)) / coords[..., 1].numel()).sum().item(), 3))
+        all_ret['depth_warped_imgs'] = torch.cat([nearby_imgs[:, :1], warped_imgs], dim=1)[:2]
+        pred_offset = None
         reconst_img = None
     else:
         pred_offset = None
@@ -95,8 +100,6 @@ def render_single_image(ray_sampler: RaySampler,
         depth = None
 
 
-    all_ret = OrderedDict([('coarse', RaysOutput.empty_ret()),
-                           ('fine', None)])
     if reconst_img != None:
         all_ret['kernel_reconst'] = reconst_img
 
@@ -117,7 +120,8 @@ def render_single_image(ray_sampler: RaySampler,
         org_src_rgbs_ = org_src_rgbs
         org_src_rgbs  = src_rgbd.permute(0,2,3,1)[None]
     else:
-        org_src_rgbs_ = org_src_rgbs if reconst_img == None else reconst_img.permute(0,2,3,1)[None]
+        org_src_rgbs_ = org_src_rgbs
+        org_src_rgbs  = src_rgbd.permute(0,2,3,1)[None]
 
     if args.N_importance > 0:
         all_ret['fine'] = RaysOutput.empty_ret()

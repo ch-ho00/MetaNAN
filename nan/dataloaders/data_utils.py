@@ -16,6 +16,7 @@ import numpy as np
 import math
 from PIL import Image
 import torchvision.transforms as transforms
+import torch.nn.functional as F
 import torch
 
 from nan.utils.general_utils import TINY_NUMBER, _EPS
@@ -278,6 +279,49 @@ def get_nearest_pose_ids(tar_pose, ref_poses, num_select, tar_id=None, angular_d
     # print(angular_dists[selected_ids] * 180 / np.pi)
     return selected_ids.tolist()
 
+def get_depth_warp_img(rgbs, poses, intrinsics, depth):
+    '''
+    N, num_nearby, 3, H, W
+    N, num_nearby, 4, 4
+    N, 4, 4
+    N, 1, H, W
+    '''
+    HW = list(depth.shape[-2:])
+    batch_size, n_nearby = poses.shape[:2]
+    anchor_pose = poses[:, :1].expand(batch_size, n_nearby -1, 4, 4).reshape(-1, 4, 4)
+    anchor_intrinsics = intrinsics.clone()
+
+    intrinsics = intrinsics[:, None].expand(batch_size, n_nearby - 1, 4, 4).reshape(-1, 4, 4)
+    poses = poses[:, 1:].reshape(-1, 4, 4)
+    H, W = HW
+    x, y = np.meshgrid(np.arange(W), np.arange(H))
+    x = x.reshape(-1).astype(dtype=np.float32)  # + 0.5    # add half pixel
+    y = y.reshape(-1).astype(dtype=np.float32)  # + 0.5
+    pixels = np.stack((x, y, np.ones_like(x)), axis=0)  # (3, H*W)
+    pixels = torch.from_numpy(pixels).to(intrinsics.device)
+    batched_pixels = pixels.unsqueeze(0).expand(batch_size * (n_nearby - 1), 3, pixels.shape[-1])
+    
+
+    # get 3D coordinates based on depth    
+    rays_d = (anchor_pose[:, :3, :3].bmm(torch.inverse(intrinsics[:, :3, :3])).bmm(batched_pixels)).transpose(1, 2)
+    rays_d = rays_d.reshape(batch_size, (n_nearby - 1), -1, 3)
+    rays_o = poses[:, :3, 3].unsqueeze(1).expand(batch_size * (n_nearby - 1), rays_d.shape[-2], 3)  # B x HW x 3
+
+    pointclouds = rays_o + (rays_d * depth.reshape(batch_size, 1, -1, 1)).reshape(batch_size * (n_nearby - 1), -1, 3)
+    pointclouds = pointclouds.reshape(batch_size * (n_nearby - 1), H * W, 3)
+    pointclouds_h = torch.cat([pointclouds, torch.ones_like(pointclouds[..., :1])], dim=-1)  # [n_points, 4]
+
+    # projection to source image coords
+    projections = intrinsics.bmm(torch.inverse(poses)).bmm(pointclouds_h.permute(0, 2, 1))
+    projections = projections.permute(0,2,1)
+    uv = projections[...,:2] / torch.clamp(projections[..., 2:3], min=1e-8)
+    uv = uv.reshape(batch_size * (n_nearby - 1), H, W, 2)
+    coords = uv.clone()
+    uv[..., 0] = (uv[..., 0] / W - 0.5) * 2
+    uv[..., 1] = (uv[..., 1] / H - 0.5) * 2
+    warped_imgs = F.grid_sample(rgbs[:,1:].reshape(-1, 3, H, W), uv)
+
+    return warped_imgs.reshape(batch_size, n_nearby -1, 3, H, W), coords
 
 def get_padded_img_dim(src_spline_poses, intrinsics, HW):
     '''

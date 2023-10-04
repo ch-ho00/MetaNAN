@@ -193,11 +193,11 @@ class OffsetNet(nn.Module):
         self.offset_conv = nn.Sequential(
             UNetConvBlock(4, 64, True, self.relu_slope),
             UNetConvBlock(64, 128, True, self.relu_slope),
-            UNetConvBlock(128, 256, True, self.relu_slope),
-            UNetConvBlock(256, 256, True, self.relu_slope),
+            # UNetConvBlock(64, 64, True, self.relu_slope),
+            # UNetConvBlock(256, 256, True, self.relu_slope),
         )
         self.offset_fc =  nn.Sequential(
-            nn.Linear(256, 6, bias=False),
+            nn.Linear(64, 6, bias=False),
         )
 
         for layer in self.offset_fc:
