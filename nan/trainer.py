@@ -207,7 +207,13 @@ class Trainer:
             warped_imgs, coords = get_depth_warp_img(nearby_imgs[1:], nearby_poses[1:], src_intrinsics, depth[1:])
             pred_offset = None
             reconst_img = None
-
+            input_imgs = torch.cat([nearby_imgs[1:][:,:1], warped_imgs], dim=1)
+            reconst_img, feats = self.model.feature_net(input_imgs.reshape(self.args.num_source_views, -1, H, W))
+            featmaps = {}
+            featmaps['coarse'] = feats[:, :self.args.coarse_feat_dim]
+            featmaps['fine']   = feats[:, self.args.coarse_feat_dim:]
+            proc_src_rgbs = ray_sampler.src_rgbs.to(self.device)
+            org_src_rgbs_ = reconst_img.permute(0,2,3,1)[None]
         else:
             pred_offset = None
             pred_kernel = None
@@ -216,37 +222,14 @@ class Trainer:
             norm_depth = None
             tar_depth = None
 
-        self.scalars_to_log['weight'] = w 
-        blur_render = False
-
-        if pred_offset != None:            
-            num_latent = 4
-            src_poses = ray_batch['src_cameras'][:,:,-16:].reshape(-1, 4, 4)[:,:3,:4]
-            src_se3_start = SE3_to_se3_N(src_poses)                                                                                                     # (n_src, 6)             
-            src_se3_end = src_se3_start + pred_offset                                                                                    # (n_src, 6)             
-            src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=num_latent)                                                      # (n_src, n_latent, 3, 4) 
-
-            src_spline_poses_4x4 =  torch.eye(4)[None,None].expand(self.args.num_source_views, num_latent, 4,4)
-            src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
-            src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
-            # Attach intrinsics and HW vector
-            intrinsics = ray_batch['src_cameras'][:,:,2:18].reshape(-1, 4, 4)                                                                           # (n_src, 4, 4)            
-            src_latent_camera = ray_batch['src_cameras'][:,:,:-16][:,:, None].expand(1,self.args.num_source_views, num_latent, 18)
-            src_latent_camera = torch.cat([src_latent_camera, src_spline_poses_4x4.reshape(1, self.args.num_source_views, num_latent, -1)], dim=-1)     # (1, n_src, n_latent, 34)
-            # src_latent_camera[:,:,0] = ray_batch['src_cameras']
-            # ray_batch['src_cameras'] = src_latent_camera.reshape(1,-1,34)
-
-            # padded_image = get_padded_img_dim(src_spline_poses_4x4, intrinsics, [H, W])
-            org_src_rgbs =  src_rgbd.permute(0,2,3,1)[None]
+            blur_render = False
+            org_src_rgbs =  src_rgbd.permute(0,2,3,1)[None] if self.args.burst_length > 1 else ray_sampler.src_rgbs.to(self.device)
             org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
-        else:
-            org_src_rgbs =  src_rgbd.permute(0,2,3,1)[None]
-            org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
+
+            sigma_est = ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None
+            proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs)
 
         sigma_est = ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None
-        proc_src_rgbs, featmaps = self.ray_render.calc_featmaps(src_rgbs=org_src_rgbs)
-
-        H, W=  ray_sampler.src_rgbs.shape[-3:-1]
         # Render the rgb values of the pixels that were sampled
         batch_out = self.ray_render.render_batch(ray_batch=ray_batch, 
                                                 proc_src_rgbs=proc_src_rgbs, 
@@ -258,12 +241,8 @@ class Trainer:
         self.model.optimizer.zero_grad()
         loss = 0
 
-        if self.args.blur_render and blur_render:
-            coarse_loss         = F.l1_loss(torch.mean(batch_out['coarse'].rgb, dim=0), ray_batch['rgb_noisy'])
-            fine_loss           = F.l1_loss(torch.mean(batch_out['fine'].rgb, dim=0), ray_batch['rgb_noisy'])
-        else:
-            coarse_loss         = F.l1_loss(batch_out['coarse'].rgb, ray_batch['rgb'])
-            fine_loss           = F.l1_loss(batch_out['fine'].rgb, ray_batch['rgb'])
+        coarse_loss         = F.l1_loss(batch_out['coarse'].rgb, ray_batch['rgb'])
+        fine_loss           = F.l1_loss(batch_out['fine'].rgb, ray_batch['rgb'])
         loss += coarse_loss + fine_loss
         self.scalars_to_log['train/coarse_loss'] = coarse_loss
         self.scalars_to_log['train/fine_loss'] = fine_loss
@@ -274,7 +253,7 @@ class Trainer:
             loss += reconst_loss 
             self.scalars_to_log['train/reconst_loss'] = reconst_loss
         
-        if tar_depth != None: # and global_step > 10500:
+        if tar_depth != None: # and global_step > 6000:
             xy = ray_batch['xyz'][:,:2]
             pseudo_depth = (batch_out['fine'].depth + batch_out['coarse'].depth) / 2
             depth_loss = 0

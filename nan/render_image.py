@@ -89,9 +89,17 @@ def render_single_image(ray_sampler: RaySampler,
         src_rgbd = torch.cat([org_src_rgbs[0].permute(0,3,1,2), depth], dim=1)
         warped_imgs, coords = get_depth_warp_img(nearby_imgs, nearby_poses, src_intrinsics, depth)
         print(round((((coords[..., 0] > 0) & (coords[..., 0] < W)) / coords[..., 0].numel()).sum().item(), 3), round((((coords[..., 1] > 0) & (coords[..., 1] < H)) / coords[..., 1].numel()).sum().item(), 3))
-        all_ret['depth_warped_imgs'] = torch.cat([nearby_imgs[:, :1], warped_imgs], dim=1)[:2]
-        pred_offset = None
-        reconst_img = None
+
+        input_imgs = torch.cat([nearby_imgs[:, :1], warped_imgs], dim=1)
+        reconst_img, feats = model.feature_net(input_imgs.reshape(args.num_source_views, -1, H, W))
+        featmaps = {}
+        featmaps['coarse'] = feats[:, :args.coarse_feat_dim]
+        featmaps['fine']   = feats[:, args.coarse_feat_dim:]
+        src_rgbs = ray_sampler.src_rgbs.to(device)
+        org_src_rgbs_ = reconst_img.permute(0,2,3,1)[None]
+
+        all_ret['depth_warped_imgs'] = input_imgs[:2]
+
     else:
         pred_offset = None
         pred_kernel = None
@@ -99,6 +107,9 @@ def render_single_image(ray_sampler: RaySampler,
         reconst_img = None
         depth = None
 
+        org_src_rgbs_ = org_src_rgbs
+        org_src_rgbs  = src_rgbd.permute(0,2,3,1)[None]
+        src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs)
 
     if reconst_img != None:
         all_ret['kernel_reconst'] = reconst_img
@@ -106,27 +117,10 @@ def render_single_image(ray_sampler: RaySampler,
     if depth != None:
         all_ret['patchmatch_depth'] = depth
         
-    if pred_offset != None:
-        num_latent = 4
-        src_poses = src_cameras[:,:,-16:].reshape(-1, 4, 4)[:,:3,:4].to(device)
-        src_se3_start = SE3_to_se3_N(src_poses)                                                                                                     # (n_src, 6)             
-        src_se3_end = src_se3_start + pred_offset.mean(-1).mean(-1)                                                                                       # (n_src, 6)             
-        src_spline_poses = get_spline_poses(src_se3_start, src_se3_end, spline_num=num_latent)                                                      # (n_src, n_latent, 3, 4) 
-
-        src_spline_poses_4x4 =  torch.eye(4)[None,None].expand(args.num_source_views, num_latent, 4,4)
-        src_spline_poses_4x4 = src_spline_poses_4x4.to(src_spline_poses.device)
-        src_spline_poses_4x4[:,:, :3, :4] = src_spline_poses
-
-        org_src_rgbs_ = org_src_rgbs
-        org_src_rgbs  = src_rgbd.permute(0,2,3,1)[None]
-    else:
-        org_src_rgbs_ = org_src_rgbs
-        org_src_rgbs  = src_rgbd.permute(0,2,3,1)[None]
 
     if args.N_importance > 0:
         all_ret['fine'] = RaysOutput.empty_ret()
     N_rays = ray_sampler.rays_o.shape[0]
-    src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs)
 
     H, W = org_src_rgbs.shape[-3:-1]
     for i in tqdm(range(0, N_rays, args.chunk_size)):
