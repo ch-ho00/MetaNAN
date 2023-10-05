@@ -32,7 +32,7 @@ from nan.content_loss import reconstruction_loss
 from nan.dataloaders.data_utils import get_nearest_pose_ids, get_padded_img_dim, get_depth_warp_img
 
 import random
-alpha=0.9998
+alpha=0.9999
 
 class Trainer:
     def __init__(self, args):
@@ -213,7 +213,7 @@ class Trainer:
             featmaps['coarse'] = feats[:, :self.args.coarse_feat_dim]
             featmaps['fine']   = feats[:, self.args.coarse_feat_dim:]
             proc_src_rgbs = ray_sampler.src_rgbs.to(self.device)
-            org_src_rgbs_ = reconst_img.permute(0,2,3,1)[None].detach()
+            org_src_rgbs_ = reconst_img.permute(0,2,3,1)[None] #.detach()
         else:
             pred_offset = None
             pred_kernel = None
@@ -249,7 +249,7 @@ class Trainer:
 
         if reconst_img != None:
             clean_src_imgs      = ray_sampler.src_rgbs_clean.to(self.device)[0].permute(0,3,1,2)
-            reconst_loss        = F.l1_loss(reconst_img, clean_src_imgs) * 0.01
+            reconst_loss        = F.l1_loss(reconst_img, clean_src_imgs) * max(w, 0.01) #* (0.1 ** (global_step // 10000))
             loss += reconst_loss 
             self.scalars_to_log['train/reconst_loss'] = reconst_loss
         

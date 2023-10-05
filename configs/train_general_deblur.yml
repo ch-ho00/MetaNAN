@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : test_rgbd_restormer_expand1.66_detachWarp_reconst1e-2 #test_restormer_pretrainPatchMatch_wloss #test_rgbd_detach_feat_stageLoss_1e-1 #test_rgbd_feat_stageLoss #_selfsupervision #nan_ObjxObj_ibrReconst_patchMatch1e0_inputDepthWoBN_base32dim_DetachSrcLatent1_13x13_reconst1e-1 #FullBPN_LatKernelDim16_color1_burst5_wKerLoss_woDetach_latent1e-1
+expname                     : test_rgbd_restormer_expand1.5_detachWarp_unDetachAnneal0.9999Reconst1e0 #test_restormer_pretrainPatchMatch_wloss #test_rgbd_detach_feat_stageLoss_1e-1 #test_rgbd_feat_stageLoss #_selfsupervision #nan_ObjxObj_ibrReconst_patchMatch1e0_inputDepthWoBN_base32dim_DetachSrcLatent1_13x13_reconst1e-1 #FullBPN_LatKernelDim16_color1_burst5_wKerLoss_woDetach_latent1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 

@@ -116,7 +116,7 @@ class BurstDataset(Dataset, ABC):
             scene_root = os.path.join(DATA_DIR, self.dir_name)
             holdout = 8
             self.holdout = holdout            
-            self.scenes_dirs = glob.glob(f'{scene_root}/output_blur_level_0915/*/*/blur_[4,5,6]') #final_render_0905
+            self.scenes_dirs = glob.glob(f'{scene_root}/output_blur_level_0922/*/*/blur_[1,2,3,4]') #final_render_0905
             new_scene_dirs = []
             scene_dists = {}
             for i, folder in enumerate(self.scenes_dirs):

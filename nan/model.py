@@ -99,7 +99,7 @@ class NANScheme(nn.Module):
             # self.feature_net = SwinIR(upscale=1, in_chans=3 * args.burst_length, out_chans=3, img_size=[400,600], window_size=8,
             #             img_range=1., depths=[2,2], embed_dim=64, num_heads=[4,4],
             #             mlp_ratio=2, upsampler='', resi_connection='1conv').to(device)
-            self.feature_net = Restormer(inp_channels=(3 + 1) * args.burst_length, dim=16, num_blocks=[1,1,1,1], heads=[1,2,4,4], ffn_expansion_factor=1.66, dual_pixel_task=False, num_refinement_blocks=1).to(device)
+            self.feature_net = Restormer(inp_channels=(3 + 1) * args.burst_length, dim=16, num_blocks=[1,1,1,1], heads=[1,2,4,4], ffn_expansion_factor=1.5, dual_pixel_task=False, num_refinement_blocks=1).to(device)
             # import pdb; pdb.set_trace()
 
         else:
