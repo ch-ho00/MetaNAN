@@ -279,7 +279,7 @@ def get_nearest_pose_ids(tar_pose, ref_poses, num_select, tar_id=None, angular_d
     # print(angular_dists[selected_ids] * 180 / np.pi)
     return selected_ids.tolist()
 
-def get_depth_warp_img(rgbs, poses, intrinsics, depth):
+def get_depth_warp_img(rgbs, poses, intrinsics, depth, nearby_idxs):
     '''
     N, num_nearby, 3, H, W
     N, num_nearby, 4, 4
@@ -319,9 +319,12 @@ def get_depth_warp_img(rgbs, poses, intrinsics, depth):
     coords = uv.clone()
     uv[..., 0] = (uv[..., 0] / W - 0.5) * 2
     uv[..., 1] = (uv[..., 1] / H - 0.5) * 2
-    warped_imgs = F.grid_sample(rgbs[:,1:].reshape(-1, 3, H, W), uv)
 
-    return warped_imgs.reshape(batch_size, n_nearby -1, 3, H, W), coords
+    nearby_depths = torch.stack([depth[idxs] for idxs in nearby_idxs])
+    rgbs = torch.cat([rgbs, nearby_depths], dim=2)
+    warped_imgs = F.grid_sample(rgbs[:,1:].reshape(batch_size * (n_nearby - 1), -1, H, W), uv)
+
+    return warped_imgs.reshape(batch_size, n_nearby -1, -1, H, W), coords
 
 def get_padded_img_dim(src_spline_poses, intrinsics, HW):
     '''

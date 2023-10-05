@@ -87,10 +87,11 @@ def render_single_image(ray_sampler: RaySampler,
         depth, _, _ = model.patchmatch(input_imgs, nearby_intrinsics, extrinsics, ray_batch['depth_range'][0,0].repeat(args.num_source_views), ray_batch['depth_range'][0,1].repeat(args.num_source_views))            
 
         src_rgbd = torch.cat([org_src_rgbs[0].permute(0,3,1,2), depth], dim=1)
-        warped_imgs, coords = get_depth_warp_img(nearby_imgs, nearby_poses, src_intrinsics, depth)
+        warped_rgbds, coords = get_depth_warp_img(nearby_imgs, nearby_poses, src_intrinsics, depth, nearby_idxs)
         print(round((((coords[..., 0] > 0) & (coords[..., 0] < W)) / coords[..., 0].numel()).sum().item(), 3), round((((coords[..., 1] > 0) & (coords[..., 1] < H)) / coords[..., 1].numel()).sum().item(), 3))
 
-        input_imgs = torch.cat([nearby_imgs[:, :1], warped_imgs], dim=1)
+        ref_rgbd = torch.cat([nearby_imgs[:, :1], depth.unsqueeze(1)], dim=2)
+        input_imgs = torch.cat([ref_rgbd, warped_rgbds], dim=1)
         reconst_img, feats = model.feature_net(input_imgs.reshape(args.num_source_views, -1, H, W))
         featmaps = {}
         featmaps['coarse'] = feats[:, :args.coarse_feat_dim]
@@ -98,7 +99,7 @@ def render_single_image(ray_sampler: RaySampler,
         src_rgbs = ray_sampler.src_rgbs.to(device)
         org_src_rgbs_ = reconst_img.permute(0,2,3,1)[None]
 
-        all_ret['depth_warped_imgs'] = input_imgs[:2]
+        all_ret['depth_warped_imgs'] = input_imgs[:2, :, :3]
 
     else:
         pred_offset = None
@@ -108,7 +109,7 @@ def render_single_image(ray_sampler: RaySampler,
         depth = None
 
         org_src_rgbs_ = org_src_rgbs
-        org_src_rgbs  = src_rgbd.permute(0,2,3,1)[None]
+        org_src_rgbs  = org_src_rgbs
         src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs)
 
     if reconst_img != None:

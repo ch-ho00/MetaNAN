@@ -202,18 +202,18 @@ class Trainer:
             input_imgs = [img for img in nearby_imgs.permute(1,0,2,3,4)]
             depth, _, stage_depths = self.model.patchmatch(input_imgs, nearby_intrinsics, extrinsics, ray_batch['depth_range'][0,0].repeat(self.args.num_source_views+1), ray_batch['depth_range'][0,1].repeat(self.args.num_source_views+1))            
             tar_depth, src_depths = depth[:1], depth[1:]
-            src_rgbd = torch.cat([org_src_rgbs[0].permute(0,3,1,2), src_depths.detach()], dim=1)
             
-            warped_imgs, coords = get_depth_warp_img(nearby_imgs[1:], nearby_poses[1:], src_intrinsics, depth[1:])
+            warped_rgbds, coords = get_depth_warp_img(nearby_imgs[1:], nearby_poses[1:], src_intrinsics, depth[1:].detach(), nearby_idxs)
             pred_offset = None
             reconst_img = None
-            input_imgs = torch.cat([nearby_imgs[1:][:,:1], warped_imgs], dim=1)
+            ref_rgbd = torch.cat([nearby_imgs[1:][:,:1], src_depths.unsqueeze(1).detach()], dim=2)
+            input_imgs = torch.cat([ref_rgbd, warped_rgbds], dim=1)
             reconst_img, feats = self.model.feature_net(input_imgs.reshape(self.args.num_source_views, -1, H, W))
             featmaps = {}
             featmaps['coarse'] = feats[:, :self.args.coarse_feat_dim]
             featmaps['fine']   = feats[:, self.args.coarse_feat_dim:]
             proc_src_rgbs = ray_sampler.src_rgbs.to(self.device)
-            org_src_rgbs_ = reconst_img.permute(0,2,3,1)[None]
+            org_src_rgbs_ = reconst_img.permute(0,2,3,1)[None].detach()
         else:
             pred_offset = None
             pred_kernel = None
@@ -223,7 +223,7 @@ class Trainer:
             tar_depth = None
 
             blur_render = False
-            org_src_rgbs =  src_rgbd.permute(0,2,3,1)[None] if self.args.burst_length > 1 else ray_sampler.src_rgbs.to(self.device)
+            org_src_rgbs =  ray_sampler.src_rgbs.to(self.device)
             org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
 
             sigma_est = ray_sampler.sigma_estimate.to(self.device) if ray_sampler.sigma_estimate != None else None
@@ -249,7 +249,7 @@ class Trainer:
 
         if reconst_img != None:
             clean_src_imgs      = ray_sampler.src_rgbs_clean.to(self.device)[0].permute(0,3,1,2)
-            reconst_loss        = F.l1_loss(reconst_img, clean_src_imgs) * 0.1
+            reconst_loss        = F.l1_loss(reconst_img, clean_src_imgs) * 0.01
             loss += reconst_loss 
             self.scalars_to_log['train/reconst_loss'] = reconst_loss
         

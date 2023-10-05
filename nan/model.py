@@ -80,7 +80,7 @@ class NANScheme(nn.Module):
         else:
             self.pre_net = None
 
-        if args.bpn_prenet:
+        if args.burst_length > 1:
             self.patchmatch = PatchmatchNet(
                 patchmatch_interval_scale=[0.005, 0.0125, 0.025],
                 propagation_range=[6, 4, 2],
@@ -89,24 +89,23 @@ class NANScheme(nn.Module):
                 propagate_neighbors=[0, 8, 16],
                 evaluate_neighbors=[9, 9, 9],
             ).to(device)
-            ckpts = torch.load('/home/chan/PatchmatchNet/checkpoints/params_000007.ckpt')['model']
-            ckpts = {k.replace('module.', '') : ckpts[k] for k in ckpts.keys()}
-            self.patchmatch.load_state_dict(ckpts)
-            self.offsetnet = OffsetNet().to(device)
+            # ckpts = torch.load('/home/chan/PatchmatchNet/checkpoints/params_000007.ckpt')['model']
+            # ckpts = {k.replace('module.', '') : ckpts[k] for k in ckpts.keys()}
+            # self.patchmatch.load_state_dict(ckpts)
+            # self.offsetnet = OffsetNet().to(device)
             # self.decoder = InpaintDecoder().to(device)
 
-        if True:
+        if args.burst_length > 1:
             # self.feature_net = SwinIR(upscale=1, in_chans=3 * args.burst_length, out_chans=3, img_size=[400,600], window_size=8,
             #             img_range=1., depths=[2,2], embed_dim=64, num_heads=[4,4],
             #             mlp_ratio=2, upsampler='', resi_connection='1conv').to(device)
-            self.feature_net = Restormer(inp_channels=3 * args.burst_length, dim=16, num_blocks=[1,1,1,1], heads=[1,2,2,4], ffn_expansion_factor=1.66, dual_pixel_task=False, num_refinement_blocks=1).to(device)
+            self.feature_net = Restormer(inp_channels=(3 + 1) * args.burst_length, dim=16, num_blocks=[1,1,1,1], heads=[1,2,4,4], ffn_expansion_factor=1.66, dual_pixel_task=False, num_refinement_blocks=1).to(device)
             # import pdb; pdb.set_trace()
 
         else:
             self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
                                     fine_out_ch=args.fine_feat_dim,
-                                    coarse_only=args.coarse_only,
-                                    extra_input_dim=int(self.args.burst_length > 1)
+                                    coarse_only=args.coarse_only
                                 ).to(device)
 
         if args.kernel_attn:
@@ -151,7 +150,7 @@ class NANScheme(nn.Module):
             params_list.append({'params': bpn_params, 'lr': self.args.lrate_feature})
             params_list.append({'params': offset_params, 'lr': self.args.lrate_feature * 1e-1})
 
-        if self.args.bpn_prenet:
+        if self.args.burst_length > 1:
             params_list += [{'params' : self.patchmatch.parameters(), 'lr':self.args.lrate_feature}]
                 
         if self.args.kernel_attn:
@@ -179,7 +178,7 @@ class NANScheme(nn.Module):
         if self.args.kernel_attn:
             self.ker_attention.eval()
 
-        if self.args.bpn_prenet:
+        if self.args.burst_length > 1:
             self.patchmatch.eval()
 
     def switch_to_train(self):
@@ -192,7 +191,7 @@ class NANScheme(nn.Module):
         if self.pre_net is not None:
             self.pre_net.train()
 
-        if self.args.bpn_prenet:
+        if self.args.burst_length > 1:
             self.patchmatch.train()
 
         if self.args.kernel_attn:

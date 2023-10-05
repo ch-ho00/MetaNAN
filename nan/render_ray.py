@@ -358,16 +358,6 @@ class RayRender:
         process_rgbs = process_rgbs.reshape(self.model.args.num_source_views,-1, H, W)
         feature_dict = self.model.feature_net(process_rgbs)
         featmaps.update(feature_dict)
-
-        if self.model.args.kernel_attn:
-            lat_feat = lat_feat.permute(0,3,1,2)
-            sh = featmaps['fine'].shape[-2:]
-            lat_feat = F.interpolate(lat_feat, size=sh, mode='bilinear')
-            lat_feat = lat_feat.permute(0,2,3,1)
-            for idx, level in enumerate(['coarse', 'fine']):
-                featmaps[level]    = featmaps[level].permute(0,2,3,1)
-                featmaps[level], _ =  self.model.ker_attention(lat_feat, featmaps[level], featmaps[level])
-                featmaps[level]    = featmaps[level].permute(0,3,1,2)
         
         src_rgbs = src_rgbs.permute(0, 2, 3, 1).unsqueeze(0)
 
