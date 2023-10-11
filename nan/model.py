@@ -89,19 +89,8 @@ class NANScheme(nn.Module):
                 propagate_neighbors=[0, 8, 16],
                 evaluate_neighbors=[9, 9, 9],
             ).to(device)
-            # ckpts = torch.load('/home/chan/PatchmatchNet/checkpoints/params_000007.ckpt')['model']
-            # ckpts = {k.replace('module.', '') : ckpts[k] for k in ckpts.keys()}
-            # self.patchmatch.load_state_dict(ckpts)
-            # self.offsetnet = OffsetNet().to(device)
-            # self.decoder = InpaintDecoder().to(device)
 
-        if args.burst_length > 1:
-            # self.feature_net = SwinIR(upscale=1, in_chans=3 * args.burst_length, out_chans=3, img_size=[400,600], window_size=8,
-            #             img_range=1., depths=[2,2], embed_dim=64, num_heads=[4,4],
-            #             mlp_ratio=2, upsampler='', resi_connection='1conv').to(device)
-            self.feature_net = Restormer(inp_channels=(3 + 1) * args.burst_length, dim=16, num_blocks=[1,1,1,1], heads=[1,2,4,4], ffn_expansion_factor=1.5, dual_pixel_task=False, num_refinement_blocks=1).to(device)
-            # import pdb; pdb.set_trace()
-
+            self.feature_net = Restormer(inp_channels=(3 + 1) * args.burst_length, dim=16, num_blocks=[1,1,1,1], heads=[1,2,4,4], ffn_expansion_factor=1.5, dual_pixel_task=False, num_refinement_blocks=1, LayerNorm_type='BiasFree', pixelshuffle=False).to(device)
         else:
             self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
                                     fine_out_ch=args.fine_feat_dim,

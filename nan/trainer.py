@@ -23,7 +23,6 @@ from nan.sample_ray import RaySampler
 from nan.utils.eval_utils import mse2psnr, img2psnr
 from nan.utils.general_utils import img_HWC2CHW
 from nan.utils.io_utils import print_link, colorize
-# from pytorch_msssim import ms_ssim
 from nan.ssim_l1_loss import MS_SSIM_L1_LOSS
 import torch.nn.functional as F
 from nan.se3 import SE3_to_se3_N, get_spline_poses
@@ -31,8 +30,12 @@ from nan.projection import warp_latent_imgs
 from nan.content_loss import reconstruction_loss
 from nan.dataloaders.data_utils import get_nearest_pose_ids, get_padded_img_dim, get_depth_warp_img
 
+import lpips
+from skimage.metrics import structural_similarity as ssim
+
 import random
 alpha=0.9999
+lpips_fn = lpips.LPIPS(net="vgg")
 
 class Trainer:
     def __init__(self, args):
@@ -246,24 +249,29 @@ class Trainer:
         loss += coarse_loss + fine_loss
         self.scalars_to_log['train/coarse_loss'] = coarse_loss
         self.scalars_to_log['train/fine_loss'] = fine_loss
+        self.scalars_to_log['weight'] = w
 
         if reconst_img != None:
             clean_src_imgs      = ray_sampler.src_rgbs_clean.to(self.device)[0].permute(0,3,1,2)
-            reconst_loss        = F.l1_loss(reconst_img, clean_src_imgs) * max(w, 0.01) #* (0.1 ** (global_step // 10000))
+            reconst_loss        = F.smooth_l1_loss(reconst_img, clean_src_imgs) * 0.01
             loss += reconst_loss 
             self.scalars_to_log['train/reconst_loss'] = reconst_loss
         
-        if tar_depth != None: # and global_step > 6000:
+        if tar_depth != None:
             xy = ray_batch['xyz'][:,:2]
             pseudo_depth = (batch_out['fine'].depth + batch_out['coarse'].depth) / 2
             depth_loss = 0
+
+            coords = xy.float()
+            coords[:, 0] = (coords[:, 0] / H ) * 2 - 1  
+            coords[:, 1] = (coords[:, 1] / W ) * 2 - 1  
+
             for k in stage_depths.keys():
-                coords = torch.div(xy, 2 ** k, rounding_mode='floor')
                 for depth in stage_depths[k]:
-                    sel_ref_depth = depth[0, 0, coords[:, 1], coords[:, 0]]
+                    sel_ref_depth = F.grid_sample(depth[:1], coords[None, None].cuda()).squeeze()
                     depth_loss += F.smooth_l1_loss(sel_ref_depth, pseudo_depth.detach())
             loss += depth_loss * 0.1
-            self.scalars_to_log['train/depth_loss'] = depth_loss * 0.1
+            self.scalars_to_log['train/depth_loss'] = depth_loss * 0.01
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
@@ -334,8 +342,6 @@ class Trainer:
         if global_step % self.args.i_print == 0:
             print(logstr)
             print(f"each iter time {dt:.05f} seconds")
-            if 'pred_offset' in ray_batch_in.keys():
-                print(ray_batch_in['pred_offset'])
 
     def log_view_to_tb(self, global_step, ray_sampler, gt_img, render_stride=1, prefix='', postfix='', visualize=False):
         self.model.switch_to_eval()
@@ -425,7 +431,7 @@ class Trainer:
                 self.writer.add_image(prefix + 'kernel_reconst'+ postfix, vis_img, global_step)
 
             if 'patchmatch_depth' in ret.keys():
-                pred_depth = ret['patchmatch_depth'].squeeze().permute(1,0,2).reshape(h//render_stride,-1)
+                pred_depth = ret['patchmatch_depth'].squeeze().permute(1,0,2).reshape(h,-1)[::render_stride, ::render_stride]
                 pred_depth = img_HWC2CHW(colorize(pred_depth, cmap_name='jet', append_cbar=True))
                 self.writer.add_image(prefix + 'patchmatch_depth'+ postfix, pred_depth, global_step)
 
@@ -440,12 +446,19 @@ class Trainer:
             psnr_curr_img = img2psnr(de_linearize(pred_rgb.detach().cpu(), ray_sampler.white_level).clamp(0,1),
                                     de_linearize(gt_img, ray_sampler.white_level).clamp(0,1))
         else:
-            psnr_curr_img = img2psnr(pred_rgb.detach().cpu().clamp(0,1), gt_img.clamp(0,1))
+            pred_img = pred_rgb.detach().cpu().clamp(0,1)
+            gt_img = gt_img.clamp(0,1)
+            psnr_curr_img = img2psnr(pred_img, gt_img)
+            # psnr_curr_img = img2psnr(pred_rgb.detach().cpu().clamp(0,1), gt_img.clamp(0,1))
+            # psnr_curr_img = img2psnr(pred_rgb.detach().cpu().clamp(0,1), gt_img.clamp(0,1))
+            ssim_curr_img = ssim( pred_img.numpy(), gt_img.cpu().numpy(), data_range=1, multichannel=True, channel_axis=-1)
+            lpips_curr_img = lpips_fn(pred_img.permute(2,0,1)[None] * 2 - 1, gt_img.permute(2,0,1)[None] * 2 - 1).item()  # Normalize to [-1,1]
+
 
         self.model.switch_to_train()
         del pred_rgb, ret
 
-        return psnr_curr_img
+        return psnr_curr_img, ssim_curr_img, lpips_curr_img
 
     def log_images(self, train_data, global_step):
         print('Logging a random validation view...')
@@ -453,16 +466,13 @@ class Trainer:
         torch.cuda.empty_cache()
         psnr_results = {}
         psnr_scene_results = {}
-        val_interval = 4 if self.args.eval_dataset == 'llff_test' else 1
+        vis_interval = 4
         for val_idx in range(len(self.val_dataset)):
-            if global_step == 1 and val_idx > 0:
+
+            if global_step == 1 and val_idx > 0 and self.args.ckpt_path == None:
                 break
-            elif (val_idx % len(self.val_dataset.render_rgb_files)) % val_interval == 0 :
-                visualize = True
-                # if val_idx % len(self.val_dataset.render_rgb_files) in [0, (len(self.val_dataset.render_rgb_files) - 1) // 2, len(self.val_dataset.render_rgb_files) - 1]:
-                #     visualize = True
-            else:
-                continue
+
+            visualize = True if val_idx % vis_interval == 0 else False
             cnt += 1 
             val_data = self.val_dataset[val_idx]
             val_data = {k : val_data[k][None] if isinstance(val_data[k], torch.Tensor) else val_data[k] for k in val_data.keys()}
@@ -471,7 +481,7 @@ class Trainer:
             gt_img = tmp_ray_sampler.rgb_clean.reshape(H, W, 3)
             eval_gain = val_data['eval_gain']
             blur_level = val_data['rgb_path'].split('/')[-2]
-            psnr = self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_gain{eval_gain}_iter{cnt}", visualize=visualize)
+            psnr, ssim, lpips = self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_gain{eval_gain}_iter{cnt}", visualize=visualize)
 
             if eval_gain in psnr_results.keys():
                 psnr_results[eval_gain].append(psnr)
@@ -479,10 +489,14 @@ class Trainer:
                 psnr_results[eval_gain] = [psnr]
 
             if self.args.train_dataset == 'objaverse': #and self.args.eval_dataset == 'deblur_test':
-                if blur_level in psnr_scene_results.keys():
-                    psnr_scene_results[blur_level] += [psnr]
+                if blur_level + "_psnr" in psnr_scene_results.keys():
+                    psnr_scene_results[blur_level + "_psnr"] += [psnr]
+                    psnr_scene_results[blur_level + "_ssim"] += [ssim]
+                    psnr_scene_results[blur_level + "_lpips"] += [lpips]
                 else:
-                    psnr_scene_results[blur_level] = [psnr]
+                    psnr_scene_results[blur_level + "_psnr"] = [psnr]
+                    psnr_scene_results[blur_level + "_ssim"] = [ssim]
+                    psnr_scene_results[blur_level + "_lpips"] = [lpips]
 
             del tmp_ray_sampler, val_data, gt_img 
             torch.cuda.empty_cache()

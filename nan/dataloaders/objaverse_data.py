@@ -53,10 +53,10 @@ class ObjaverseDataset(NoiseDataset, ABC):
 
 
     def get_i_test(self, poses):
-        c2w = poses_avg(poses)
-        dists = np.sum(np.square(c2w[:3, 3] - poses[:, :3, 3]), -1)
-        i_test = np.argmin(dists)
-        return [i_test] 
+        # c2w = poses_avg(poses)
+        # dists = np.sum(np.square(c2w[:3, 3] - poses[:, :3, 3]), -1)
+        # i_test = np.argmin(dists)
+        return list(range(0, poses.shape[0], 8))[::4]
 
     def get_i_train(self, N, i_test):
         return np.array([j for j in np.arange(int(N)) if j not in i_test]) 
