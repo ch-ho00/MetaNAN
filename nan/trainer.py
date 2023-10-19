@@ -262,16 +262,15 @@ class Trainer:
             pseudo_depth = (batch_out['fine'].depth + batch_out['coarse'].depth) / 2
             depth_loss = 0
 
-            coords = xy.float()
-            coords[:, 0] = (coords[:, 0] / H ) * 2 - 1  
-            coords[:, 1] = (coords[:, 1] / W ) * 2 - 1  
-
+            coords = xy.clone().float()
+            coords[:, 0] = (coords[:, 0] / W ) * 2 - 1  
+            coords[:, 1] = (coords[:, 1] / H ) * 2 - 1  
             for k in stage_depths.keys():
                 for depth in stage_depths[k]:
                     sel_ref_depth = F.grid_sample(depth[:1], coords[None, None].cuda()).squeeze()
                     depth_loss += F.smooth_l1_loss(sel_ref_depth, pseudo_depth.detach())
             loss += depth_loss * 0.1
-            self.scalars_to_log['train/depth_loss'] = depth_loss * 0.01
+            self.scalars_to_log['train/depth_loss'] = depth_loss * 0.1
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
@@ -469,7 +468,7 @@ class Trainer:
         vis_interval = 4
         for val_idx in range(len(self.val_dataset)):
 
-            if global_step == 1 and val_idx > 0 and self.args.ckpt_path == None:
+            if global_step == 1 and val_idx > 20 and self.args.ckpt_path == None:
                 break
 
             visualize = True if val_idx % vis_interval == 0 else False
@@ -481,6 +480,7 @@ class Trainer:
             gt_img = tmp_ray_sampler.rgb_clean.reshape(H, W, 3)
             eval_gain = val_data['eval_gain']
             blur_level = val_data['rgb_path'].split('/')[-2]
+            blur_level = blur_level if 'mix' not in blur_level else 'blur_mix'
             psnr, ssim, lpips = self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_gain{eval_gain}_iter{cnt}", visualize=visualize)
 
             if eval_gain in psnr_results.keys():

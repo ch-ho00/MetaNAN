@@ -116,7 +116,7 @@ class BurstDataset(Dataset, ABC):
             scene_root = os.path.join(DATA_DIR, self.dir_name)
             holdout = 8
             self.holdout = holdout            
-            self.scenes_dirs = glob.glob(f'{scene_root}/output_blur_level_0922/*/*/blur_[1,2,3,4]') #final_render_0905
+            self.scenes_dirs = glob.glob(f'{scene_root}/final/objaverse_blur_dataset/*/*/blur_*')
             new_scene_dirs = []
             scene_dists = {}
             for i, folder in enumerate(self.scenes_dirs):
@@ -131,7 +131,7 @@ class BurstDataset(Dataset, ABC):
                     far = data['far'] * 1.2
                     scale = 1 / (near * 0.75)
                     far *= scale
-                    print(folder, far)
+                    # print(folder, far)
                     new_scene_dirs.append(folder)
                     # if far > 3.5:
                     #     new_scene_dirs.append(folder)
@@ -169,6 +169,7 @@ class BurstDataset(Dataset, ABC):
             holdout = 8
             self.scenes_dirs = objaverse_test_scenes
             for i, scene_path in enumerate(self.scenes_dirs): 
+                print(scene_path)
                 self.add_single_scene(i, scene_path, holdout)
 
         elif self.args.train_dataset == 'objaverse_scene':

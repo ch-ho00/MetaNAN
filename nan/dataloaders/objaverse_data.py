@@ -48,6 +48,7 @@ class ObjaverseDataset(NoiseDataset, ABC):
         self.src_intrinsics = []
         self.src_poses = []
         self.src_rgb_files = []
+        self.val_subsample = 2
         super().__init__(args, mode, scenes=scenes, random_crop=random_crop, **kwargs)
         self.depth_range = self.render_depth_range[0]
 
@@ -56,7 +57,7 @@ class ObjaverseDataset(NoiseDataset, ABC):
         # c2w = poses_avg(poses)
         # dists = np.sum(np.square(c2w[:3, 3] - poses[:, :3, 3]), -1)
         # i_test = np.argmin(dists)
-        return list(range(0, poses.shape[0], 8))[::4]
+        return list(range(0, poses.shape[0], 8))[::self.val_subsample]
 
     def get_i_train(self, N, i_test):
         return np.array([j for j in np.arange(int(N)) if j not in i_test]) 

@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_objv2_src5_near3_1e-2_1e-2 #test_rgbd_restormer_expand1.5_BiasFree_nonPixelShuffle_Reconst1e-1 #test_restormer_pretrainPatchMatch_wloss #test_rgbd_detach_feat_stageLoss_1e-1 #test_rgbd_feat_stageLoss #_selfsupervision #nan_ObjxObj_ibrReconst_patchMatch1e0_inputDepthWoBN_base32dim_DetachSrcLatent1_13x13_reconst1e-1 #FullBPN_LatKernelDim16_color1_burst5_wKerLoss_woDetach_latent1e-1
+expname                     : nan_final_objaverse_src5_near3_1e-2_1e-1 #nan_objv2_revised_src5_near3_smooth1e0_1e-2 #test_rgbd_restormer_expand1.5_BiasFree_nonPixelShuffle_Reconst1e-1 #test_restormer_pretrainPatchMatch_wloss #test_rgbd_detach_feat_stageLoss_1e-1 #test_rgbd_feat_stageLoss #_selfsupervision #nan_ObjxObj_ibrReconst_patchMatch1e0_inputDepthWoBN_base32dim_DetachSrcLatent1_13x13_reconst1e-1 #FullBPN_LatKernelDim16_color1_burst5_wKerLoss_woDetach_latent1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -50,7 +50,7 @@ inv_uniform                 : True
 white_bkgd                  : True
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 1500
+i_img                       : 3000
 i_print                     : 100
 i_tb                        : 20
 i_weights                   : 5000
@@ -60,6 +60,7 @@ i_weights                   : 5000
 # ckpt_path                   :
 # ckpt_path                   : ckpts_test/src5_objv2_040000.pth
 # ckpt_path                   : out_deblur/test_rgbd_restormer_expand1.5_BiasFree_nonPixelShuffle_Reconst1e-1____full__pre__3_3_3__views_attn__l1/model_065000.pth
+# ckpt_path                   : out_deblur/nan_objv2_src5_cleansrc____full__pre__3_3_3__views_attn__l1/model_035000.pth
 no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True
