@@ -120,6 +120,8 @@ class BurstDataset(Dataset, ABC):
             new_scene_dirs = []
             scene_dists = {}
             for i, folder in enumerate(self.scenes_dirs):
+                if 'blur_4' in folder:
+                    continue
                 if folder in objaverse_test_scenes:
                     continue
                 folder_path = Path(folder)
@@ -136,7 +138,8 @@ class BurstDataset(Dataset, ABC):
                     # if far > 3.5:
                     #     new_scene_dirs.append(folder)
                     #     scene_dists[folder] = far
-
+                else:
+                    print("Pose file missing", pose_file)
             self.scenes_dirs = new_scene_dirs
 
             for i, scene_path in enumerate(self.scenes_dirs): 

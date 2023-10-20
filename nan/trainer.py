@@ -268,9 +268,9 @@ class Trainer:
             for k in stage_depths.keys():
                 for depth in stage_depths[k]:
                     sel_ref_depth = F.grid_sample(depth[:1], coords[None, None].cuda()).squeeze()
-                    depth_loss += F.smooth_l1_loss(sel_ref_depth, pseudo_depth.detach())
-            loss += depth_loss * 0.1
-            self.scalars_to_log['train/depth_loss'] = depth_loss * 0.1
+                    depth_loss += F.smooth_l1_loss(sel_ref_depth, pseudo_depth.detach()) * 0.01
+            loss += depth_loss
+            self.scalars_to_log['train/depth_loss'] = depth_loss
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
