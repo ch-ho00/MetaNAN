@@ -253,7 +253,7 @@ class Trainer:
 
         if reconst_img != None:
             clean_src_imgs      = ray_sampler.src_rgbs_clean.to(self.device)[0].permute(0,3,1,2)
-            reconst_loss        = F.smooth_l1_loss(reconst_img, clean_src_imgs) * 0.01
+            reconst_loss        = F.l1_loss(reconst_img, clean_src_imgs) * 0.1
             loss += reconst_loss 
             self.scalars_to_log['train/reconst_loss'] = reconst_loss
         
@@ -274,7 +274,11 @@ class Trainer:
 
         loss.backward()
         self.scalars_to_log['loss'] = loss.item()
-            
+
+        if self.args.burst_length > 1:
+            torch.nn.utils.clip_grad_norm_(self.model.patchmatch.parameters(), 0.01)
+            torch.nn.utils.clip_grad_norm_(self.model.feature_net.parameters(), 0.01)
+
         self.model.optimizer.step()
         self.model.scheduler.step()
         self.model.optimizer.zero_grad()
@@ -468,7 +472,7 @@ class Trainer:
         vis_interval = 4
         for val_idx in range(len(self.val_dataset)):
 
-            if global_step == 1 and val_idx > 20 and self.args.ckpt_path == None:
+            if global_step == 1 and val_idx > 0 and self.args.ckpt_path == None:
                 break
 
             visualize = True if val_idx % vis_interval == 0 else False

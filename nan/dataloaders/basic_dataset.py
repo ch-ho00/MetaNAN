@@ -120,7 +120,7 @@ class BurstDataset(Dataset, ABC):
             new_scene_dirs = []
             scene_dists = {}
             for i, folder in enumerate(self.scenes_dirs):
-                if 'blur_4' in folder:
+                if 'blur_mix' in folder:
                     continue
                 if folder in objaverse_test_scenes:
                     continue

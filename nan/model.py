@@ -83,13 +83,14 @@ class NANScheme(nn.Module):
         if args.burst_length > 1:
             self.patchmatch = PatchmatchNet(
                 patchmatch_interval_scale=[0.005, 0.0125, 0.025],
-                propagation_range=[6, 4, 2],
+                propagation_range=[3,2,1], #[7,5,3], [8,6,4],  #, #[6, 4, 2], # [4,3,2], 
                 patchmatch_iteration=[1, 2, 2],
                 patchmatch_num_sample=[8, 8, 16],
-                propagate_neighbors=[0, 8, 16],
-                evaluate_neighbors=[9, 9, 9],
+                propagate_neighbors=[0, 8, 16] ,#8, 16],
+                evaluate_neighbors=[9, 9, 9] #[9, 9, 9],
             ).to(device)
 
+            # self.feature_net = Restormer(inp_channels=(3 + 1) * args.burst_length, dim=16, num_blocks=[1,1,1,1], heads=[1,2,4,4], ffn_expansion_factor=1.5, dual_pixel_task=False, num_refinement_blocks=1, LayerNorm_type='BiasFree', pixelshuffle=True).to(device)
             self.feature_net = Restormer(inp_channels=(3 + 1) * args.burst_length, dim=16, num_blocks=[1,1,1,1], heads=[1,2,4,4], ffn_expansion_factor=1.5, dual_pixel_task=False, num_refinement_blocks=1, LayerNorm_type='BiasFree', pixelshuffle=False).to(device)
         else:
             self.feature_net = ResUNet(coarse_out_ch=args.coarse_feat_dim,
@@ -140,7 +141,7 @@ class NANScheme(nn.Module):
             params_list.append({'params': offset_params, 'lr': self.args.lrate_feature * 1e-1})
 
         if self.args.burst_length > 1:
-            params_list += [{'params' : self.patchmatch.parameters(), 'lr':self.args.lrate_feature}]
+            params_list += [{'params' : self.patchmatch.parameters(), 'lr':self.args.lrate_mlp}]
                 
         if self.args.kernel_attn:
             params_list += [{'params' : self.ker_attention.parameters(), 'lr':self.args.lrate_feature}]
