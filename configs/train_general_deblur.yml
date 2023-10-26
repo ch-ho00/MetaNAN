@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_final_objaverse_reviseTest_woMix_propRange0.5X_src5_near3_L1_1e-1_1e-2 #nan_objv2_revised_src5_near3_smooth1e0_1e-2 #test_rgbd_restormer_expand1.5_BiasFree_nonPixelShuffle_Reconst1e-1 #test_restormer_pretrainPatchMatch_wloss #test_rgbd_detach_feat_stageLoss_1e-1 #test_rgbd_feat_stageLoss #_selfsupervision #nan_ObjxObj_ibrReconst_patchMatch1e0_inputDepthWoBN_base32dim_DetachSrcLatent1_13x13_reconst1e-1 #FullBPN_LatKernelDim16_color1_burst5_wKerLoss_woDetach_latent1e-1
+expname                     : test #nan_final_objaverse_reviseTest_woMix_evalNeigh2X_propRange0.75X_src5_near3_L1_1e-1_1e-2 #nan_objv2_revised_src5_near3_smooth1e0_1e-2 #test_rgbd_restormer_expand1.5_BiasFree_nonPixelShuffle_Reconst1e-1 #test_restormer_pretrainPatchMatch_wloss #test_rgbd_detach_feat_stageLoss_1e-1 #test_rgbd_feat_stageLoss #_selfsupervision #nan_ObjxObj_ibrReconst_patchMatch1e0_inputDepthWoBN_base32dim_DetachSrcLatent1_13x13_reconst1e-1 #FullBPN_LatKernelDim16_color1_burst5_wKerLoss_woDetach_latent1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 

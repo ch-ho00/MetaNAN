@@ -83,11 +83,11 @@ class NANScheme(nn.Module):
         if args.burst_length > 1:
             self.patchmatch = PatchmatchNet(
                 patchmatch_interval_scale=[0.005, 0.0125, 0.025],
-                propagation_range=[3,2,1], #[7,5,3], [8,6,4],  #, #[6, 4, 2], # [4,3,2], 
+                propagation_range=[4,3,2], 
                 patchmatch_iteration=[1, 2, 2],
                 patchmatch_num_sample=[8, 8, 16],
                 propagate_neighbors=[0, 8, 16] ,#8, 16],
-                evaluate_neighbors=[9, 9, 9] #[9, 9, 9],
+                evaluate_neighbors=[9, 9, 17] #[9, 9, 9],
             ).to(device)
 
             # self.feature_net = Restormer(inp_channels=(3 + 1) * args.burst_length, dim=16, num_blocks=[1,1,1,1], heads=[1,2,4,4], ffn_expansion_factor=1.5, dual_pixel_task=False, num_refinement_blocks=1, LayerNorm_type='BiasFree', pixelshuffle=True).to(device)
