@@ -59,7 +59,10 @@ class Trainer:
         self.save_ymls(args, sys.argv[1:], self.exp_out_dir)
 
         # create training dataset
-        args.eval_gain = [20,16,8]
+        if self.args.train_dataset == 'objaverse':
+            args.eval_gain = [4,2,1]
+        else:
+            args.eval_gain = [20,16,8]
         self.train_dataset, self.train_sampler = create_training_dataset(args)
         # currently only support batch_size=1 (i.e., one set of target and source views) for each GPU node
         # please use distributed parallel on multiple GPUs to train multiple target views per batch
@@ -207,8 +210,6 @@ class Trainer:
             tar_depth, src_depths = depth[:1], depth[1:]
             
             warped_rgbds, coords = get_depth_warp_img(nearby_imgs[1:], nearby_poses[1:], src_intrinsics, depth[1:].detach(), nearby_idxs)
-            pred_offset = None
-            reconst_img = None
             ref_rgbd = torch.cat([nearby_imgs[1:][:,:1], src_depths.unsqueeze(1).detach()], dim=2)
             input_imgs = torch.cat([ref_rgbd, warped_rgbds], dim=1)
             reconst_img, feats = self.model.feature_net(input_imgs.reshape(self.args.num_source_views, -1, H, W))
@@ -218,14 +219,9 @@ class Trainer:
             proc_src_rgbs = ray_sampler.src_rgbs.to(self.device)
             org_src_rgbs_ = reconst_img.permute(0,2,3,1)[None] #.detach()
         else:
-            pred_offset = None
-            pred_kernel = None
-            nearby_idxs = None
             reconst_img = None
-            norm_depth = None
             tar_depth = None
 
-            blur_render = False
             org_src_rgbs =  ray_sampler.src_rgbs.to(self.device)
             org_src_rgbs_ = ray_sampler.src_rgbs.to(self.device)
 
@@ -314,12 +310,8 @@ class Trainer:
             mse_error = l2_loss(de_linearize(ray_batch_out['coarse'].rgb, ray_batch_in['white_level']).clamp(0,1),
                                 de_linearize(ray_batch_in['rgb'], ray_batch_in['white_level']).clamp(0,1)).item()
         else:
-            if self.args.blur_render:
-                mse_error = l2_loss(ray_batch_out['coarse'].rgb[0].clamp(0,1),
-                                    ray_batch_in['rgb'].clamp(0,1)).item()
-            else:
-                mse_error = l2_loss(ray_batch_out['coarse'].rgb.clamp(0,1),
-                                    ray_batch_in['rgb'].clamp(0,1)).item()
+            mse_error = l2_loss(ray_batch_out['coarse'].rgb.clamp(0,1),
+                                ray_batch_in['rgb'].clamp(0,1)).item()
 
         self.scalars_to_log['train/coarse-loss'] = mse_error
         self.scalars_to_log['train/coarse-psnr-training-batch'] = mse2psnr(mse_error)
@@ -328,12 +320,8 @@ class Trainer:
                 mse_error = l2_loss(de_linearize(ray_batch_out['fine'].rgb, ray_batch_in['white_level']).clamp(0,1),
                                     de_linearize(ray_batch_in['rgb'], ray_batch_in['white_level']).clamp(0,1)).item()
             else:
-                if self.args.blur_render:
-                    mse_error = l2_loss(ray_batch_out['fine'].rgb[0].clamp(0,1),
-                                        ray_batch_in['rgb'].clamp(0,1)).item()                
-                else:
-                    mse_error = l2_loss(ray_batch_out['fine'].rgb.clamp(0,1),
-                                        ray_batch_in['rgb'].clamp(0,1)).item()
+                mse_error = l2_loss(ray_batch_out['fine'].rgb.clamp(0,1),
+                                    ray_batch_in['rgb'].clamp(0,1)).item()
 
             self.scalars_to_log['train/fine-loss'] = mse_error
             self.scalars_to_log['train/fine-psnr-training-batch'] = mse2psnr(mse_error)
@@ -400,37 +388,17 @@ class Trainer:
             self.writer.add_image(prefix + 'depth_gt-coarse-fine'+ postfix, depth_im, global_step)
             self.writer.add_image(prefix + 'acc-coarse-fine'+ postfix, acc_map, global_step)
             h,w = list(ray_sampler.src_rgbs.shape[-3:-1])
-            if 'bpn_reconst' in ret.keys():
-                reconst_img = ret['bpn_reconst'][0].permute(3,1,0,2).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
-                if ray_sampler.white_level != None:
-                    reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
-                else:
-                    reconst_img = reconst_img.cpu().clamp(0,1)
-                self.writer.add_image(prefix + 'bpn_reconst'+ postfix, reconst_img, global_step)
 
-            if 'latent_imgs' in ret.keys():
-                vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['latent_imgs'][0].cpu()], dim=0)
-                reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
-                if ray_sampler.white_level != None:
-                    reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
-                else:
-                    reconst_img = reconst_img.cpu().clamp(0,1)
-                self.writer.add_image(prefix + 'latent_imgs'+ postfix, reconst_img, global_step)
-
-            if 'warped_latent_imgs' in ret.keys():
-                vis_imgs = torch.cat([ray_sampler.src_rgbs[0,0].permute(2,0,1)[None], ret['warped_latent_imgs'][0].cpu()], dim=0)
-                reconst_img = vis_imgs.permute(1,2,0,3).reshape(3,h,-1)[:, ::render_stride, ::render_stride]
-                if ray_sampler.white_level != None:
-                    reconst_img = de_linearize(reconst_img.cpu(), ray_sampler.white_level).clamp(0,1)
-                else:
-                    reconst_img = reconst_img.cpu().clamp(0,1)
-                self.writer.add_image(prefix + 'warped_latent_imgs'+ postfix, reconst_img, global_step)
 
             if 'kernel_reconst' in ret.keys():
                 vis_img = torch.cat([ray_sampler.src_rgbs, ret['kernel_reconst'].permute(0,2,3,1)[None].cpu(), ray_sampler.src_rgbs_clean], dim=0)
                 vis_img = vis_img[:,:2]
                 vis_img = vis_img.permute(4,1,2,0,3).reshape(3, h * 2, -1)[:, ::render_stride, ::render_stride]
                 vis_img = vis_img.cpu().clamp(0,1)
+
+                if ray_sampler.white_level != None:
+                    vis_imgs = de_linearize(vis_img.cpu(), ray_sampler.white_level).clamp(0,1)
+
                 self.writer.add_image(prefix + 'kernel_reconst'+ postfix, vis_img, global_step)
 
             if 'patchmatch_depth' in ret.keys():
@@ -440,22 +408,23 @@ class Trainer:
 
             if 'depth_warped_imgs' in ret.keys():
                 vis_imgs = ret['depth_warped_imgs'].permute(2,0,3,1,4).reshape(3, h * 2, -1)[:, ::render_stride, ::render_stride]
+                if ray_sampler.white_level != None:
+                    vis_imgs = de_linearize(vis_img.cpu(), ray_sampler.white_level).clamp(0,1)
+
                 self.writer.add_image(prefix + 'depth_warped_imgs'+ postfix, vis_imgs, global_step)
 
             del depth_im, rgb_im
         # write scalar
         pred_rgb = ret['fine'].rgb if ret['fine'] is not None else ret['coarse'].rgb
         if ray_sampler.white_level != None:
-            psnr_curr_img = img2psnr(de_linearize(pred_rgb.detach().cpu(), ray_sampler.white_level).clamp(0,1),
-                                    de_linearize(gt_img, ray_sampler.white_level).clamp(0,1))
-        else:
-            pred_img = pred_rgb.detach().cpu().clamp(0,1)
-            gt_img = gt_img.clamp(0,1)
-            psnr_curr_img = img2psnr(pred_img, gt_img)
-            # psnr_curr_img = img2psnr(pred_rgb.detach().cpu().clamp(0,1), gt_img.clamp(0,1))
-            # psnr_curr_img = img2psnr(pred_rgb.detach().cpu().clamp(0,1), gt_img.clamp(0,1))
-            ssim_curr_img = ssim( pred_img.numpy(), gt_img.cpu().numpy(), data_range=1, multichannel=True, channel_axis=-1)
-            lpips_curr_img = lpips_fn(pred_img.permute(2,0,1)[None] * 2 - 1, gt_img.permute(2,0,1)[None] * 2 - 1).item()  # Normalize to [-1,1]
+            pred_rgb = de_linearize(pred_rgb.detach().cpu(), ray_sampler.white_level).clamp(0,1)
+            gt_img   = de_linearize(gt_img, ray_sampler.white_level).clamp(0,1)
+
+        pred_img = pred_rgb.detach().cpu().clamp(0,1)
+        gt_img = gt_img.clamp(0,1)
+        psnr_curr_img = img2psnr(pred_img, gt_img)
+        ssim_curr_img = ssim( pred_img.numpy(), gt_img.cpu().numpy(), data_range=1, multichannel=True, channel_axis=-1)
+        lpips_curr_img = lpips_fn(pred_img.permute(2,0,1)[None] * 2 - 1, gt_img.permute(2,0,1)[None] * 2 - 1).item()  # Normalize to [-1,1]
 
 
         self.model.switch_to_train()
@@ -485,6 +454,8 @@ class Trainer:
             eval_gain = val_data['eval_gain']
             blur_level = val_data['rgb_path'].split('/')[-2]
             blur_level = blur_level if 'mix' not in blur_level else 'blur_mix'
+            if self.args.add_burst_noise:
+                blur_level = blur_level + f"_gain{val_data['eval_gain']}"
             psnr, ssim, lpips = self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_gain{eval_gain}_iter{cnt}", visualize=visualize)
 
             if eval_gain in psnr_results.keys():

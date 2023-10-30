@@ -1,11 +1,11 @@
 ### INPUT
-expname                     : test #nan_final_objaverse_reviseTest_woMix_evalNeigh2X_propRange0.75X_src5_near3_L1_1e-1_1e-2 #nan_objv2_revised_src5_near3_smooth1e0_1e-2 #test_rgbd_restormer_expand1.5_BiasFree_nonPixelShuffle_Reconst1e-1 #test_restormer_pretrainPatchMatch_wloss #test_rgbd_detach_feat_stageLoss_1e-1 #test_rgbd_feat_stageLoss #_selfsupervision #nan_ObjxObj_ibrReconst_patchMatch1e0_inputDepthWoBN_base32dim_DetachSrcLatent1_13x13_reconst1e-1 #FullBPN_LatKernelDim16_color1_burst5_wKerLoss_woDetach_latent1e-1
+expname                     : nan_plain_objaverse_plain_clean_src5 #_evalNeigh2X_propRange0.75X_src5_near3_L1_1e-1_1e-2 #nan_final_objaverse_reviseTest_woMix_evalNeigh2X_propRange0.75X_src5_near3_L1_1e-1_1e-2 #nan_objv2_revised_src5_near3_smooth1e0_1e-2 #test_rgbd_restormer_expand1.5_BiasFree_nonPixelShuffle_Reconst1e-1 #test_restormer_pretrainPatchMatch_wloss #test_rgbd_detach_feat_stageLoss_1e-1 #test_rgbd_feat_stageLoss #_selfsupervision #nan_ObjxObj_ibrReconst_patchMatch1e0_inputDepthWoBN_base32dim_DetachSrcLatent1_13x13_reconst1e-1 #FullBPN_LatKernelDim16_color1_burst5_wKerLoss_woDetach_latent1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
 ## dataset
 train_dataset               : objaverse  #deblur
-eval_dataset                : objaverse  #
+eval_dataset                : objaverse_test  #
 eval_scenes                 : [blurcozy2room] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
 
 ### TRAINING
@@ -24,15 +24,7 @@ degae_feat_ckpt             : ./ckpts/0619.pth #./ckpts/model_045000.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-sum_filtered                : False
-bpn_prenet                  : False
-ft_embed_fc                 : False
-cond_renderer               : False #True
-blur_render                 : False
-kernel_stack                : False
-kernel_attn                 : False
-lambda_latent_loss          : 0.0
-burst_length                : 3
+burst_length                : 1
 num_source_views            : 5
 num_latent                  : 1
 center_ratio                : 0.6
@@ -40,7 +32,7 @@ channel_upfactor            : 1
 basis_dim                   : 16
 ### TESTING
 chunk_size                  : 2048 #2048 # can be biggerd depend on the gpu memory
-clean_src_imgs              : False
+clean_src_imgs              : True
 add_burst_noise             : False
 
 ### RENDERING
@@ -50,7 +42,7 @@ inv_uniform                 : True
 white_bkgd                  : True
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 3000
+i_img                       : 4000
 i_print                     : 100
 i_tb                        : 20
 i_weights                   : 5000
@@ -68,6 +60,7 @@ sup_clean                   : True
 include_target              : False  # set to False if you want to synthesize images rather than denoise the images
 eval_gain                    : [20, 16, 8]
 std                         : [-3.0, -0.5, -2.0, -0.5]
+# std                         : [-3.0, -1.5, -2.0, -1.25]
 
 
 views_attn                  : True

@@ -145,30 +145,8 @@ class BurstDataset(Dataset, ABC):
             for i, scene_path in enumerate(self.scenes_dirs): 
                 self.add_single_scene(i, scene_path, holdout)
 
-            '''
-            hist, bins = np.histogram(list(scene_dists.values()), bins=10)
-            proportions = hist / sum(hist)
-            scenes_to_select = (proportions * 8).astype(int)
-            missing_scenes = 8 - sum(scenes_to_select)
-            for _ in range(missing_scenes):
-                max_bin_index = np.argmax(scenes_to_select)
-                scenes_to_select[max_bin_index] += 1
 
-            test_scenes = []
-
-            for i in range(len(bins) - 1):
-                folders_in_bin = [folder for folder, far in scene_dists.items() if bins[i] <= far < bins[i+1]]
-                num_scenes_from_bin = scenes_to_select[i]                
-                selected_folders = np.random.choice(folders_in_bin, num_scenes_from_bin, replace=False)
-                test_scenes.extend(selected_folders)
-
-            print(len(list(scene_dists.values())), len(test_scenes))
-            pprint(test_scenes)
-            import pdb; pdb.set_trace()
-            print()
-            '''
-
-        elif self.args.eval_dataset == 'objaverse' and mode != Mode.train:
+        elif self.args.eval_dataset == 'objaverse_test':
             holdout = 8
             self.scenes_dirs = objaverse_test_scenes
             for i, scene_path in enumerate(self.scenes_dirs): 
@@ -468,109 +446,57 @@ class NoiseDataset(BurstDataset, ABC):
 
         return batch_dict
 
-    def create_deblur_scene_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
-                                gt_depth=None, eval_gain=1, rgb_noisy=None, src_rgbs_clean=None):
-        if rgb_clean is not None:
-            rgb_clean = torch.from_numpy(rgb_clean[..., :3])
-            # if self.mode is Mode.train:
-            #     rgb, _ = self.add_noise(rgb_clean)        
-            # else:
-            #     rgb, _ = self.add_noise_level(rgb_clean, eval_gain)                        
-        else:
-            rgb = None
-
-        src_rgbs = torch.from_numpy(src_rgbs[..., :3])
-
-        # if self.mode is Mode.train:
-        #     src_rgbs, sigma_est = self.add_noise(src_rgbs_clean)
-        # else:
-        #     src_rgbs, sigma_est = self.add_noise_level(src_rgbs_clean, eval_gain)
-                      
-        batch_dict = {'camera'        : torch.from_numpy(camera),
-                      'rgb_path'      : str(rgb_file),
-                      'src_rgbs'      : src_rgbs,
-                      'src_cameras'   : torch.from_numpy(src_cameras),
-                      'depth_range'   : depth_range,
-                      'eval_gain'     : eval_gain}
-        batch_dict['src_rgbs_clean'] = torch.from_numpy(src_rgbs_clean[..., :3])
-        batch_dict['rgb_clean'] = rgb_clean
-        batch_dict['rgb_noisy'] = rgb_noisy
-            
-        return batch_dict
-
     def create_objaverse_scene_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
                                 gt_depth=None, eval_gain=1, rgb_noisy=None, src_rgbs_clean=None, alpha_clean=None):
-        if rgb_clean is not None:
-            rgb_clean = torch.from_numpy(rgb_clean[..., :3])
-            # if self.mode is Mode.train:
-            #     rgb, _ = self.add_noise(rgb_clean)        
-            # else:
-            #     rgb, _ = self.add_noise_level(rgb_clean, eval_gain)                        
-        else:
-            rgb = None
 
-        src_rgbs = torch.from_numpy(src_rgbs[..., :3])
-
-        # if self.mode is Mode.train:
-        #     src_rgbs, sigma_est = self.add_noise(src_rgbs_clean)
-        # else:
-        #     src_rgbs, sigma_est = self.add_noise_level(src_rgbs_clean, eval_gain)
-                      
-        batch_dict = {'camera'        : torch.from_numpy(camera),
-                      'rgb_path'      : str(rgb_file),
-                      'src_rgbs'      : src_rgbs,
-                      'src_cameras'   : torch.from_numpy(src_cameras),
-                      'depth_range'   : depth_range,
-                      'eval_gain'     : eval_gain}
-        batch_dict['src_rgbs_clean'] = torch.from_numpy(src_rgbs_clean[..., :3])
-        batch_dict['rgb_clean'] = rgb_clean
-        batch_dict['alpha_clean'] = alpha_clean
-        batch_dict['rgb_noisy'] = rgb_noisy
-            
-        return batch_dict
-
-    def create_deblur_batch_from_numpy(self, rgb_clean, camera, rgb_file, src_rgbs, src_cameras, depth_range,
-                                gt_depth=None, eval_gain=1, rgb_noisy=None, src_rgbs_clean=None):
         if self.mode in [Mode.train]:
-            white_level = 10 ** -torch.rand(1) * 0.4 + 0.6
-            # white_level = torch.Tensor([1])
+            white_level = (10 ** -torch.rand(1)) * 0.5 + 0.5
         else:
             white_level = torch.Tensor([1])
 
-        if rgb_clean is not None:
-            rgb_clean = re_linearize(torch.from_numpy(rgb_clean[..., :3]), white_level)
-            # if self.args.add_burst_noise:
-            #     if self.mode is Mode.train:
-            #         rgb, _ = self.add_noise(rgb_clean)        
-            #     else:
-            #         rgb, _ = self.add_noise_level(rgb_clean, eval_gain)                        
-        else:
-            rgb = None
-
-        src_rgbs = re_linearize(torch.from_numpy(src_rgbs[..., :3]), white_level)
-        src_rgbs_clean = re_linearize(torch.from_numpy(src_rgbs_clean[..., :3]), white_level)
-        rgb_noisy       = re_linearize(rgb_noisy[..., :3], white_level)
-
         if self.args.add_burst_noise:
+            rgb_clean = re_linearize(torch.from_numpy(rgb_clean[..., :3]), white_level)
+            rgb_noisy = re_linearize(torch.from_numpy(rgb_noisy[..., :3]), white_level)
+            if self.mode is Mode.train:
+                rgb, _ = self.add_noise(rgb_clean)        
+            else:
+                rgb, _ = self.add_noise_level(rgb_clean, eval_gain)                        
+
+            src_rgbs = re_linearize(torch.from_numpy(src_rgbs[..., :3]), white_level)
+            src_rgbs_clean = re_linearize(torch.from_numpy(src_rgbs_clean[..., :3]), white_level)
             if self.mode is Mode.train:
                 src_rgbs, sigma_est = self.add_noise(src_rgbs)
             else:
                 src_rgbs, sigma_est = self.add_noise_level(src_rgbs, eval_gain)
-                      
-        batch_dict = {'camera'        : torch.from_numpy(camera),
-                      'rgb_path'      : str(rgb_file),
-                      'src_rgbs'      : src_rgbs,
-                      'src_cameras'   : torch.from_numpy(src_cameras),
-                      'depth_range'   : depth_range,
-                      'white_level'   : white_level,
-                      'eval_gain'     : eval_gain}
 
-        batch_dict['src_rgbs_clean'] = src_rgbs_clean[..., :3]
-        batch_dict['rgb_clean'] = rgb_clean
-        batch_dict['rgb_noisy'] = rgb_noisy
+            batch_dict = {
+                'white_level' : white_level,
+                'sigma_estimate' : sigma_est
+            }
+        else:
+            if rgb_clean is not None:
+                rgb_clean = torch.from_numpy(rgb_clean[..., :3])
+            else:
+                rgb = None
+            src_rgbs        = torch.from_numpy(src_rgbs[..., :3])
+            src_rgbs_clean  = torch.from_numpy(src_rgbs_clean[..., :3])
+            eval_gain = 0
+            batch_dict = {}
+
+        batch_dict.update({
+                      'camera'         : torch.from_numpy(camera),
+                      'rgb_path'       : str(rgb_file),
+                      'src_rgbs'       : src_rgbs,
+                      'src_rgbs_clean' : src_rgbs_clean,
+                      'src_cameras'    : torch.from_numpy(src_cameras),
+                      'depth_range'    : depth_range,
+                      'eval_gain'      : eval_gain,
+                      'rgb_clean'      : rgb_clean,
+                      'rgb_noisy'      : rgb_noisy,
+                      'alpha_clean'    : alpha_clean
+                      })
 
         return batch_dict
-
 
 
 

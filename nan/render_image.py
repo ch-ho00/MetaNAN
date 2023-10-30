@@ -22,7 +22,6 @@ from nan.render_ray import RayRender
 from nan.raw2output import RaysOutput
 from nan.sample_ray import RaySampler
 from nan.se3 import SE3_to_se3_N, get_spline_poses
-from nan.projection import warp_latent_imgs
 from nan.dataloaders.data_utils import get_nearest_pose_ids, get_depth_warp_img
 import torch.nn.functional as F
 

@@ -152,7 +152,11 @@ class ObjaverseDataset(NoiseDataset, ABC):
 
     def get_multiview_item(self, idx):
         # Read target data:
-        eval_gain = 0 # self.args.eval_gain[idx // len(self.render_rgb_files)]
+        if self.mode is Mode.train:
+            eval_gain = 0
+        else:
+            eval_gain = self.args.eval_gain[idx // len(self.render_rgb_files)]
+
         idx = idx % len(self.render_rgb_files)
         rgb_file: Path = self.render_rgb_files[idx]
         rgb_file_clean = str(rgb_file).split('/')
@@ -268,12 +272,8 @@ class ObjaverseTestDataset(ObjaverseDataset):
 
     def apply_transform(self, rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean=None, alpha=None):
         if self.mode is Mode.train and self.random_crop:
-            #crop_h = np.random.randint(low=250, high=750) // 128 * 128
-            #crop_h = crop_h + 1 if crop_h % 2 == 1 else crop_h
-            #crop_w = int(400 * 600 / crop_h // 128 * 128) #350 * 550
-            #crop_w = crop_w + 1 if crop_w % 2 == 1 else crop_w
-            crop_h = 384 #350
-            crop_w = 512 #550
+            crop_h = 384
+            crop_w = 512
             rgb, camera, src_rgbs, src_cameras, rgb_noisy, src_rgbs_clean, alpha = random_crop(rgb, camera, src_rgbs, src_cameras,
                                                              (crop_h, crop_w), rgb_noisy=rgb_noisy, src_rgbs_clean=src_rgbs_clean, alpha=alpha)
 
