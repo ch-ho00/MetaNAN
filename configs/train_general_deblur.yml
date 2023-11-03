@@ -1,5 +1,5 @@
 ### INPUT
-expname                     : nan_plain_objaverse_plain_clean_src5 #_evalNeigh2X_propRange0.75X_src5_near3_L1_1e-1_1e-2 #nan_final_objaverse_reviseTest_woMix_evalNeigh2X_propRange0.75X_src5_near3_L1_1e-1_1e-2 #nan_objv2_revised_src5_near3_smooth1e0_1e-2 #test_rgbd_restormer_expand1.5_BiasFree_nonPixelShuffle_Reconst1e-1 #test_restormer_pretrainPatchMatch_wloss #test_rgbd_detach_feat_stageLoss_1e-1 #test_rgbd_feat_stageLoss #_selfsupervision #nan_ObjxObj_ibrReconst_patchMatch1e0_inputDepthWoBN_base32dim_DetachSrcLatent1_13x13_reconst1e-1 #FullBPN_LatKernelDim16_color1_burst5_wKerLoss_woDetach_latent1e-1
+expname                     : nan_src3_near3_1e-1_1e-2 #_evalNeigh2X_propRange0.75X_src5_near3_L1_1e-1_1e-2 #nan_final_objaverse_reviseTest_woMix_evalNeigh2X_propRange0.75X_src5_near3_L1_1e-1_1e-2 #nan_objv2_revised_src5_near3_smooth1e0_1e-2 #test_rgbd_restormer_expand1.5_BiasFree_nonPixelShuffle_Reconst1e-1 #test_restormer_pretrainPatchMatch_wloss #test_rgbd_detach_feat_stageLoss_1e-1 #test_rgbd_feat_stageLoss #_selfsupervision #nan_ObjxObj_ibrReconst_patchMatch1e0_inputDepthWoBN_base32dim_DetachSrcLatent1_13x13_reconst1e-1 #FullBPN_LatKernelDim16_color1_burst5_wKerLoss_woDetach_latent1e-1
 render_stride               : 2  # used in evaluation
 distributed                 : False
 
@@ -24,15 +24,15 @@ degae_feat_ckpt             : ./ckpts/0619.pth #./ckpts/model_045000.pth
 coarse_feat_dim             : 32
 fine_feat_dim               : 32
 img_size                    : 256
-burst_length                : 1
-num_source_views            : 5
+burst_length                : 3
+num_source_views            : 3
 num_latent                  : 1
 center_ratio                : 0.6
 channel_upfactor            : 1
 basis_dim                   : 16
 ### TESTING
 chunk_size                  : 2048 #2048 # can be biggerd depend on the gpu memory
-clean_src_imgs              : True
+clean_src_imgs              : False
 add_burst_noise             : False
 
 ### RENDERING
@@ -53,6 +53,14 @@ i_weights                   : 5000
 # ckpt_path                   : ckpts_test/src5_objv2_040000.pth
 # ckpt_path                   : out_deblur/test_rgbd_restormer_expand1.5_BiasFree_nonPixelShuffle_Reconst1e-1____full__pre__3_3_3__views_attn__l1/model_065000.pth
 # ckpt_path                   : out_deblur/nan_objv2_src5_cleansrc____full__pre__3_3_3__views_attn__l1/model_035000.pth
+# ckpt_path                   : /disk1/chanho/3d/MetaNAN/logs_final_save/out/nan_final_objaverse_reviseTest_woMix_plain_src5____full__pre__3_3_3__views_attn__l1/model_255000.pth
+# ckpt_path                   : /disk1/chanho/3d/MetaNAN/logs_final_save/out/nan_burst_objaverse_plain_src5____std_-3.0_-1.5_-2.0_-1.25__pre__3_3_3__views_attn__l1/model_255000.pth
+# ckpt_path                   : /disk1/chanho/3d/MetaNAN/logs_final_save/out/nan_burst_propRange0.75X_src5_near3_L1_1e-1_1e-2____std_-3.0_-1.5_-2.0_-1.2/model_255000.pth
+# ckpt_path                   : /disk1/chanho/3d/MetaNAN/logs_final_save/out/nan_final_objaverse_reviseTest_woMix_propRange0.75X_src5_near3_L1_1e-1_1e-2____full__pre__3_3_3__views_attn__l1/model_255000.pth
+# clean_ckpt_path             : /disk1/chanho/3d/MetaNAN/logs_final_save/out/nan_burst_objaverse_plain_src5____std_-3.0_-1.5_-2.0_-1.25__pre__3_3_3__views_attn__l1/model_255000.pth
+# restormer_ckpt_path         : logs_final_save/restormer_objaverse_burst_gain4.state
+eval_mode                   : False
+
 no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True
@@ -70,3 +78,10 @@ noise_feat                  : False
 rgb_weights                 : True
 
 local_rank                  : 0
+
+
+        # parser.add_argument('--eval_mode', default=False, action="store_true")
+        # parser.add_argument('--restormer_ckpt_path', default=False, action="store_true")
+        # parser.add_argument("--clean_ckpt_path", type=str, default=None)
+        # parser.add_argument('--calc_depth_var', default=False, action="store_true")
+

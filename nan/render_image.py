@@ -32,7 +32,9 @@ def render_single_image(ray_sampler: RaySampler,
                         args,
                         save_pixel=None,
                         global_step=0,
-                        eval_=False) -> Dict[str, RaysOutput]:
+                        eval_=False,
+                        clean_src_imgs=False,
+                        denoised_input=None) -> Dict[str, RaysOutput]:
     """
     :param: save_pixel:
     :param: featmaps:
@@ -59,12 +61,14 @@ def render_single_image(ray_sampler: RaySampler,
                            ('fine', None)])
     device = torch.device(f'cuda:{args.local_rank}')
     ray_render = RayRender(model=model, args=args, device=device, save_pixel=save_pixel)
-    if args.clean_src_imgs:
-        org_src_rgbs = ray_sampler.src_rgbs_clean.to(device)
+    if denoised_input:
+        input_src_rgbs = ray_sampler.denoised_src_rgb.to(device)
+    elif args.clean_src_imgs or clean_src_imgs:
+        input_src_rgbs = ray_sampler.src_rgbs_clean.to(device)
     else:
-        org_src_rgbs = ray_sampler.src_rgbs.to(device)
+        input_src_rgbs = ray_sampler.src_rgbs.to(device)
 
-    H, W = org_src_rgbs.shape[-3:-1]
+    H, W = input_src_rgbs.shape[-3:-1]
     sigma_est = ray_sampler.sigma_estimate.to(device) if ray_sampler.sigma_estimate != None else None
     src_cameras = ray_sampler.src_cameras.to(device)
 
@@ -77,7 +81,7 @@ def render_single_image(ray_sampler: RaySampler,
             ids = get_nearest_pose_ids(pose, src_poses, args.burst_length, angular_dist_method='dist', sort_by_dist=True)
             nearby_idxs.append(ids)
 
-        nearby_imgs = torch.stack([org_src_rgbs[0].permute(0,3,1,2)[ids] for ids in nearby_idxs])
+        nearby_imgs = torch.stack([input_src_rgbs[0].permute(0,3,1,2)[ids] for ids in nearby_idxs])
         nearby_poses = torch.stack([torch.from_numpy(src_poses[ids]) for ids in nearby_idxs]).to(device)
         nearby_intrinsics = torch.stack([src_intrinsics[ids] for ids in nearby_idxs])[..., :3,:3]
 
@@ -85,7 +89,7 @@ def render_single_image(ray_sampler: RaySampler,
         input_imgs = [img for img in nearby_imgs.permute(1,0,2,3,4)]
         depth, _, _ = model.patchmatch(input_imgs, nearby_intrinsics, extrinsics, ray_batch['depth_range'][0,0].repeat(args.num_source_views), ray_batch['depth_range'][0,1].repeat(args.num_source_views))            
 
-        src_rgbd = torch.cat([org_src_rgbs[0].permute(0,3,1,2), depth], dim=1)
+        src_rgbd = torch.cat([input_src_rgbs[0].permute(0,3,1,2), depth], dim=1)
         warped_rgbds, coords = get_depth_warp_img(nearby_imgs, nearby_poses, src_intrinsics, depth, nearby_idxs)
         print(round((((coords[..., 0] > 0) & (coords[..., 0] < W)) / coords[..., 0].numel()).sum().item(), 3), round((((coords[..., 1] > 0) & (coords[..., 1] < H)) / coords[..., 1].numel()).sum().item(), 3))
 
@@ -96,7 +100,7 @@ def render_single_image(ray_sampler: RaySampler,
         featmaps['coarse'] = feats[:, :args.coarse_feat_dim]
         featmaps['fine']   = feats[:, args.coarse_feat_dim:]
         src_rgbs = ray_sampler.src_rgbs.to(device)
-        org_src_rgbs_ = reconst_img.permute(0,2,3,1)[None]
+        input_src_rgbs_ = reconst_img.permute(0,2,3,1)[None]
 
         all_ret['depth_warped_imgs'] = input_imgs[:2, :, :3]
 
@@ -107,9 +111,9 @@ def render_single_image(ray_sampler: RaySampler,
         reconst_img = None
         depth = None
 
-        org_src_rgbs_ = org_src_rgbs
-        org_src_rgbs  = org_src_rgbs
-        src_rgbs, featmaps = ray_render.calc_featmaps(org_src_rgbs)
+        input_src_rgbs_ = input_src_rgbs
+        input_src_rgbs  = input_src_rgbs
+        src_rgbs, featmaps = ray_render.calc_featmaps(input_src_rgbs)
 
     if reconst_img != None:
         all_ret['kernel_reconst'] = reconst_img
@@ -122,7 +126,7 @@ def render_single_image(ray_sampler: RaySampler,
         all_ret['fine'] = RaysOutput.empty_ret()
     N_rays = ray_sampler.rays_o.shape[0]
 
-    H, W = org_src_rgbs.shape[-3:-1]
+    H, W = input_src_rgbs.shape[-3:-1]
     for i in tqdm(range(0, N_rays, args.chunk_size)):
         # print('batch', i)
         ray_batch = ray_sampler.specific_ray_batch(slice(i, i + args.chunk_size, 1), clean=args.sup_clean)
@@ -138,7 +142,7 @@ def render_single_image(ray_sampler: RaySampler,
         ret       = ray_render.render_batch(ray_batch=ray_batch,
                                             proc_src_rgbs=src_rgbs,
                                             featmaps=featmaps,
-                                            org_src_rgbs=org_src_rgbs_,
+                                            org_src_rgbs=input_src_rgbs_,
                                             sigma_estimate=sigma_est)
         all_ret['coarse'].append(ret['coarse'])
         if ret['fine'] is not None:

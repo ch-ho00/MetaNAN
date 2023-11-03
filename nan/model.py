@@ -196,6 +196,7 @@ class NANScheme(nn.Module):
 
     def load_model(self, filename):
         load_dict = torch.load(filename, map_location=torch.device(f'cuda:{self.args.local_rank}'))
+        print("Loaded Checkpoint from ", filename, " ################")
         if 'model' not in load_dict:
             # for old version of ckpt
             load_dict = self.convert_state_to_model(load_dict)

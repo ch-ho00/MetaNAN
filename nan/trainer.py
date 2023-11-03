@@ -32,6 +32,7 @@ from nan.dataloaders.data_utils import get_nearest_pose_ids, get_padded_img_dim,
 
 import lpips
 from skimage.metrics import structural_similarity as ssim
+from copy import deepcopy
 
 import random
 alpha=0.9999
@@ -80,6 +81,77 @@ class Trainer:
 
         # Create NAN scheme
         self.model = NANScheme.create(args)
+        
+        if self.args.clean_ckpt_path != None:
+            clean_model_args = deepcopy(args)
+            clean_model_args.burst_length = 1
+            clean_model_args.ckpt_path = Path(args.clean_ckpt_path)
+            self.clean_model = NANScheme.create(clean_model_args)
+            self.clean_model_args = clean_model_args
+        else:
+            self.clean_model = None
+
+        self.pretrain_restormer = None
+        if self.args.restormer_ckpt_path:
+
+            states = [self.args.restormer_ckpt_path]
+            device_id = torch.cuda.current_device()
+            resume_state = torch.load(
+                self.args.restormer_ckpt_path,
+                map_location=lambda storage, loc: storage.cuda(device_id))
+
+            # network_g:
+            #   type: Restormer
+            #   inp_channels: 3
+            #   out_channels: 3
+            #   dim: 48
+            #   num_blocks: [4,4,6,6] #[4,6,6,8]
+            #   num_refinement_blocks: 3
+            #   heads: [1,2,4,6] #[1,2,4,8]
+            #   ffn_expansion_factor: 2.0 #2.66
+            #   bias: False
+            #   LayerNorm_type: WithBias
+            #   dual_pixel_task: False
+            self.restormer = Restormer(inp_channels=3, 
+                                        dim=48, 
+                                        num_blocks=[4,4,6,6], 
+                                        heads=[1,2,4,6], 
+                                        ffn_expansion_factor=2.0, 
+                                        dual_pixel_task=False, 
+                                        num_refinement_blocks=3, 
+                                        LayerNorm_type='BiasFree', 
+                                        pixelshuffle=False).to(device)
+
+            # self.restormer = Restormer(inp_channels=(3 + 1) * args.burst_length, dim=16, 
+            #                             dim=16, 
+            #                             num_blocks=[1,1,1,1], 
+            #                             heads=[1,2,4,4], 
+            #                             ffn_expansion_factor=1.5, 
+            #                             dual_pixel_task=False, 
+            #                             num_refinement_blocks=1, 
+            #                             LayerNorm_type='BiasFree', 
+            #                             pixelshuffle=False).to(device)
+
+            import pdb; pdb.set_trace()
+
+        # def resume_training(self, resume_state):
+        #     """Reload the optimizers and schedulers for resumed training.
+
+        #     Args:
+        #         resume_state (dict): Resume state.
+        #     """
+        #     resume_optimizers = resume_state['optimizers']
+        #     resume_schedulers = resume_state['schedulers']
+        #     assert len(resume_optimizers) == len(
+        #         self.optimizers), 'Wrong lengths of optimizers'
+        #     assert len(resume_schedulers) == len(
+        #         self.schedulers), 'Wrong lengths of schedulers'
+        #     for i, o in enumerate(resume_optimizers):
+        #         self.optimizers[i].load_state_dict(o)
+        #     for i, s in enumerate(resume_schedulers):
+        #         self.schedulers[i].load_state_dict(s)
+
+        # self.pretrain_restormer = 
         self.last_weights_path = None
 
         # Create ray render object
@@ -337,8 +409,16 @@ class Trainer:
     def log_view_to_tb(self, global_step, ray_sampler, gt_img, render_stride=1, prefix='', postfix='', visualize=False):
         self.model.switch_to_eval()
         with torch.no_grad():
-            ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args, global_step=global_step)
 
+            if self.pretrain_restormer != None:
+                ray_sampler.denoised_src_rgbs = self.pretrain_restormer(ray_sampler.src_rgbs)
+            else:
+                ray_sampler.denoised_src_rgbs = None
+
+
+            ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args, global_step=global_step, denoised_input= self.pretrain_restormer != None)
+            if self.clean_model != None:
+                clean_ret = render_single_image(ray_sampler=ray_sampler, model=self.clean_model, args=self.clean_model_args, global_step=global_step, clean_src_imgs=True)
         if self.args.clean_src_imgs:
             average_im = ray_sampler.src_rgbs_clean.cpu()[0,0]        
         else:
@@ -348,7 +428,7 @@ class Trainer:
             gt_img = gt_img[::render_stride, ::render_stride]
             average_im = average_im[::render_stride, ::render_stride]
             reconst_signal = None
-                
+        
         rgb_gt = img_HWC2CHW(gt_img)
         average_im = img_HWC2CHW(average_im)
 
@@ -438,7 +518,8 @@ class Trainer:
         torch.cuda.empty_cache()
         psnr_results = {}
         psnr_scene_results = {}
-        vis_interval = 4
+        vis_interval = 4 if self.args.ckpt_path == None else 1
+        print("Size of Val dataset = ", len(self.val_dataset))
         for val_idx in range(len(self.val_dataset)):
 
             if global_step == 1 and val_idx > 0 and self.args.ckpt_path == None:
@@ -494,6 +575,8 @@ class Trainer:
         self.log_view_to_tb(global_step, tmp_ray_train_sampler, gt_img, render_stride=self.args.render_stride, prefix='train/')
         del tmp_ray_train_sampler 
         torch.cuda.empty_cache()
+        if self.args.eval_mode:
+            exit()
 
 
 
