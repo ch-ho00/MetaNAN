@@ -148,7 +148,7 @@ class CustomArgumentParser(configargparse.ArgumentParser):
         parser.add_argument("--burst_length", type=int, default=1)
 
         parser.add_argument('--eval_mode', default=False, action="store_true")
-        parser.add_argument('--restormer_ckpt_path', default=False, action="store_true")
+        parser.add_argument("--restormer_ckpt_path", type=str, default=None)
         parser.add_argument("--clean_ckpt_path", type=str, default=None)
         parser.add_argument('--calc_depth_var', default=False, action="store_true")
 

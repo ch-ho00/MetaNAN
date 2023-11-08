@@ -29,7 +29,7 @@ from nan.se3 import SE3_to_se3_N, get_spline_poses
 from nan.projection import warp_latent_imgs
 from nan.content_loss import reconstruction_loss
 from nan.dataloaders.data_utils import get_nearest_pose_ids, get_padded_img_dim, get_depth_warp_img
-
+from nan.restormer_orig import Restormer
 import lpips
 from skimage.metrics import structural_similarity as ssim
 from copy import deepcopy
@@ -112,27 +112,19 @@ class Trainer:
             #   bias: False
             #   LayerNorm_type: WithBias
             #   dual_pixel_task: False
-            self.restormer = Restormer(inp_channels=3, 
-                                        dim=48, 
-                                        num_blocks=[4,4,6,6], 
-                                        heads=[1,2,4,6], 
-                                        ffn_expansion_factor=2.0, 
-                                        dual_pixel_task=False, 
-                                        num_refinement_blocks=3, 
-                                        LayerNorm_type='BiasFree', 
-                                        pixelshuffle=False).to(device)
-
-            # self.restormer = Restormer(inp_channels=(3 + 1) * args.burst_length, dim=16, 
-            #                             dim=16, 
-            #                             num_blocks=[1,1,1,1], 
-            #                             heads=[1,2,4,4], 
-            #                             ffn_expansion_factor=1.5, 
-            #                             dual_pixel_task=False, 
-            #                             num_refinement_blocks=1, 
-            #                             LayerNorm_type='BiasFree', 
-            #                             pixelshuffle=False).to(device)
-
-            import pdb; pdb.set_trace()
+            self.pretrain_restormer = Restormer(
+                                inp_channels=3, 
+                                out_channels=3, 
+                                dim = 48,
+                                num_blocks = [4,4,6,6], 
+                                num_refinement_blocks = 3,
+                                heads = [1,2,4,6],
+                                ffn_expansion_factor = 2.0,
+                                bias = False,
+                                LayerNorm_type = 'WithBias',   ## Other option 'BiasFree'
+                                dual_pixel_task = False        ## True for dual-pixel defocus deblurring only. Also set inp_channels=6
+            ).cuda()
+            self.pretrain_restormer.load_state_dict(resume_state['params'], strict=True)
 
         # def resume_training(self, resume_state):
         #     """Reload the optimizers and schedulers for resumed training.
@@ -269,7 +261,7 @@ class Trainer:
             tar_nearby_poses = torch.cat([tar_pose[None], torch.from_numpy(src_poses[tar_near_ids]).to(self.device)], dim=0)[None]
             tar_nearby_intrinsics = torch.cat([tar_intrinsics[None], src_intrinsics[tar_near_ids]], dim=0)[..., :3,:3][None]
 
-            tar_noisy_rgb = ray_sampler.rgb_noisy.reshape(1,H,W,3).permute(0,3,1,2).to(self.device)
+            tar_noisy_rgb = ray_sampler.rgb.reshape(1,H,W,3).permute(0,3,1,2).to(self.device)
             tar_nearby_imgs = torch.cat([tar_noisy_rgb, org_src_rgbs[0].permute(0,3,1,2)[tar_near_ids]], dim=0)[None]
 
             nearby_imgs         = torch.cat([tar_nearby_imgs, nearby_imgs], dim=0)
@@ -321,7 +313,7 @@ class Trainer:
 
         if reconst_img != None:
             clean_src_imgs      = ray_sampler.src_rgbs_clean.to(self.device)[0].permute(0,3,1,2)
-            reconst_loss        = F.l1_loss(reconst_img, clean_src_imgs) * 0.1
+            reconst_loss        = F.l1_loss(reconst_img, clean_src_imgs) * 0.01
             loss += reconst_loss 
             self.scalars_to_log['train/reconst_loss'] = reconst_loss
         
@@ -356,7 +348,7 @@ class Trainer:
         del proc_src_rgbs, featmaps, ray_sampler
         return batch_out, ray_batch
 
-    def logging(self, train_data, ray_batch_in, ray_batch_out, dt, global_step, epoch, max_keep=3):
+    def logging(self, train_data, ray_batch_in, ray_batch_out, dt, global_step, epoch, max_keep=10):
         if self.args.local_rank == 0:
             # log iteration values
             if global_step % self.args.i_tb == 0 or global_step < 10:
@@ -411,10 +403,9 @@ class Trainer:
         with torch.no_grad():
 
             if self.pretrain_restormer != None:
-                ray_sampler.denoised_src_rgbs = self.pretrain_restormer(ray_sampler.src_rgbs)
+                ray_sampler.denoised_src_rgbs = self.pretrain_restormer(ray_sampler.src_rgbs[0].permute(0,3,1,2).cuda()).permute(0,2,3,1)[None]
             else:
                 ray_sampler.denoised_src_rgbs = None
-
 
             ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args, global_step=global_step, denoised_input= self.pretrain_restormer != None)
             if self.clean_model != None:
@@ -538,7 +529,7 @@ class Trainer:
             if self.args.add_burst_noise:
                 blur_level = blur_level + f"_gain{val_data['eval_gain']}"
             psnr, ssim, lpips = self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_gain{eval_gain}_iter{cnt}", visualize=visualize)
-
+            print("@@@@@@@@", psnr, ssim, lpips)
             if eval_gain in psnr_results.keys():
                 psnr_results[eval_gain].append(psnr)
             else:

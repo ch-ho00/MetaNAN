@@ -492,7 +492,7 @@ class NoiseDataset(BurstDataset, ABC):
                       'depth_range'    : depth_range,
                       'eval_gain'      : eval_gain,
                       'rgb_clean'      : rgb_clean,
-                      'rgb_noisy'      : rgb_noisy,
+                      'rgb'            : rgb_noisy,
                       'alpha_clean'    : alpha_clean
                       })
 

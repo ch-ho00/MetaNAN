@@ -62,7 +62,7 @@ def render_single_image(ray_sampler: RaySampler,
     device = torch.device(f'cuda:{args.local_rank}')
     ray_render = RayRender(model=model, args=args, device=device, save_pixel=save_pixel)
     if denoised_input:
-        input_src_rgbs = ray_sampler.denoised_src_rgb.to(device)
+        input_src_rgbs = ray_sampler.denoised_src_rgbs.to(device)
     elif args.clean_src_imgs or clean_src_imgs:
         input_src_rgbs = ray_sampler.src_rgbs_clean.to(device)
     else:
