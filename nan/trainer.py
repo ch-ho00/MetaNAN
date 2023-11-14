@@ -63,7 +63,10 @@ class Trainer:
         if self.args.train_dataset == 'objaverse':
             args.eval_gain = [4,2,1]
         else:
-            args.eval_gain = [20,16,8]
+            if self.args.eval_mode:
+                args.eval_gain = [1,2,4,8,16,20]
+            else:
+                args.eval_gain = [20,16,8]
         self.train_dataset, self.train_sampler = create_training_dataset(args)
         # currently only support batch_size=1 (i.e., one set of target and source views) for each GPU node
         # please use distributed parallel on multiple GPUs to train multiple target views per batch
@@ -84,7 +87,6 @@ class Trainer:
         
         if self.args.clean_ckpt_path != None:
             clean_model_args = deepcopy(args)
-            clean_model_args.burst_length = 1
             clean_model_args.ckpt_path = Path(args.clean_ckpt_path)
             self.clean_model = NANScheme.create(clean_model_args)
             self.clean_model_args = clean_model_args
@@ -407,7 +409,7 @@ class Trainer:
             else:
                 ray_sampler.denoised_src_rgbs = None
 
-            ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args, global_step=global_step, denoised_input= self.pretrain_restormer != None)
+            ret = render_single_image(ray_sampler=ray_sampler, model=self.model, args=self.args, global_step=global_step, denoised_input= self.pretrain_restormer != None and self.clean_model == None) # if both none, analyze the depth and reconst psnr
             if self.clean_model != None:
                 clean_ret = render_single_image(ray_sampler=ray_sampler, model=self.clean_model, args=self.clean_model_args, global_step=global_step, clean_src_imgs=True)
         if self.args.clean_src_imgs:
@@ -496,12 +498,23 @@ class Trainer:
         psnr_curr_img = img2psnr(pred_img, gt_img)
         ssim_curr_img = ssim( pred_img.numpy(), gt_img.cpu().numpy(), data_range=1, multichannel=True, channel_axis=-1)
         lpips_curr_img = lpips_fn(pred_img.permute(2,0,1)[None] * 2 - 1, gt_img.permute(2,0,1)[None] * 2 - 1).item()  # Normalize to [-1,1]
-
+        print(psnr_curr_img, ssim_curr_img, lpips_curr_img, "##")
+        out = [psnr_curr_img, ssim_curr_img, lpips_curr_img]
+        if self.pretrain_restormer != None:
+            restormer_denoised = ray_sampler.denoised_src_rgbs
+            our_denoised = ret['kernel_reconst']
+            psnr_our_denoised = img2psnr(our_denoised.permute(0,2,3,1)[None], ray_sampler.src_rgbs_clean.to(our_denoised.device))
+            psnr_restormer_denoised = img2psnr(restormer_denoised, ray_sampler.src_rgbs_clean.to(restormer_denoised.device))
+            out += [[psnr_our_denoised, psnr_restormer_denoised]]
+        if self.clean_model != None:
+            clean_depth = clean_ret['fine'].depth
+            pred_depth = ret['fine'].depth
+            out += [(clean_depth - pred_depth).abs().mean().item()]
 
         self.model.switch_to_train()
         del pred_rgb, ret
 
-        return psnr_curr_img, ssim_curr_img, lpips_curr_img
+        return out
 
     def log_images(self, train_data, global_step):
         print('Logging a random validation view...')
@@ -509,11 +522,12 @@ class Trainer:
         torch.cuda.empty_cache()
         psnr_results = {}
         psnr_scene_results = {}
+        depth_err_results = {}
         vis_interval = 4 if self.args.ckpt_path == None else 1
         print("Size of Val dataset = ", len(self.val_dataset))
         for val_idx in range(len(self.val_dataset)):
 
-            if global_step == 1 and val_idx > 0 and self.args.ckpt_path == None:
+            if global_step == 1 and val_idx > 0 and not self.args.eval_mode:
                 break
 
             visualize = True if val_idx % vis_interval == 0 else False
@@ -528,7 +542,13 @@ class Trainer:
             blur_level = blur_level if 'mix' not in blur_level else 'blur_mix'
             if self.args.add_burst_noise:
                 blur_level = blur_level + f"_gain{val_data['eval_gain']}"
-            psnr, ssim, lpips = self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_gain{eval_gain}_iter{cnt}", visualize=visualize)
+            out = self.log_view_to_tb(global_step, tmp_ray_sampler, gt_img, render_stride=self.args.render_stride, prefix='val/', postfix=f"_gain{eval_gain}_iter{cnt}", visualize=visualize)
+            psnr, ssim, lpips = out[:3]
+            if self.pretrain_restormer != None:
+                psnr_ours_denoised, psnr_restormer_denoised = out[3]
+            if self.clean_model != None:
+                depth_err = out[-1]
+                
             print("@@@@@@@@", psnr, ssim, lpips)
             if eval_gain in psnr_results.keys():
                 psnr_results[eval_gain].append(psnr)
@@ -540,11 +560,22 @@ class Trainer:
                     psnr_scene_results[blur_level + "_psnr"] += [psnr]
                     psnr_scene_results[blur_level + "_ssim"] += [ssim]
                     psnr_scene_results[blur_level + "_lpips"] += [lpips]
+                    if self.pretrain_restormer != None:
+                        psnr_scene_results[blur_level + "_ours_denoise"] += [psnr_ours_denoised]
+                        psnr_scene_results[blur_level + "_restormer_denoise"] += [psnr_restormer_denoised]
+                    if self.clean_model != None:
+                        psnr_scene_results[blur_level + "_clean_depth_err"] += [depth_err]
+
                 else:
                     psnr_scene_results[blur_level + "_psnr"] = [psnr]
                     psnr_scene_results[blur_level + "_ssim"] = [ssim]
                     psnr_scene_results[blur_level + "_lpips"] = [lpips]
-
+                    if self.pretrain_restormer != None:
+                        psnr_scene_results[blur_level + "_ours_denoise"] = [psnr_ours_denoised]
+                        psnr_scene_results[blur_level + "_restormer_denoise"] = [psnr_restormer_denoised]
+                    if self.clean_model != None:
+                        psnr_scene_results[blur_level + "_clean_depth_err"] = [depth_err]
+            # print(psnr_scene_results)
             del tmp_ray_sampler, val_data, gt_img 
             torch.cuda.empty_cache()
             print("val image #",cnt)

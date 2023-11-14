@@ -1,12 +1,12 @@
 ### INPUT
-expname                     : nan_llff_burst_src5_near3_1e-1_1e-2
-render_stride               : 2  # used in evaluation
+expname                     : eval_llff_burst_src5_near3
+render_stride               : 1  # used in evaluation
 distributed                 : False
 
 ## dataset
 train_dataset               : llff
 eval_dataset                : llff_test
-eval_scenes                 : [fern, trex, leaves, horns] #[fern, orchids, flower, horns, leaves, room, trex, fortress]
+eval_scenes                 : [fern, orchids, flower, horns, leaves, room, trex, fortress] # [fern, trex, leaves, horns]
 
 ### TRAINING
 n_iters                     : 255000
@@ -37,14 +37,16 @@ inv_uniform                 : True
 white_bkgd                  : False
 
 ### CONSOLE AND TENSORBOARD
-i_img                       : 3000
+i_img                       : 6000
 i_print                     : 100
 i_tb                        : 20
 i_weights                   : 5000
 
 ### additional
 #ckpt_path                   : out/NAN/model_255000.pth   # use this if you want to train from a specific checkpoint.
-# ckpt_path                   : /disk1/chanho/3d/MetaNAN/ckpts_test/model_205000.pth
+# ckpt_path                   : /disk1/chanho/3d/MetaNAN/out/nan_llff_burst_src5_near1_cont2____full__pre__3_3_3__views_attn__noise_feat__l1/model_255000.pth
+ckpt_path                   : /disk1/chanho/3d/MetaNAN/out/nan_llff_burst_src5_near3_1e-1_1e-2____full__pre__3_3_3__views_attn__noise_feat__l1/model_255000.pth
+eval_mode                   : True
 no_load_opt                 : False
 no_load_scheduler           : False
 sup_clean                   : True
